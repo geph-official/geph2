@@ -10,15 +10,17 @@ import (
 
 // Wrapper is a PacketConn that can be hot-replaced by other PacketConns on I/O failure or manually. It squelches any errors bubbling up.
 type Wrapper struct {
-	wire    net.PacketConn
-	getConn func() net.PacketConn
-	lock    sync.Mutex
+	wire         net.PacketConn
+	getConn      func() net.PacketConn
+	lastActivity time.Time
+	lock         sync.Mutex
 }
 
 // Wrap creates a new Wrapper instance.
 func Wrap(getConn func() net.PacketConn) *Wrapper {
 	return &Wrapper{
-		getConn: getConn,
+		getConn:      getConn,
+		lastActivity: time.Now(),
 	}
 }
 
@@ -30,11 +32,16 @@ retry:
 	if w.wire == nil {
 		err = errors.New("nil")
 	} else {
+		wire.SetReadDeadline(time.Now().Add(time.Minute * 30))
 		n, addr, err = wire.ReadFrom(p)
+		w.lastActivity = time.Now()
 	}
 	if err != nil {
 		log.Println("wrapper squelching", err)
 		w.lock.Lock()
+		if w.wire != nil {
+			w.wire.Close()
+		}
 		w.wire = w.getConn()
 		w.lock.Unlock()
 		goto retry
@@ -46,6 +53,11 @@ func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 	w.lock.Lock()
 	defer w.lock.Unlock()
 	if w.wire != nil {
+		if time.Since(w.lastActivity) > time.Second*10 {
+			w.wire.Close()
+			w.wire = nil
+			w.wire = w.getConn()
+		}
 		w.wire.WriteTo(b, addr)
 	}
 	return len(b), nil

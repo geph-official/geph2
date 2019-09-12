@@ -64,7 +64,7 @@ RESTART:
 	// check if the packet belongs to a known tunnel
 	if tuni, ok := os.tunnels.Get(addr.String()); ok {
 		tun := tuni.(*tunstate)
-		log.Println("got packet of known tunnel from", addr.String())
+		//log.Println("got packet of known tunnel from", addr.String())
 		plain, e := tun.Decrypt(os.rdbuf[:readBytes])
 		if e != nil {
 			log.Println("got undecryptable at", addr, e)

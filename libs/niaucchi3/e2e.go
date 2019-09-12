@@ -48,6 +48,7 @@ RESTART:
 	} else {
 		addr = sessAddr(sid)
 	}
+	//log.Println("mapping", sid, "=>", waddr)
 	ee.ss2h.SetDefault(fmt.Sprint(sid), waddr)
 	return
 }
