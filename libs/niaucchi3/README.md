@@ -38,10 +38,12 @@ An empty-padding packet is to be considered a ping packet, and should be returne
 
 ## Rekeying
 
-Every `2^16` packets we send, we rekey by setting `sharedsec = SHA256(sharedsec)` and recompute the sending key. This ensures that we can safely use AEADs with short nonces.
+Every `2^16` packets we send, we rekey by setting `sharedsec = SHA256(sharedsec)` and recompute the sending key. This ensures that we can safely use AEADs with short nonces. When receivers get an undecryptable packet, they try to decode it with the "next" key too.
 
 ## What does the intermediary do
 
 The intermediary keeps a NAT-like table of incoming tunnels by `host:port` of the client, mapping them to tunnel state structures and outgoing UDP sockets. The tunnels are cleared only under memory pressure and should not be timed out unless absolutely necessary.
 
-## 
+## End-to-end wire format
+
+The end-to-end format is simply a 64-bit sessid and then the body.
