@@ -3,6 +3,7 @@ package niaucchi3
 import (
 	"log"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/patrickmn/go-cache"
@@ -15,6 +16,7 @@ type ObfsSocket struct {
 	tunnels *cache.Cache
 	pending *cache.Cache
 	wire    net.PacketConn
+	wlock   sync.Mutex
 	rdbuf   [65536]byte
 }
 
@@ -48,7 +50,9 @@ func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 	pt, hello := newproto(os.cookie)
 	log.Println("pretending to write, actually ESTABLISHING")
 	os.pending.SetDefault(addr.String(), pt)
+	os.wlock.Lock()
 	_, err := os.wire.WriteTo(hello, addr)
+	os.wlock.Unlock()
 	if err != nil {
 		return 0, err
 	}
@@ -93,7 +97,9 @@ RESTART:
 		log.Println("got bad hello", e)
 		goto RESTART
 	}
+	os.wlock.Lock()
 	os.wire.WriteTo(myhello, addr)
+	os.wlock.Unlock()
 	os.tunnels.SetDefault(addr.String(), ts)
 	log.Println("got opened tunnel at", addr)
 	goto RESTART

@@ -57,6 +57,7 @@ func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 			w.wire.Close()
 			w.wire = nil
 			w.wire = w.getConn()
+			w.lastActivity = time.Now()
 		}
 		w.wire.WriteTo(b, addr)
 	}

@@ -72,8 +72,8 @@ func (ee *E2ESocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 			sid = sidi.(uint64)
 		} else { // otherwise we assign an arbitrary sid
 			sid = mrand.Uint64()
-			ee.h2ss.SetDefault(addr.String(), sid)
 		}
+		ee.h2ss.SetDefault(addr.String(), sid)
 	}
 	sidbts := make([]byte, 8)
 	binary.BigEndian.PutUint64(sidbts, sid)
