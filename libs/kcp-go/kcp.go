@@ -411,7 +411,7 @@ func (kcp *KCP) Send(buffer []byte) int {
 }
 
 func (kcp *KCP) bdp() float64 {
-	return (kcp.DRE.minRtt + 10) * 0.001 * kcp.DRE.maxAckRate
+	return (kcp.DRE.minRtt + 20) * 0.001 * kcp.DRE.maxAckRate
 }
 
 func (kcp *KCP) update_ack(rtt int32) {
@@ -718,7 +718,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					kcp.LOL.filledPipe = false
 					kcp.LOL.fullBw = 0
 				}
-				kcp.LOL.gain = 1.2
+				kcp.LOL.gain = 1
 				if !kcp.LOL.filledPipe {
 					// check for filled pipe
 					if kcp.DRE.maxAckRate > kcp.LOL.fullBw {

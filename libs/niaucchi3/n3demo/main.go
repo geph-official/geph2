@@ -111,7 +111,7 @@ func main() {
 			}
 			log.Println("Accepted kclient from", kclient.RemoteAddr())
 			kclient.SetWindowSize(10000, 10000)
-			kclient.SetNoDelay(1, 50, 2, 0)
+			kclient.SetNoDelay(0, 50, 4, 0)
 			kclient.SetStreamMode(true)
 			go func() {
 				defer kclient.Close()
@@ -190,7 +190,7 @@ func main() {
 		}
 		defer kcpremote.Close()
 		kcpremote.SetWindowSize(10000, 10000)
-		kcpremote.SetNoDelay(1, 50, 2, 0)
+		kcpremote.SetNoDelay(0, 50, 4, 0)
 		kcpremote.SetStreamMode(true)
 		bremote, err := yamux.Client(kcpremote, yamuxCfg)
 		if err != nil {
