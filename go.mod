@@ -6,6 +6,8 @@ require (
 	github.com/bunsim/goproxy v0.0.0-20170228195103-3c809b25484a
 	github.com/cryptoballot/fdh v0.0.0-20170924224734-5eb31ce2010c // indirect
 	github.com/cryptoballot/rsablind v0.0.0-20170925165423-14f9913880b7
+	github.com/elazarl/goproxy v0.0.0-20190911111923-ecfe977594f1 // indirect
+	github.com/elazarl/goproxy/ext v0.0.0-20190911111923-ecfe977594f1 // indirect
 	github.com/gorilla/mux v1.7.3
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d
 	github.com/klauspost/cpuid v1.2.1 // indirect

@@ -729,15 +729,16 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					} else {
 						kcp.LOL.fullBwCount++
 					}
-					if kcp.LOL.fullBwCount >= 4 {
+					if kcp.LOL.fullBwCount >= 3 {
 						log.Printf("BW filled at %2.fK", kcp.LOL.fullBw/1000)
 						kcp.LOL.filledPipe = true
 						kcp.LOL.lastFillTime = time.Now()
+						kcp.LOL.gain /= 2.89
 					}
 				}
 				if !kcp.LOL.filledPipe {
 					log.Println("pipe not filled, pumping desired up")
-					kcp.LOL.gain *= 2
+					kcp.LOL.gain *= 2.89
 				}
 
 				desired *= kcp.LOL.gain
@@ -746,6 +747,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				} else {
 					kcp.cwnd = desired
 				}
+				// FORCE
 				log.Printf("CWND %.2f => %.2f [%vK / %vK / %v ms]", kcp.cwnd, desired,
 					int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.avgAckRate/1000), int(kcp.DRE.minRtt))
 			}
@@ -1000,12 +1002,6 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.bic_onloss()
 			}
 		case "LOL":
-			// if lostSegs > 0 {
-			// 	kcp.DRE.maxAckRate *= 0.9
-			// }
-			// if change > 0 {
-			// 	kcp.DRE.maxAckRate *= 0.95
-			// }
 		}
 		if kcp.cwnd < 1 {
 			kcp.cwnd = 1

@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -13,6 +14,24 @@ import (
 )
 
 var pgDB *sql.DB
+
+// checkBridge checks whether a bridge cookie is allowed.
+func checkBridge(cookie []byte) (ok bool, err error) {
+	tx, err := pgDB.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+	var cookieCount uint
+	err = tx.QueryRow("select count(cookie) from goodbridges where cookie = $1",
+		hex.EncodeToString(cookie)).Scan(&cookieCount)
+	if err != nil {
+		return
+	}
+	ok = cookieCount > 0
+	err = tx.Commit()
+	return
+}
 
 // getTicketIdentity returns the RSA ticket identity for a particular account class.
 func getTicketIdentity(tier string) (sk *rsa.PrivateKey, err error) {

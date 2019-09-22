@@ -18,7 +18,7 @@ import (
 
 	"github.com/bunsim/goproxy"
 	"github.com/geph-official/geph2/libs/kcp-go"
-	"github.com/geph-official/geph2/libs/niaucchi3"
+	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/geph-official/geph2/libs/tinysocks"
 	"github.com/hashicorp/yamux"
 	"golang.org/x/net/proxy"
@@ -94,7 +94,7 @@ func main() {
 			panic(err)
 		}
 		log.Println("server started UDP on", udpsock.LocalAddr())
-		e2e := niaucchi3.E2EListen(niaucchi3.ObfsListen(cookie, udpsock))
+		e2e := niaucchi4.E2EListen(niaucchi4.ObfsListen(cookie, udpsock))
 		if err != nil {
 			panic(err)
 		}
@@ -111,7 +111,7 @@ func main() {
 			}
 			log.Println("Accepted kclient from", kclient.RemoteAddr())
 			kclient.SetWindowSize(10000, 10000)
-			kclient.SetNoDelay(0, 50, 4, 0)
+			kclient.SetNoDelay(0, 20, 6, 0)
 			kclient.SetStreamMode(true)
 			go func() {
 				defer kclient.Close()
@@ -175,14 +175,14 @@ func main() {
 			}
 		}()
 		log.Println("TCP listener started on", listener.Addr())
-		e2e := niaucchi3.E2EListen(niaucchi3.Wrap(
+		e2e := niaucchi4.E2EListen(niaucchi4.Wrap(
 			func() net.PacketConn {
 				udpsock, err := net.ListenPacket("udp", "")
 				if err != nil {
 					panic(err)
 				}
 				log.Println("made new udpsock at", udpsock.LocalAddr())
-				return niaucchi3.ObfsListen(cookie, udpsock)
+				return niaucchi4.ObfsListen(cookie, udpsock)
 			}))
 		kcpremote, err := kcp.NewConn(flagClient, nil, 0, 0, e2e)
 		if err != nil {
@@ -190,7 +190,7 @@ func main() {
 		}
 		defer kcpremote.Close()
 		kcpremote.SetWindowSize(10000, 10000)
-		kcpremote.SetNoDelay(0, 50, 4, 0)
+		kcpremote.SetNoDelay(0, 20, 6, 0)
 		kcpremote.SetStreamMode(true)
 		bremote, err := yamux.Client(kcpremote, yamuxCfg)
 		if err != nil {

@@ -18,7 +18,7 @@ func (s *UDPSession) defaultTx(txqueue []ipv4.Message) {
 		if n, err := s.conn.WriteTo(txqueue[k].Buffers[0], txqueue[k].Addr); err == nil {
 			nbytes += n
 			npkts++
-			if DefaultSnmp.OutPkts%sendQuantum == 0 && CongestionControl == "LOL" && false {
+			if DefaultSnmp.OutPkts%sendQuantum == 0 && CongestionControl == "LOL" {
 				paceInterval := float64(n) / s.kcp.DRE.maxAckRate
 				if paceInterval > 0.001 {
 					paceInterval = 0.001

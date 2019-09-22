@@ -31,6 +31,8 @@ func main() {
 
 	r := mux.NewRouter()
 	r.HandleFunc("/get-ticket", handleGetTicket)
+	r.HandleFunc("/add-bridge", handleAddBridge)
+	r.HandleFunc("/get-bridges", handleGetBridges)
 	if err := http.ListenAndServe(":9080", r); err != nil {
 		panic(err)
 	}

@@ -1,12 +1,12 @@
-# niaucchi3: the 3rd generation Geph obfuscation protocol
+# niaucchi4: the 3rd generation Geph obfuscation protocol
 
 ## Architecture
 
-Unlike previous iterations, `niaucchi3` presents an unreliable transport to upper layers. This allows it to work around environments where TCP sessions are unreliable (mobile network switching etc), letting hours-long upper-layer sessions become practical. It can also use multiple UDP sessions, automatically converging on the best path.
+Unlike previous iterations, `niaucchi4` presents an unreliable transport to upper layers. This allows it to work around environments where TCP sessions are unreliable (mobile network switching etc), letting hours-long upper-layer sessions become practical. It can also use multiple UDP sessions, automatically converging on the best path.
 
 ```
 [Authentication, encryption]
-[        niaucchi3         ]
+[        niaucchi4         ]
 [  UDP  ][  UDP   ][  UDP  ]
 ```
 

@@ -1,4 +1,4 @@
-package niaucchi3
+package niaucchi4
 
 import (
 	"encoding/binary"
@@ -21,7 +21,7 @@ func (sa sessAddr) String() string {
 	return fmt.Sprintf("sid-%v", uint64(sa))
 }
 
-// E2ESocket is a niaucchi3 end-to-end socket.
+// E2ESocket is a niaucchi4 end-to-end socket.
 type E2ESocket struct {
 	h2ss  *cache.Cache // maps hosts to sids for hosts identified by h:p we contact first
 	ss2h  *cache.Cache // maps sids back to hosts for hosts identified by sid that contact us first
@@ -85,7 +85,7 @@ func (ee *E2ESocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 	return len(b), nil
 }
 
-// E2EListen creates a new niaucchi3 end-to-end socket.
+// E2EListen creates a new niaucchi4 end-to-end socket.
 func E2EListen(wire net.PacketConn) *E2ESocket {
 	return &E2ESocket{
 		h2ss: cache.New(time.Hour, time.Hour),
