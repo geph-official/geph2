@@ -713,11 +713,6 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				kcp.bic_onack(acks)
 			case "LOL":
 				desired := kcp.bdp()/float64(kcp.mss) + 16
-				if kcp.LOL.filledPipe && time.Since(kcp.LOL.lastFillTime).Seconds() > 4 {
-					log.Println("timed out filling, back to start")
-					kcp.LOL.filledPipe = false
-					kcp.LOL.fullBw = 0
-				}
 				kcp.LOL.gain = 1
 				if !kcp.LOL.filledPipe {
 					// check for filled pipe
@@ -729,7 +724,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					} else {
 						kcp.LOL.fullBwCount++
 					}
-					if kcp.LOL.fullBwCount >= 3 {
+					if kcp.LOL.fullBwCount >= 10 {
 						log.Printf("BW filled at %2.fK", kcp.LOL.fullBw/1000)
 						kcp.LOL.filledPipe = true
 						kcp.LOL.lastFillTime = time.Now()
@@ -739,6 +734,15 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				if !kcp.LOL.filledPipe {
 					log.Println("pipe not filled, pumping desired up")
 					kcp.LOL.gain *= 2.89
+				}
+
+				// vibrate the gain up and down every 10 rtts
+				period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
+				switch period % 10 {
+				case 0:
+					kcp.LOL.gain *= 1.25
+				case 1:
+					kcp.LOL.gain /= 1.25
 				}
 
 				desired *= kcp.LOL.gain
@@ -777,6 +781,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			kcp.quiescent--
 			if kcp.quiescent < 0 {
 				kcp.quiescent = 0
+				kcp.LOL.filledPipe = false
 			}
 		}
 	}()
