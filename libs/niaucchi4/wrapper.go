@@ -2,7 +2,6 @@ package niaucchi4
 
 import (
 	"errors"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -37,7 +36,6 @@ retry:
 		w.lastActivity = time.Now()
 	}
 	if err != nil {
-		log.Println("wrapper squelching", err)
 		w.lock.Lock()
 		if w.wire != nil {
 			w.wire.Close()

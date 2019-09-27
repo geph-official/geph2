@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 	mrand "math/rand"
 	"time"
 
@@ -31,7 +30,7 @@ type tunstate struct {
 }
 
 func (ts *tunstate) deriveKeys(ss []byte) {
-	log.Printf("deriving keys from shared state %x", ss[:5])
+	//log.Printf("deriving keys from shared state %x", ss[:5])
 	upcrypt := aead(hm(ss, []byte("up")))
 	dncrypt := aead(hm(ss, []byte("dn")))
 	if ts.isserv {
@@ -75,7 +74,7 @@ func (pt *prototun) realize(response []byte, isserv bool) (ts *tunstate, err err
 	for i := -3; i < 3; i++ {
 		// derive nowcookie
 		nowcookie := hm(pt.cookie, []byte(fmt.Sprintf("%v", time.Now().Unix()/30+int64(i))))
-		log.Printf("trying nowcookie %x", nowcookie[:5])
+		//log.Printf("trying nowcookie %x", nowcookie[:5])
 		theirPK, e := aead(hm(nowcookie, theirHello.Nonce[:])).
 			Open(nil, make([]byte, chacha20poly1305.NonceSizeX), theirHello.EncPK[:], nil)
 		if e != nil {
@@ -99,7 +98,7 @@ func (pt *prototun) realize(response []byte, isserv bool) (ts *tunstate, err err
 func newproto(cookie []byte) (pt *prototun, hello []byte) {
 	// derive nowcookie
 	nowcookie := hm(cookie, []byte(fmt.Sprintf("%v", time.Now().Unix()/30)))
-	log.Printf("newproto with cookie = %x and nowcookie = %x", cookie[:5], nowcookie[:5])
+	//log.Printf("newproto with cookie = %x and nowcookie = %x", cookie[:5], nowcookie[:5])
 	// generate keys
 	sk := c25519.GenSK()
 	var pk [32]byte

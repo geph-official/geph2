@@ -2,8 +2,6 @@ package kcp
 
 import (
 	"encoding/binary"
-	"fmt"
-	"log"
 	"sync/atomic"
 	"time"
 
@@ -342,7 +340,7 @@ func (kcp *KCP) Recv(buffer []byte) (n int) {
 
 // Send is user/upper level send, returns below zero for error
 func (kcp *KCP) Send(buffer []byte) int {
-	kcp.quiescent = 10
+	kcp.quiescent = 100
 	var count int
 	if len(buffer) == 0 {
 		return -1
@@ -454,9 +452,6 @@ func (kcp *KCP) shrink_buf() {
 }
 
 func (kcp *KCP) processAck(seg *segment) {
-	if _, ok := ackDebugCache.Get(fmt.Sprint(seg.sn)); ok {
-		log.Println(seg.sn, "NOT LOST AFTER ALL")
-	}
 	kcp.DRE.totalDelivered += float64(len(seg.data))
 	kcp.DRE.lastDelTime = time.Now()
 	pDelivered, ok := kcp.DRE.ppDelivered[seg.sn]
@@ -475,10 +470,6 @@ func (kcp *KCP) processAck(seg *segment) {
 	appLimited := len(kcp.snd_queue) == 0
 	kcp.DRE.avgAckRate = kcp.DRE.avgAckRate*0.999 + ackRate*0.001
 	if kcp.DRE.maxAckRate < ackRate || (!appLimited && time.Since(kcp.DRE.maxAckTime).Seconds() > 10) {
-		if ackRate > kcp.DRE.maxAckRate {
-			delta := (ackRate - kcp.DRE.maxAckRate) / 2
-			kcp.DRE.maxAckRate += delta
-		}
 		kcp.DRE.maxAckRate = ackRate
 		kcp.DRE.maxAckTime = kcp.DRE.lastDelTime
 	}
@@ -541,7 +532,7 @@ func (kcp *KCP) parse_una(una uint32) {
 
 // ack append
 func (kcp *KCP) ack_push(sn, ts uint32) {
-	kcp.quiescent = 10
+	kcp.quiescent = 100
 	kcp.acklist = append(kcp.acklist, ackItem{sn, ts})
 }
 
@@ -609,7 +600,7 @@ func (kcp *KCP) parse_data(newseg segment) bool {
 //
 // 'ackNoDelay' will trigger immediate ACK, but surely it will not be efficient in bandwidth
 func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
-	kcp.quiescent = 10
+	kcp.quiescent = 100
 	snd_una := kcp.snd_una
 	if len(data) < IKCP_OVERHEAD {
 		return -1
@@ -720,19 +711,19 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 						// still growing
 						kcp.LOL.fullBw = kcp.DRE.maxAckRate
 						kcp.LOL.fullBwCount = 0
-						log.Println("growing...")
+						//log.Println("growing...")
 					} else {
 						kcp.LOL.fullBwCount++
 					}
 					if kcp.LOL.fullBwCount >= 10 {
-						log.Printf("BW filled at %2.fK", kcp.LOL.fullBw/1000)
+						//log.Printf("BW filled at %2.fK", kcp.LOL.fullBw/1000)
 						kcp.LOL.filledPipe = true
 						kcp.LOL.lastFillTime = time.Now()
 						kcp.LOL.gain /= 2.89
 					}
 				}
 				if !kcp.LOL.filledPipe {
-					log.Println("pipe not filled, pumping desired up")
+					//log.Println("pipe not filled, pumping desired up")
 					kcp.LOL.gain *= 2.89
 				}
 
@@ -752,8 +743,8 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					kcp.cwnd = desired
 				}
 				// FORCE
-				log.Printf("CWND %.2f => %.2f [%vK / %vK / %v ms]", kcp.cwnd, desired,
-					int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.avgAckRate/1000), int(kcp.DRE.minRtt))
+				// log.Printf("CWND %.2f => %.2f [%vK / %vK / %v ms]", kcp.cwnd, desired,
+				// 	int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.avgAckRate/1000), int(kcp.DRE.minRtt))
 			}
 		}
 	}
@@ -926,32 +917,32 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto
-			segment.resendts = current + segment.rto*3/2
-		} else if _itimediff(current, segment.resendts) >= 0 { // RTO
-			ackDebugCache.SetDefault(fmt.Sprint(seg.sn), true)
-			needsend = true
-			if kcp.nodelay == 0 {
-				segment.rto += kcp.rx_rto
-			} else {
-				segment.rto += kcp.rx_rto / 2
-			}
-			segment.resendts = current + segment.rto
-			lost++
-			lostSegs++
+			segment.resendts = current + segment.rto + 100
 		} else if segment.fastack >= resent { // fast retransmit
 			needsend = true
 			segment.fastack = 0
 			segment.rto = kcp.rx_rto
-			segment.resendts = current + segment.rto
+			segment.resendts = current + segment.rto + 100
 			change++
 			fastRetransSegs++
 		} else if segment.fastack > 0 && newSegsCount == 0 { // early retransmit
 			needsend = true
 			segment.fastack = 0
 			segment.rto = kcp.rx_rto
-			segment.resendts = current + segment.rto
+			segment.resendts = current + segment.rto + 100
 			change++
 			earlyRetransSegs++
+		} else if _itimediff(current, segment.resendts) >= 0 { // RTO
+			needsend = true
+			if kcp.nodelay == 0 {
+				segment.rto += kcp.rx_rto
+			} else {
+				segment.rto += kcp.rx_rto / 2
+			}
+			segment.fastack = 0
+			segment.resendts = current + segment.rto + 100
+			lost++
+			lostSegs++
 		}
 
 		if needsend {
@@ -1003,13 +994,13 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		switch CongestionControl {
 		case "BIC":
 			// congestion control, https://tools.ietf.org/html/rfc5681
-			if lostSegs > 0 || change > 5 {
+			if lostSegs > 10 || change > 20 {
 				kcp.bic_onloss()
 			}
 		case "LOL":
 		}
-		if kcp.cwnd < 1 {
-			kcp.cwnd = 1
+		if kcp.cwnd < 10 {
+			kcp.cwnd = 10
 		}
 	}
 

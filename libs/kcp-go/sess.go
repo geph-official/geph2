@@ -12,7 +12,6 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -580,7 +579,6 @@ func (s *UDPSession) update() (interval time.Duration) {
 	}
 	s.uncork()
 	if s.kcp.quiescent <= 0 {
-		log.Println("QUIETING DOWN!!!")
 		interval = 0
 	}
 	s.mu.Unlock()

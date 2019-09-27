@@ -1,14 +1,34 @@
 package main
 
 import (
-	"crypto/x509"
 	"database/sql"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 )
+
+func rotateTickets() {
+	for {
+		endOfDay := time.Now().Truncate(time.Hour * 24).Add(time.Hour * 24)
+		log.Println("rotateTickets() sleeping until", endOfDay)
+		time.Sleep(time.Until(endOfDay))
+		log.Println("rotateTickets() actually rotating!")
+		go func() {
+			tx, err := pgDB.Begin()
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			defer tx.Rollback()
+			tx.Exec("delete from secrets where key = $1 or key = $2",
+				"ticket-id-free", "ticket-id-paid")
+			tx.Commit()
+		}()
+	}
+}
 
 func main() {
 	var err error
@@ -21,16 +41,15 @@ func main() {
 	if err != nil {
 		log.Fatal("cannot obtain master identity:", err)
 	}
-	tpkf, err := getTicketIdentity("free")
-	if err != nil {
-		log.Fatal("cannot obtain free ticket identity", err)
-	}
+	go rotateTickets()
 	log.Printf("Geph2 binder started")
 	log.Printf("MPK      = %x", sk.Public())
-	log.Printf("TPK-free = %x", x509.MarshalPKCS1PublicKey(&tpkf.PublicKey))
 
 	r := mux.NewRouter()
 	r.HandleFunc("/get-ticket", handleGetTicket)
+	r.HandleFunc("/get-tier", handleGetTier)
+	r.HandleFunc("/get-ticket-key", handleGetTicketKey)
+	r.HandleFunc("/redeem-ticket", handleRedeemTicket)
 	r.HandleFunc("/add-bridge", handleAddBridge)
 	r.HandleFunc("/get-bridges", handleGetBridges)
 	if err := http.ListenAndServe(":9080", r); err != nil {

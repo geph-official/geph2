@@ -99,7 +99,7 @@ func main() {
 			panic(err)
 		}
 
-		listener, err := kcp.ServeConn(nil, 0, 0, e2e)
+		listener, err := kcp.ServeConn(nil, 20, 2, e2e)
 		if err != nil {
 			panic(err)
 		}
@@ -111,7 +111,7 @@ func main() {
 			}
 			log.Println("Accepted kclient from", kclient.RemoteAddr())
 			kclient.SetWindowSize(10000, 10000)
-			kclient.SetNoDelay(0, 20, 6, 0)
+			kclient.SetNoDelay(1, 50, 3, 0)
 			kclient.SetStreamMode(true)
 			go func() {
 				defer kclient.Close()
@@ -184,13 +184,13 @@ func main() {
 				log.Println("made new udpsock at", udpsock.LocalAddr())
 				return niaucchi4.ObfsListen(cookie, udpsock)
 			}))
-		kcpremote, err := kcp.NewConn(flagClient, nil, 0, 0, e2e)
+		kcpremote, err := kcp.NewConn(flagClient, nil, 20, 2, e2e)
 		if err != nil {
 			panic(err)
 		}
 		defer kcpremote.Close()
 		kcpremote.SetWindowSize(10000, 10000)
-		kcpremote.SetNoDelay(0, 20, 6, 0)
+		kcpremote.SetNoDelay(1, 50, 3, 0)
 		kcpremote.SetStreamMode(true)
 		bremote, err := yamux.Client(kcpremote, yamuxCfg)
 		if err != nil {

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/nullchinchilla/natrium"
@@ -17,6 +18,7 @@ var pgDB *sql.DB
 
 // checkBridge checks whether a bridge cookie is allowed.
 func checkBridge(cookie []byte) (ok bool, err error) {
+	log.Printf("checBridge(%x)", cookie)
 	tx, err := pgDB.Begin()
 	if err != nil {
 		return
@@ -89,7 +91,7 @@ func getMasterIdentity() (sk ed25519.PrivateKey, err error) {
 }
 
 // verifyUser verifies a username/password by looking up the database. uid < 0 means authentication failed.
-func verifyUser(uname, pwd string) (uid int, err error) {
+func verifyUser(uname, pwd string) (uid int, subExpiry time.Time, err error) {
 	tx, err := pgDB.Begin()
 	if err != nil {
 		return
@@ -108,6 +110,14 @@ func verifyUser(uname, pwd string) (uid int, err error) {
 	}
 	if !natrium.PasswordVerify([]byte(pwd), PwdHash) {
 		uid = -1
+		return
+	}
+	// check subscription
+	err = tx.QueryRow("select expires from subscriptions where id = $1", uid).Scan(&subExpiry)
+	if err == sql.ErrNoRows {
+		err = nil
+	}
+	if err != nil {
 		return
 	}
 	// TODO actually verify the pwd hash

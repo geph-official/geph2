@@ -1,22 +1,45 @@
 package main
 
 import (
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/cryptoballot/rsablind"
+	"github.com/geph-official/geph2/libs/bdclient"
 )
 
-func handleGetTicket(w http.ResponseWriter, r *http.Request) {
+func handleGetTicketKey(w http.ResponseWriter, r *http.Request) {
 	// check type
-	if tier := r.FormValue("tier"); tier != "free" && tier != "paid" {
-		log.Println("bad tier:", tier)
-		w.WriteHeader(http.StatusBadRequest)
+	key, err := getTicketIdentity(r.FormValue("tier"))
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	w.Write([]byte(base64.RawStdEncoding.EncodeToString(x509.MarshalPKCS1PublicKey(&key.PublicKey))))
+}
+
+func handleGetTier(w http.ResponseWriter, r *http.Request) {
 	// first authenticate
-	uid, err := verifyUser(r.FormValue("user"), r.FormValue("pwd"))
+	_, expiry, err := verifyUser(r.FormValue("user"), r.FormValue("pwd"))
+	if err != nil {
+		log.Println("cannot verify user:", err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if expiry.After(time.Now()) {
+		w.Write([]byte("paid"))
+	} else {
+		w.Write([]byte("free"))
+	}
+}
+
+func handleGetTicket(w http.ResponseWriter, r *http.Request) {
+	// first authenticate
+	uid, expiry, err := verifyUser(r.FormValue("user"), r.FormValue("pwd"))
 	if err != nil {
 		log.Println("cannot verify user:", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
@@ -27,14 +50,21 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	log.Println("get-ticket: verified user", r.FormValue("user"), "as uid", uid)
+	log.Println("get-ticket: verified user", r.FormValue("user"), "as expiry", expiry)
+	var tier string
+	if expiry.After(time.Now()) {
+		tier = "paid"
+	} else {
+		tier = "free"
+	}
 	blinded, err := base64.RawStdEncoding.DecodeString(r.FormValue("blinded"))
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	log.Println("get-ticket: user", r.FormValue("user"), "sent us blinded of length", len(blinded))
 	// get the key
-	key, err := getTicketIdentity(r.FormValue("tier"))
+	key, err := getTicketIdentity(tier)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -44,7 +74,14 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		panic(err)
 	}
-	w.Write([]byte(base64.RawStdEncoding.EncodeToString(ticket)))
+	var toWrite bdclient.TicketResp
+	toWrite.Ticket = ticket
+	toWrite.PaidExpiry = expiry
+	b, err := json.Marshal(toWrite)
+	if err != nil {
+		panic(err)
+	}
+	w.Write([]byte(b))
 }
 
 func handleRedeemTicket(w http.ResponseWriter, r *http.Request) {

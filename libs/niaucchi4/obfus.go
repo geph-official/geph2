@@ -1,7 +1,6 @@
 package niaucchi4
 
 import (
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -43,12 +42,12 @@ func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 	}
 	// if we are pending, just ignore
 	if _, ok := os.pending.Get(addr.String()); ok {
-		log.Println("pretending to write since ALREADY PENDING")
+		//log.Println("pretending to write since ALREADY PENDING")
 		return len(b), nil
 	}
 	// establish a conn
 	pt, hello := newproto(os.cookie)
-	log.Println("pretending to write, actually ESTABLISHING")
+	//log.Println("pretending to write, actually ESTABLISHING")
 	os.pending.SetDefault(addr.String(), pt)
 	os.wlock.Lock()
 	_, err := os.wire.WriteTo(hello, addr)
@@ -71,7 +70,7 @@ RESTART:
 		//log.Println("got packet of known tunnel from", addr.String())
 		plain, e := tun.Decrypt(os.rdbuf[:readBytes])
 		if e != nil {
-			log.Println("got undecryptable at", addr, e)
+			//log.Println("got undecryptable at", addr, e)
 			goto RESTART
 		}
 		n = copy(p, plain)
@@ -82,26 +81,25 @@ RESTART:
 		prot := proti.(*prototun)
 		ts, e := prot.realize(os.rdbuf[:readBytes], false)
 		if e != nil {
-			log.Println("got bad response to pending", addr, e)
+			//log.Println("got bad response to pending", addr, e)
 			goto RESTART
 		}
 		os.tunnels.SetDefault(addr.String(), ts)
-		log.Println("got realization of pending", addr)
+		//log.Println("got realization of pending", addr)
 		goto RESTART
 	}
 	// otherwise it has to be some sort of tunnel opener
-	log.Println("got suspected hello")
+	//log.Println("got suspected hello")
 	pt, myhello := newproto(os.cookie)
 	ts, e := pt.realize(os.rdbuf[:readBytes], true)
 	if e != nil {
-		log.Println("got bad hello", e)
+		// log.Println("got bad hello", e)
 		goto RESTART
 	}
 	os.wlock.Lock()
 	os.wire.WriteTo(myhello, addr)
 	os.wlock.Unlock()
 	os.tunnels.SetDefault(addr.String(), ts)
-	log.Println("got opened tunnel at", addr)
 	goto RESTART
 }
 
