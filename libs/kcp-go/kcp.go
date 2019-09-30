@@ -2,6 +2,7 @@ package kcp
 
 import (
 	"encoding/binary"
+	"log"
 	"sync/atomic"
 	"time"
 
@@ -474,7 +475,7 @@ func (kcp *KCP) processAck(seg *segment) {
 	ackRate := dataAcked / ackElapsed.Seconds()
 	appLimited := len(kcp.snd_queue) == 0
 	kcp.DRE.avgAckRate = kcp.DRE.avgAckRate*0.999 + ackRate*0.001
-	if kcp.DRE.maxAckRate < ackRate || (!appLimited && time.Since(kcp.DRE.maxAckTime).Seconds() > 10) {
+	if kcp.DRE.maxAckRate < ackRate || (!appLimited && time.Since(kcp.DRE.maxAckTime).Seconds() > 60) {
 		kcp.DRE.maxAckRate = ackRate
 		kcp.DRE.maxAckTime = kcp.DRE.lastDelTime
 	}
@@ -709,7 +710,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 			case "BIC":
 				kcp.bic_onack(acks)
 			case "LOL":
-				desired := kcp.bdp()/float64(kcp.mss) + 16
+				bdp := kcp.bdp()/float64(kcp.mss) + 16
 				kcp.LOL.gain = 1
 				if !kcp.LOL.filledPipe {
 					// check for filled pipe
@@ -721,7 +722,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					} else {
 						kcp.LOL.fullBwCount++
 					}
-					if kcp.LOL.fullBwCount >= 10 {
+					if kcp.LOL.fullBwCount >= 3 {
 						//log.Printf("BW filled at %2.fK", kcp.LOL.fullBw/1000)
 						kcp.LOL.filledPipe = true
 						kcp.LOL.lastFillTime = time.Now()
@@ -735,27 +736,24 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 
 				// vibrate the gain up and down every 10 rtts
 				period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
-				switch period % 10 {
-				case 0:
+				if period%5 == 0 {
 					kcp.LOL.gain *= 1.25
-				case 1:
+				} else if period%5 == 1 {
 					kcp.LOL.gain /= 1.25
 				}
-
-				desired *= kcp.LOL.gain
-				kcp.LOL.slack += kcp.cwnd / kcp.cwnd
-				// log.Printf("SLACK to %.2f", kcp.LOL.slack)
-				// desired += kcp.LOL.slack
-				desired *= 1 + (float64(kcp.retrans) / float64(kcp.trans))
-				if desired > kcp.cwnd+float64(acks) {
-					kcp.cwnd += float64(acks)
+				//kcp.LOL.gain += kcp.LOL.slack / kcp.cwnd
+				//kcp.LOL.gain *= 1 + (float64(kcp.retrans) / float64(kcp.trans))
+				bdp *= 2
+				//desired *= 1 + (float64(kcp.retrans) / float64(kcp.trans))
+				if bdp > kcp.cwnd+float64(acks) {
+					kcp.cwnd = (kcp.cwnd + float64(acks))
 				} else {
-					kcp.cwnd = desired
+					kcp.cwnd = bdp
 				}
 				// FORCE
-				// log.Printf("CWND %.2f => %.2f [%vK / %vK / %v ms] %.2f%%", kcp.cwnd, desired,
-				// 	int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.avgAckRate/1000), int(kcp.DRE.minRtt),
-				// 	float64(kcp.retrans)/float64(kcp.trans)*100)
+				log.Printf("CWND=%.2f BDP=%.2f GAIN=%.2f [%vK / %vK / %v ms] %.2f%%", kcp.cwnd, bdp, kcp.LOL.gain,
+					int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.avgAckRate/1000), int(kcp.DRE.minRtt),
+					float64(kcp.retrans)/float64(kcp.trans)*100)
 			}
 		}
 	}
@@ -781,9 +779,11 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 	defer func() {
 		if !busy {
 			kcp.quiescent--
-			if kcp.quiescent < 0 {
+			if kcp.quiescent <= 0 {
 				kcp.quiescent = 0
 				kcp.LOL.filledPipe = false
+				kcp.LOL.fullBwCount = 0
+				kcp.LOL.fullBw = 0
 			}
 		}
 	}()
@@ -1012,7 +1012,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			}
 		case "LOL":
 			if lostSegs+change > 20 {
-				kcp.LOL.slack *= 0.5
+				kcp.LOL.slack *= 0.95
 			}
 		}
 		if kcp.cwnd < 10 {

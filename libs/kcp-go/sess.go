@@ -108,6 +108,10 @@ type (
 		xconn           batchConn // for x/net
 		xconnWriteError error
 
+		pacer struct {
+			nextSendTime time.Time
+		}
+
 		mu sync.Mutex
 	}
 
