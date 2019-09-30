@@ -91,7 +91,7 @@ func getMasterIdentity() (sk ed25519.PrivateKey, err error) {
 }
 
 // verifyUser verifies a username/password by looking up the database. uid < 0 means authentication failed.
-func verifyUser(uname, pwd string) (uid int, subExpiry time.Time, err error) {
+func verifyUser(uname, pwd string) (uid int, subExpiry time.Time, paytx map[time.Time]int, err error) {
 	tx, err := pgDB.Begin()
 	if err != nil {
 		return
@@ -116,9 +116,25 @@ func verifyUser(uname, pwd string) (uid int, subExpiry time.Time, err error) {
 	err = tx.QueryRow("select expires from subscriptions where id = $1", uid).Scan(&subExpiry)
 	if err == sql.ErrNoRows {
 		err = nil
-	}
-	if err != nil {
+	} else if err != nil {
 		return
+	} else {
+		var rows *sql.Rows
+		// loop over the invoices
+		rows, err = tx.Query("select createtime, amount from invoices where id=$1 and paid='t'", uid)
+		if err != nil {
+			return
+		}
+		paytx = make(map[time.Time]int)
+		for rows.Next() {
+			var key time.Time
+			var val int
+			err = rows.Scan(&key, &val)
+			if err != nil {
+				return
+			}
+			paytx[key] = val
+		}
 	}
 	// TODO actually verify the pwd hash
 	err = tx.Commit()

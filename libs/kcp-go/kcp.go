@@ -129,6 +129,7 @@ func (seg *segment) encode(ptr []byte) []byte {
 	ptr = ikcp_encode32u(ptr, seg.una)
 	ptr = ikcp_encode32u(ptr, uint32(len(seg.data)))
 	atomic.AddUint64(&DefaultSnmp.OutSegs, 1)
+
 	return ptr
 }
 
@@ -146,6 +147,8 @@ type KCP struct {
 	ts_probe, probe_wait             uint32
 	dead_link                        uint32
 	wmax                             float64
+	retrans                          uint64
+	trans                            uint64
 
 	DRE struct {
 		totalDelivered float64
@@ -165,6 +168,8 @@ type KCP struct {
 		fullBw       float64
 		lastFillTime time.Time
 		gain         float64
+		slack        float64
+		lossRate     float64
 
 		devi float64
 	}
@@ -699,6 +704,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 	// cwnd update when packet arrived
 	if kcp.nocwnd == 0 {
 		if acks := _itimediff(kcp.snd_una, snd_una); acks > 0 {
+			kcp.trans += uint64(acks)
 			switch CongestionControl {
 			case "BIC":
 				kcp.bic_onack(acks)
@@ -737,14 +743,19 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				}
 
 				desired *= kcp.LOL.gain
+				kcp.LOL.slack += kcp.cwnd / kcp.cwnd
+				// log.Printf("SLACK to %.2f", kcp.LOL.slack)
+				// desired += kcp.LOL.slack
+				desired *= 1 + (float64(kcp.retrans) / float64(kcp.trans))
 				if desired > kcp.cwnd+float64(acks) {
 					kcp.cwnd += float64(acks)
 				} else {
 					kcp.cwnd = desired
 				}
 				// FORCE
-				// log.Printf("CWND %.2f => %.2f [%vK / %vK / %v ms]", kcp.cwnd, desired,
-				// 	int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.avgAckRate/1000), int(kcp.DRE.minRtt))
+				// log.Printf("CWND %.2f => %.2f [%vK / %vK / %v ms] %.2f%%", kcp.cwnd, desired,
+				// 	int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.avgAckRate/1000), int(kcp.DRE.minRtt),
+				// 	float64(kcp.retrans)/float64(kcp.trans)*100)
 			}
 		}
 	}
@@ -918,6 +929,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			needsend = true
 			segment.rto = kcp.rx_rto
 			segment.resendts = current + segment.rto + 100
+			kcp.trans++
 		} else if segment.fastack >= resent { // fast retransmit
 			needsend = true
 			segment.fastack = 0
@@ -987,6 +999,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 	}
 	if sum > 0 {
 		atomic.AddUint64(&DefaultSnmp.RetransSegs, sum)
+		kcp.retrans += sum
 	}
 
 	// cwnd update
@@ -998,6 +1011,9 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.bic_onloss()
 			}
 		case "LOL":
+			if lostSegs+change > 20 {
+				kcp.LOL.slack *= 0.5
+			}
 		}
 		if kcp.cwnd < 10 {
 			kcp.cwnd = 10

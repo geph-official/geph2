@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -105,12 +104,20 @@ func (cl *Client) GetTier(username, password string) (tier string, err error) {
 
 // TicketResp is the response for ticket getting
 type TicketResp struct {
-	Ticket     []byte
-	PaidExpiry time.Time
+	Ticket       []byte
+	Tier         string
+	PaidExpiry   time.Time
+	Transactions []PaymentTx
+}
+
+// PaymentTx is a payment in USD cents.
+type PaymentTx struct {
+	Date   time.Time
+	Amount int
 }
 
 // GetTicket obtains an authentication ticket.
-func (cl *Client) GetTicket(username, password string) (ubmsg, ubsig []byte, expires time.Time, err error) {
+func (cl *Client) GetTicket(username, password string) (ubmsg, ubsig []byte, details TicketResp, err error) {
 	// First get ticket key
 	fkey, err := cl.GetTicketKey("free")
 	if err != nil {
@@ -155,11 +162,10 @@ func (cl *Client) GetTicket(username, password string) (ubmsg, ubsig []byte, exp
 	if err != nil {
 		return
 	}
-	log.Println("expiry seems to be", respDec.PaidExpiry)
 	// unblind the ticket
 	ubsig = rsablind.Unblind(tkey, respDec.Ticket, unblinder)
 	ubmsg = unblinded
-	expires = time.Now().Truncate(time.Hour * 24).Add(time.Hour * 24)
+	details = respDec
 	return
 }
 

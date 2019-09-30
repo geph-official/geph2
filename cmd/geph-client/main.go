@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/hex"
+	"errors"
 	"flag"
+	"io"
 	"log"
 	mrand "math/rand"
 	"net"
@@ -27,6 +29,7 @@ var binderHost string
 var exitName string
 var exitKey string
 var direct bool
+var loginCheck bool
 
 var socksAddr string
 var statsAddr string
@@ -46,9 +49,17 @@ func main() {
 	flag.StringVar(&exitName, "exitName", "bg-sof-01.exits.geph.io", "qualified name of the exit node selected")
 	flag.StringVar(&exitKey, "exitKey", "b91e091bc66c18e826ec866f7b5caac046fd46040d71567175d5a17c2ab60a36", "ed25519 pubkey of the selected exit")
 	flag.BoolVar(&direct, "direct", false, "bypass obfuscated bridges and directly connect")
+	flag.BoolVar(&loginCheck, "loginCheck", false, "do a login check and immediately exit with code 0")
 	flag.StringVar(&socksAddr, "socksAddr", "localhost:9909", "SOCKS5 listening address")
 	flag.StringVar(&statsAddr, "statsAddr", "localhost:9809", "HTTP listener for statistics")
 	flag.Parse()
+
+	if loginCheck {
+		go func() {
+			time.Sleep(time.Second * 10)
+			os.Exit(-1)
+		}()
+	}
 
 	// connect to bridge
 	bindClient = bdclient.NewClient(binderFront, binderHost)
@@ -79,7 +90,11 @@ func main() {
 			sc.Connected = true
 			sc.PublicIP = ip
 		})
+		if loginCheck {
+			os.Exit(0)
+		}
 	}()
+
 	listenLoop()
 }
 
@@ -135,20 +150,24 @@ func newSmuxWrapper() *muxWrap {
 		})
 	retry:
 		// obtain a ticket
-		ubmsg, ubsig, expires, err := bindClient.GetTicket(username, password)
+		ubmsg, ubsig, details, err := bindClient.GetTicket(username, password)
 		if err != nil {
 			log.Println("error authenticating:", err)
+			if errors.Is(err, io.EOF) {
+				os.Exit(403)
+			}
 			goto retry
 		}
 		useStats(func(sc *stats) {
 			sc.Username = username
-			sc.Expiry = expires
+			sc.Expiry = details.PaidExpiry
+			sc.Tier = details.Tier
+			sc.PayTxes = details.Transactions
 		})
 		realExitKey, err := hex.DecodeString(exitKey)
 		if err != nil {
 			panic(err)
 		}
-		log.Printf("ubmsg = [%v], ubsig = [%v], expires = %v", len(ubmsg), len(ubsig), expires)
 		if direct {
 			sm, err := getDirect([2][]byte{ubmsg, ubsig}, exitName, realExitKey)
 			if err != nil {

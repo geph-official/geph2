@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/geph-official/geph2/libs/bdclient"
 )
 
 type stats struct {
@@ -14,6 +16,7 @@ type stats struct {
 	DownBytes uint64
 	Username  string
 	Tier      string
+	PayTxes   []bdclient.PaymentTx
 	Expiry    time.Time
 
 	lock sync.Mutex

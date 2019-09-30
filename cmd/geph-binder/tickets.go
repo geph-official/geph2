@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/cryptoballot/rsablind"
@@ -24,7 +25,7 @@ func handleGetTicketKey(w http.ResponseWriter, r *http.Request) {
 
 func handleGetTier(w http.ResponseWriter, r *http.Request) {
 	// first authenticate
-	_, expiry, err := verifyUser(r.FormValue("user"), r.FormValue("pwd"))
+	_, expiry, _, err := verifyUser(r.FormValue("user"), r.FormValue("pwd"))
 	if err != nil {
 		log.Println("cannot verify user:", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
@@ -39,7 +40,7 @@ func handleGetTier(w http.ResponseWriter, r *http.Request) {
 
 func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 	// first authenticate
-	uid, expiry, err := verifyUser(r.FormValue("user"), r.FormValue("pwd"))
+	uid, expiry, paytx, err := verifyUser(r.FormValue("user"), r.FormValue("pwd"))
 	if err != nil {
 		log.Println("cannot verify user:", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
@@ -75,8 +76,20 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 	var toWrite bdclient.TicketResp
+	toWrite.Tier = tier
 	toWrite.Ticket = ticket
 	toWrite.PaidExpiry = expiry
+	if paytx != nil {
+		for k, v := range paytx {
+			toWrite.Transactions = append(toWrite.Transactions, bdclient.PaymentTx{
+				Amount: v,
+				Date:   k,
+			})
+		}
+		sort.Slice(toWrite.Transactions, func(i, j int) bool {
+			return toWrite.Transactions[i].Date.After(toWrite.Transactions[j].Date)
+		})
+	}
 	b, err := json.Marshal(toWrite)
 	if err != nil {
 		panic(err)
