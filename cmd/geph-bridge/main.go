@@ -93,7 +93,7 @@ func listenLoop() {
 			client.SetWindowSize(10000, 10000)
 			client.SetNoDelay(0, 50, 3, 0)
 			client.SetStreamMode(true)
-			client.SetMtu(1280)
+			client.SetMtu(1350)
 			var command string
 			rlp.Decode(client, &command)
 			log.Println("Client", client.RemoteAddr(), "requested", command)

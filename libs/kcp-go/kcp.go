@@ -737,9 +737,9 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				// vibrate the gain up and down every 10 rtts
 				period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
 				if period%5 == 0 {
-					kcp.LOL.gain *= 1.25
+					kcp.LOL.gain *= 1.2
 				} else if period%5 == 1 {
-					kcp.LOL.gain /= 1.25
+					kcp.LOL.gain *= 0.8
 				}
 				//kcp.LOL.gain += kcp.LOL.slack / kcp.cwnd
 				//kcp.LOL.gain *= 1 + (float64(kcp.retrans) / float64(kcp.trans))

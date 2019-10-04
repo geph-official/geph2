@@ -66,7 +66,7 @@ func main() {
 			muxSrv, err := smux.Server(tssClient, &smux.Config{
 				KeepAliveInterval: time.Minute * 30,
 				KeepAliveTimeout:  time.Minute * 32,
-				MaxFrameSize:      4096,
+				MaxFrameSize:      32768,
 				MaxReceiveBuffer:  1024 * 1024 * 100,
 			})
 			if err != nil {
@@ -91,7 +91,7 @@ func main() {
 					return
 				}
 				log.Printf("logging in %v as a free user with 800 Kbps", rawClient.RemoteAddr())
-				limiter = rate.NewLimiter(100*1000, 100*1000)
+				limiter = rate.NewLimiter(100*1000, 2000*1000)
 			} else {
 				log.Printf("logging in %v as a paid user with", rawClient.RemoteAddr())
 				limiter = rate.NewLimiter(rate.Inf, 1000*1000)
