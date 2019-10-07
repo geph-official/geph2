@@ -11,7 +11,7 @@ import (
 // ObfsSocket represents an obfuscated PacketConn.
 type ObfsSocket struct {
 	cookie  []byte
-	sscache *cache.Cache
+	ss2addr *cache.Cache
 	tunnels *cache.Cache
 	pending *cache.Cache
 	wire    net.PacketConn
@@ -23,7 +23,7 @@ type ObfsSocket struct {
 func ObfsListen(cookie []byte, wire net.PacketConn) *ObfsSocket {
 	return &ObfsSocket{
 		cookie:  cookie,
-		sscache: cache.New(time.Minute, time.Hour),
+		ss2addr: cache.New(time.Minute, time.Hour),
 		tunnels: cache.New(time.Hour, time.Hour),
 		pending: cache.New(time.Minute, time.Hour),
 		wire:    wire,
