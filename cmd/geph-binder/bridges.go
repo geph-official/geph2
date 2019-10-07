@@ -101,7 +101,7 @@ func testBridge(bi bridgeInfo) bool {
 		panic(err)
 	}
 	defer udpsock.Close()
-	e2e := niaucchi4.E2EListen(niaucchi4.ObfsListen(bi.Cookie, udpsock))
+	e2e := niaucchi4.ObfsListen(bi.Cookie, udpsock)
 	if err != nil {
 		panic(err)
 	}

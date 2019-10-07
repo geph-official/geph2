@@ -64,7 +64,7 @@ func listenLoop() {
 			time.Sleep(time.Minute * 10)
 		}
 	}()
-	e2e := niaucchi4.E2EListen(niaucchi4.ObfsListen(cookie, udpsock))
+	e2e := niaucchi4.ObfsListen(cookie, udpsock)
 	if err != nil {
 		panic(err)
 	}
@@ -92,7 +92,7 @@ func listenLoop() {
 			defer log.Println("Closed client", client.RemoteAddr())
 			defer client.Close()
 			client.SetWindowSize(10000, 10000)
-			client.SetNoDelay(0, 80, 3, 0)
+			client.SetNoDelay(1, 10, 3, 0)
 			client.SetStreamMode(true)
 			client.SetMtu(1350)
 			var command string

@@ -15,21 +15,18 @@ import (
 )
 
 func getBridged(greeting [2][]byte, bridgeHost string, bridgeCookie []byte, exitName string, exitPK []byte) (ss *smux.Session, err error) {
-	e2e := niaucchi4.E2EListen(niaucchi4.Wrap(
-		func() net.PacketConn {
-			udpsock, err := net.ListenPacket("udp", "")
-			if err != nil {
-				panic(err)
-			}
-			return niaucchi4.ObfsListen(bridgeCookie, udpsock)
-		}))
-	kcpConn, err := kcp.NewConn(bridgeHost, nil, 0, 0, e2e)
+	udpsock, err := net.ListenPacket("udp", "")
 	if err != nil {
-		e2e.Close()
+		panic(err)
+	}
+	obfssock := niaucchi4.ObfsListen(bridgeCookie, udpsock)
+	kcpConn, err := kcp.NewConn(bridgeHost, nil, 0, 0, obfssock)
+	if err != nil {
+		obfssock.Close()
 		return
 	}
 	kcpConn.SetWindowSize(10000, 10000)
-	kcpConn.SetNoDelay(0, 80, 3, 0)
+	kcpConn.SetNoDelay(1, 10, 3, 0)
 	kcpConn.SetStreamMode(true)
 	kcpConn.SetMtu(1350)
 	rlp.Encode(kcpConn, "conn")

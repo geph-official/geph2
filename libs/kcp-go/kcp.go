@@ -2,7 +2,6 @@ package kcp
 
 import (
 	"encoding/binary"
-	"log"
 	"sync/atomic"
 	"time"
 
@@ -736,10 +735,10 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 
 				// vibrate the gain up and down every 10 rtts
 				period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
-				if period%5 == 0 {
-					kcp.LOL.gain *= 1.2
-				} else if period%5 == 1 {
-					kcp.LOL.gain *= 0.8
+				if period%6 == 0 {
+					kcp.LOL.gain *= 1.25
+				} else if period%6 == 1 {
+					kcp.LOL.gain *= 0.75
 				}
 				//kcp.LOL.gain += kcp.LOL.slack / kcp.cwnd
 				//kcp.LOL.gain *= 1 + (float64(kcp.retrans) / float64(kcp.trans))
@@ -750,10 +749,6 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				} else {
 					kcp.cwnd = bdp * 2
 				}
-				// FORCE
-				log.Printf("CWND=%.2f BDP=%.2f GAIN=%.2f [%vK / %vK / %v ms] %.2f%%", kcp.cwnd, bdp, kcp.LOL.gain,
-					int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.avgAckRate/1000), int(kcp.DRE.minRtt),
-					float64(kcp.retrans)/float64(kcp.trans)*100)
 			}
 		}
 	}
@@ -925,7 +920,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.acked == 1 {
 			continue
 		}
-		const RTOSLACK = 0
+		const RTOSLACK = 50
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto
