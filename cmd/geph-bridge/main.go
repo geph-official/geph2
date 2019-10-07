@@ -52,6 +52,7 @@ func listenLoop() {
 	if err != nil {
 		panic(err)
 	}
+	udpsock.(*net.UDPConn).SetWriteBuffer(1000 * 1000 * 10)
 	myAddr := fmt.Sprintf("%v:%v", guessIP(), udpsock.LocalAddr().(*net.UDPAddr).Port)
 	log.Println("server started UDP on", myAddr)
 	go func() {
@@ -91,7 +92,7 @@ func listenLoop() {
 			defer log.Println("Closed client", client.RemoteAddr())
 			defer client.Close()
 			client.SetWindowSize(10000, 10000)
-			client.SetNoDelay(0, 50, 3, 0)
+			client.SetNoDelay(0, 80, 3, 0)
 			client.SetStreamMode(true)
 			client.SetMtu(1350)
 			var command string

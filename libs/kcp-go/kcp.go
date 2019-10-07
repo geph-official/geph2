@@ -475,7 +475,7 @@ func (kcp *KCP) processAck(seg *segment) {
 	ackRate := dataAcked / ackElapsed.Seconds()
 	appLimited := len(kcp.snd_queue) == 0
 	kcp.DRE.avgAckRate = kcp.DRE.avgAckRate*0.999 + ackRate*0.001
-	if kcp.DRE.maxAckRate < ackRate || (!appLimited && time.Since(kcp.DRE.maxAckTime).Seconds() > 60) {
+	if kcp.DRE.maxAckRate < ackRate || (!appLimited && time.Since(kcp.DRE.maxAckTime).Seconds() > 10) {
 		kcp.DRE.maxAckRate = ackRate
 		kcp.DRE.maxAckTime = kcp.DRE.lastDelTime
 	}
@@ -743,12 +743,12 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				}
 				//kcp.LOL.gain += kcp.LOL.slack / kcp.cwnd
 				//kcp.LOL.gain *= 1 + (float64(kcp.retrans) / float64(kcp.trans))
-				bdp *= 2
 				//desired *= 1 + (float64(kcp.retrans) / float64(kcp.trans))
-				if bdp > kcp.cwnd+float64(acks) {
+				//log.Println("cwnd was", int(kcp.cwnd))
+				if bdp*2 > kcp.cwnd+float64(acks) {
 					kcp.cwnd = (kcp.cwnd + float64(acks))
 				} else {
-					kcp.cwnd = bdp
+					kcp.cwnd = bdp * 2
 				}
 				// FORCE
 				log.Printf("CWND=%.2f BDP=%.2f GAIN=%.2f [%vK / %vK / %v ms] %.2f%%", kcp.cwnd, bdp, kcp.LOL.gain,
@@ -925,23 +925,24 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.acked == 1 {
 			continue
 		}
+		const RTOSLACK = 0
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto
-			segment.resendts = current + segment.rto + 100
+			segment.resendts = current + segment.rto + RTOSLACK
 			kcp.trans++
 		} else if segment.fastack >= resent { // fast retransmit
 			needsend = true
 			segment.fastack = 0
 			segment.rto = kcp.rx_rto
-			segment.resendts = current + segment.rto + 100
+			segment.resendts = current + segment.rto + RTOSLACK
 			change++
 			fastRetransSegs++
 		} else if segment.fastack > 0 && newSegsCount == 0 { // early retransmit
 			needsend = true
 			segment.fastack = 0
 			segment.rto = kcp.rx_rto
-			segment.resendts = current + segment.rto + 100
+			segment.resendts = current + segment.rto + RTOSLACK
 			change++
 			earlyRetransSegs++
 		} else if _itimediff(current, segment.resendts) >= 0 { // RTO
@@ -952,7 +953,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				segment.rto += kcp.rx_rto / 2
 			}
 			segment.fastack = 0
-			segment.resendts = current + segment.rto + 100
+			segment.resendts = current + segment.rto + RTOSLACK
 			lost++
 			lostSegs++
 		}
@@ -1011,12 +1012,13 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.bic_onloss()
 			}
 		case "LOL":
-			if lostSegs+change > 20 {
-				kcp.LOL.slack *= 0.95
-			}
+			// if lostSegs > 0 {
+			// 	log.Println("RTO timeout, cutting cwnd to 1")
+			// 	kcp.cwnd = 1
+			// }
 		}
-		if kcp.cwnd < 10 {
-			kcp.cwnd = 10
+		if kcp.cwnd < 1 {
+			kcp.cwnd = 1
 		}
 	}
 

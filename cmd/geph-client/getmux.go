@@ -29,7 +29,7 @@ func getBridged(greeting [2][]byte, bridgeHost string, bridgeCookie []byte, exit
 		return
 	}
 	kcpConn.SetWindowSize(10000, 10000)
-	kcpConn.SetNoDelay(0, 50, 3, 0)
+	kcpConn.SetNoDelay(0, 80, 3, 0)
 	kcpConn.SetStreamMode(true)
 	kcpConn.SetMtu(1350)
 	rlp.Encode(kcpConn, "conn")
@@ -85,8 +85,8 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 		return
 	}
 	ss, err = smux.Client(cryptConn, &smux.Config{
-		KeepAliveInterval: time.Minute * 30,
-		KeepAliveTimeout:  time.Minute * 32,
+		KeepAliveInterval: time.Minute * 20,
+		KeepAliveTimeout:  time.Minute * 22,
 		MaxFrameSize:      32768,
 		MaxReceiveBuffer:  1024 * 1024 * 100,
 	})
