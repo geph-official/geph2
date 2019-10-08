@@ -29,8 +29,8 @@ var bclient *bdclient.Client
 
 func main() {
 	flag.StringVar(&cookieSeed, "cookieSeed", "", "seed for generating a cookie")
-	flag.StringVar(&binderFront, "binderFront", "http://binder.geph.io:9080", "binder domain-fronting host")
-	flag.StringVar(&binderReal, "binderReal", "binder.geph.io", "real hostname of the binder")
+	flag.StringVar(&binderFront, "binderFront", "https://ajax.aspnetcdn.com", "binder domain-fronting host")
+	flag.StringVar(&binderReal, "binderReal", "geph2binder.azureedge.net", "real hostname of the binder")
 	flag.StringVar(&exitDomain, "exitDomain", ".exits.geph.io", "domain suffix for exit nodes")
 	flag.Parse()
 	if cookieSeed == "" {
@@ -92,9 +92,9 @@ func listenLoop() {
 			defer log.Println("Closed client", client.RemoteAddr())
 			defer client.Close()
 			client.SetWindowSize(10000, 10000)
-			client.SetNoDelay(1, 10, 3, 0)
+			client.SetNoDelay(0, 40, 3, 0)
 			client.SetStreamMode(true)
-			client.SetMtu(1350)
+			client.SetMtu(1300)
 			var command string
 			rlp.Decode(client, &command)
 			log.Println("Client", client.RemoteAddr(), "requested", command)

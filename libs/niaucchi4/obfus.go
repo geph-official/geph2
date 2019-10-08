@@ -1,6 +1,8 @@
 package niaucchi4
 
 import (
+	"fmt"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -8,10 +10,20 @@ import (
 	"github.com/patrickmn/go-cache"
 )
 
+type oAddr []byte
+
+func (sa oAddr) Network() string {
+	return "o-sess"
+}
+
+func (sa oAddr) String() string {
+	return fmt.Sprintf("osid-%x", []byte(sa)[:10])
+}
+
 // ObfsSocket represents an obfuscated PacketConn.
 type ObfsSocket struct {
 	cookie  []byte
-	ss2addr *cache.Cache
+	sscache *cache.Cache
 	tunnels *cache.Cache
 	pending *cache.Cache
 	wire    net.PacketConn
@@ -23,7 +35,7 @@ type ObfsSocket struct {
 func ObfsListen(cookie []byte, wire net.PacketConn) *ObfsSocket {
 	return &ObfsSocket{
 		cookie:  cookie,
-		ss2addr: cache.New(time.Minute, time.Hour),
+		sscache: cache.New(time.Hour, time.Hour),
 		tunnels: cache.New(time.Hour, time.Hour),
 		pending: cache.New(time.Minute, time.Hour),
 		wire:    wire,
@@ -31,12 +43,20 @@ func ObfsListen(cookie []byte, wire net.PacketConn) *ObfsSocket {
 }
 
 func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
+	switch addr.(type) {
+	case oAddr:
+		v, ok := os.sscache.Get(string(addr.(oAddr)))
+		if !ok {
+			return 0, nil
+		}
+		addr = v.(net.Addr)
+	}
 	if tuni, ok := os.tunnels.Get(addr.String()); ok {
 		tun := tuni.(*tunstate)
 		toWrite := tun.Encrypt(b)
 		_, err := os.wire.WriteTo(toWrite, addr)
 		if err != nil {
-			return 0, err
+			return 0, nil
 		}
 		return len(b), nil
 	}
@@ -53,7 +73,7 @@ func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 	_, err := os.wire.WriteTo(hello, addr)
 	os.wlock.Unlock()
 	if err != nil {
-		return 0, err
+		return 0, nil
 	}
 	return len(b), nil
 }
@@ -70,10 +90,13 @@ RESTART:
 		//log.Println("got packet of known tunnel from", addr.String())
 		plain, e := tun.Decrypt(os.rdbuf[:readBytes])
 		if e != nil {
-			//log.Println("got undecryptable at", addr, e)
 			goto RESTART
 		}
 		n = copy(p, plain)
+		if _, ok := os.sscache.Get(string(tun.ss)); ok {
+			os.sscache.SetDefault(string(tun.ss), addr)
+			addr = oAddr(tun.ss)
+		}
 		return
 	}
 	// check if the packet belongs to a pending thing
@@ -88,6 +111,24 @@ RESTART:
 		//log.Println("got realization of pending", addr)
 		goto RESTART
 	}
+	// iterate through all the stuff to create an association
+	for k, v := range os.tunnels.Items() {
+		if v.Expired() {
+			continue
+		}
+		tun := v.Object.(*tunstate)
+		plain, e := tun.Decrypt(os.rdbuf[:readBytes])
+		if e == nil {
+			os.tunnels.Delete(k)
+			log.Println("found a decryptable session through scanning, ROAM to", addr)
+			os.tunnels.SetDefault(addr.String(), tun)
+			n = copy(p, plain)
+			if _, ok := os.sscache.Get(string(tun.ss)); ok {
+				os.sscache.SetDefault(string(tun.ss), addr)
+				addr = oAddr(tun.ss)
+			}
+		}
+	}
 	// otherwise it has to be some sort of tunnel opener
 	//log.Println("got suspected hello")
 	pt, myhello := newproto(os.cookie)
@@ -100,6 +141,8 @@ RESTART:
 	os.wire.WriteTo(myhello, addr)
 	os.wlock.Unlock()
 	os.tunnels.SetDefault(addr.String(), ts)
+	log.Printf("setting sscache %x", ts.ss)
+	os.sscache.SetDefault(string(ts.ss), addr)
 	goto RESTART
 }
 

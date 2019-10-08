@@ -29,7 +29,7 @@ func (sw *muxWrap) fixSess() *smux.Session {
 func (sw *muxWrap) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 start:
 	sess := sw.fixSess()
-	timeout := time.After(time.Second * 5)
+	timeout := time.After(time.Second * 15)
 	cancel := make(chan bool)
 	go func() {
 		select {

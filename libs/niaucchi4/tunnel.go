@@ -26,11 +26,13 @@ func hm(m, k []byte) []byte {
 type tunstate struct {
 	enc    cipher.AEAD
 	dec    cipher.AEAD
+	ss     []byte
 	isserv bool
 }
 
 func (ts *tunstate) deriveKeys(ss []byte) {
 	//log.Printf("deriving keys from shared state %x", ss[:5])
+	ts.ss = ss
 	upcrypt := aead(hm(ss, []byte("up")))
 	dncrypt := aead(hm(ss, []byte("dn")))
 	if ts.isserv {
@@ -43,18 +45,22 @@ func (ts *tunstate) deriveKeys(ss []byte) {
 }
 
 func (ts *tunstate) Decrypt(pkt []byte) (bts []byte, err error) {
-	if len(pkt) < chacha20poly1305.NonceSizeX {
-		err = errors.New("no nonce found")
+	ns := ts.dec.NonceSize()
+	if len(pkt) < ns {
+		err = errors.New("WAT")
 		return
 	}
-	bts, err = ts.dec.Open(nil, pkt[:chacha20poly1305.NonceSizeX], pkt[chacha20poly1305.NonceSizeX:], nil)
+	bts, err = ts.dec.Open(nil, pkt[:ns], pkt[ns:], nil)
+	if err != nil {
+		return
+	}
 	return
 }
 
 func (ts *tunstate) Encrypt(pkt []byte) (ctext []byte) {
-	nonce := make([]byte, chacha20poly1305.NonceSizeX)
-	rand.Read(nonce)
-	ctext = ts.enc.Seal(nonce, nonce, pkt, nil)
+	nonceb := make([]byte, ts.enc.NonceSize())
+	rand.Read(nonceb)
+	ctext = ts.enc.Seal(nonceb, nonceb, pkt, nil)
 	return
 }
 
@@ -75,8 +81,9 @@ func (pt *prototun) realize(response []byte, isserv bool) (ts *tunstate, err err
 		// derive nowcookie
 		nowcookie := hm(pt.cookie, []byte(fmt.Sprintf("%v", time.Now().Unix()/30+int64(i))))
 		//log.Printf("trying nowcookie %x", nowcookie[:5])
-		theirPK, e := aead(hm(nowcookie, theirHello.Nonce[:])).
-			Open(nil, make([]byte, chacha20poly1305.NonceSizeX), theirHello.EncPK[:], nil)
+		boo := aead(hm(nowcookie, theirHello.Nonce[:]))
+		theirPK, e := boo.
+			Open(nil, make([]byte, boo.NonceSize()), theirHello.EncPK[:], nil)
 		if e != nil {
 			continue
 		}
@@ -106,10 +113,11 @@ func newproto(cookie []byte) (pt *prototun, hello []byte) {
 	// create hello
 	nonce := make([]byte, 32)
 	rand.Read(nonce)
-	encpk := aead(hm(nowcookie, nonce)).
-		Seal(nil, make([]byte, chacha20poly1305.NonceSizeX), pk[:], nil)
-	if len(encpk) != 48 {
-		panic("encpk not 48 bytes long")
+	crypter := aead(hm(nowcookie, nonce))
+	encpk := crypter.
+		Seal(nil, make([]byte, crypter.NonceSize()), pk[:], nil)
+	if len(encpk) != 32+crypter.Overhead() {
+		panic("encpk not right bytes long")
 	}
 	// form the pkt
 	var tosend helloPkt

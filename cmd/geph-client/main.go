@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -44,8 +45,8 @@ func main() {
 	flag.StringVar(&username, "username", "pwtest", "username")
 	flag.StringVar(&password, "password", "pwtest", "password")
 	flag.StringVar(&ticketFile, "ticketFile", "", "location for caching auth tickets")
-	flag.StringVar(&binderFront, "binderFront", "http://binder.geph.io:9080", "front location of binder")
-	flag.StringVar(&binderHost, "binderHost", "binder.geph.io", "true hostname of binder")
+	flag.StringVar(&binderFront, "binderFront", "https://ajax.aspnetcdn.com/v2", "front location of binder")
+	flag.StringVar(&binderHost, "binderHost", "gephbinder.azureedge.net", "true hostname of binder")
 	flag.StringVar(&exitName, "exitName", "us-sfo-01.exits.geph.io", "qualified name of the exit node selected")
 	flag.StringVar(&exitKey, "exitKey", "2f8571e4795032433098af285c0ce9e43c973ac3ad71bf178e4f2aaa39794aec", "ed25519 pubkey of the selected exit")
 	flag.BoolVar(&direct, "direct", false, "bypass obfuscated bridges and directly connect")
@@ -53,6 +54,8 @@ func main() {
 	flag.StringVar(&socksAddr, "socksAddr", "localhost:9909", "SOCKS5 listening address")
 	flag.StringVar(&statsAddr, "statsAddr", "localhost:9809", "HTTP listener for statistics")
 	flag.Parse()
+
+	runtime.GOMAXPROCS(1)
 
 	if loginCheck {
 		go func() {

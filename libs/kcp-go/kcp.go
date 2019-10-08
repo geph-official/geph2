@@ -2,6 +2,7 @@ package kcp
 
 import (
 	"encoding/binary"
+	"log"
 	"sync/atomic"
 	"time"
 
@@ -151,15 +152,15 @@ type KCP struct {
 	trans                            uint64
 
 	DRE struct {
-		totalDelivered float64
-		ppDelivered    map[uint32]float64
-		ppDelTime      map[uint32]time.Time
-		lastDelTime    time.Time
-		avgAckRate     float64
-		maxAckRate     float64
-		maxAckTime     time.Time
-		minRtt         float64
-		minRttTime     time.Time
+		delivered   float64
+		ppDelivered map[uint32]float64
+		delTime     time.Time
+		ppDelTime   map[uint32]time.Time
+		avgAckRate  float64
+		maxAckRate  float64
+		maxAckTime  time.Time
+		minRtt      float64
+		minRttTime  time.Time
 	}
 
 	LOL struct {
@@ -457,26 +458,26 @@ func (kcp *KCP) shrink_buf() {
 }
 
 func (kcp *KCP) processAck(seg *segment) {
-	kcp.DRE.totalDelivered += float64(len(seg.data))
-	kcp.DRE.lastDelTime = time.Now()
+	kcp.DRE.delivered += float64(len(seg.data))
+	kcp.DRE.delTime = time.Now()
 	pDelivered, ok := kcp.DRE.ppDelivered[seg.sn]
 	if !ok {
 		return
 	}
-	dataAcked := kcp.DRE.totalDelivered - pDelivered
+	dataAcked := kcp.DRE.delivered - pDelivered
 	delete(kcp.DRE.ppDelivered, seg.sn)
 	pDelTime, ok := kcp.DRE.ppDelTime[seg.sn]
 	if !ok {
 		return
 	}
-	ackElapsed := kcp.DRE.lastDelTime.Sub(pDelTime)
+	ackElapsed := kcp.DRE.delTime.Sub(pDelTime)
 	delete(kcp.DRE.ppDelTime, seg.sn)
 	ackRate := dataAcked / ackElapsed.Seconds()
 	appLimited := len(kcp.snd_queue) == 0
 	kcp.DRE.avgAckRate = kcp.DRE.avgAckRate*0.999 + ackRate*0.001
 	if kcp.DRE.maxAckRate < ackRate || (!appLimited && time.Since(kcp.DRE.maxAckTime).Seconds() > 10) {
 		kcp.DRE.maxAckRate = ackRate
-		kcp.DRE.maxAckTime = kcp.DRE.lastDelTime
+		kcp.DRE.maxAckTime = kcp.DRE.delTime
 	}
 }
 
@@ -732,7 +733,6 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					//log.Println("pipe not filled, pumping desired up")
 					kcp.LOL.gain *= 2.89
 				}
-
 				// vibrate the gain up and down every 10 rtts
 				period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
 				if period%6 == 0 {
@@ -740,15 +740,14 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				} else if period%6 == 1 {
 					kcp.LOL.gain *= 0.75
 				}
-				//kcp.LOL.gain += kcp.LOL.slack / kcp.cwnd
-				//kcp.LOL.gain *= 1 + (float64(kcp.retrans) / float64(kcp.trans))
-				//desired *= 1 + (float64(kcp.retrans) / float64(kcp.trans))
-				//log.Println("cwnd was", int(kcp.cwnd))
 				if bdp*2 > kcp.cwnd+float64(acks) {
 					kcp.cwnd = (kcp.cwnd + float64(acks))
 				} else {
 					kcp.cwnd = bdp * 2
 				}
+				log.Printf("CWND=%.2f BDP=%.2f GAIN=%.2f [%vK / %v ms] %.2f%%", kcp.cwnd, bdp, kcp.LOL.gain,
+					int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.minRtt),
+					float64(kcp.retrans)/float64(kcp.trans)*100)
 			}
 		}
 	}
@@ -890,8 +889,8 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		newseg.conv = kcp.conv
 		newseg.cmd = IKCP_CMD_PUSH
 		newseg.sn = kcp.snd_nxt
-		kcp.DRE.ppDelivered[newseg.sn] = kcp.DRE.totalDelivered
-		kcp.DRE.ppDelTime[newseg.sn] = kcp.DRE.lastDelTime
+		kcp.DRE.ppDelivered[newseg.sn] = kcp.DRE.delivered
+		kcp.DRE.ppDelTime[newseg.sn] = kcp.DRE.delTime
 		kcp.snd_buf = append(kcp.snd_buf, newseg)
 		kcp.snd_nxt++
 		newSegsCount++

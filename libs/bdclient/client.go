@@ -28,8 +28,7 @@ func NewClient(frontDomain, realDomain string) *Client {
 	return &Client{
 		hclient: &http.Client{
 			Transport: &http.Transport{
-				DisableKeepAlives: true,
-				Proxy:             nil,
+				Proxy: nil,
 			},
 		},
 		frontDomain: frontDomain,

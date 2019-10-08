@@ -94,12 +94,12 @@ func main() {
 			panic(err)
 		}
 		log.Println("server started UDP on", udpsock.LocalAddr())
-		e2e := niaucchi4.E2EListen(niaucchi4.ObfsListen(cookie, udpsock))
+		e2e := niaucchi4.ObfsListen(cookie, udpsock)
 		if err != nil {
 			panic(err)
 		}
 
-		listener, err := kcp.ServeConn(nil, 20, 2, e2e)
+		listener, err := kcp.ServeConn(nil, 0, 0, e2e)
 		if err != nil {
 			panic(err)
 		}
@@ -175,16 +175,13 @@ func main() {
 			}
 		}()
 		log.Println("TCP listener started on", listener.Addr())
-		e2e := niaucchi4.E2EListen(niaucchi4.Wrap(
-			func() net.PacketConn {
-				udpsock, err := net.ListenPacket("udp", "")
-				if err != nil {
-					panic(err)
-				}
-				log.Println("made new udpsock at", udpsock.LocalAddr())
-				return niaucchi4.ObfsListen(cookie, udpsock)
-			}))
-		kcpremote, err := kcp.NewConn(flagClient, nil, 20, 2, e2e)
+		udpsock, err := net.ListenPacket("udp", "")
+		if err != nil {
+			panic(err)
+		}
+		log.Println("made new udpsock at", udpsock.LocalAddr())
+		obfs := niaucchi4.ObfsListen(cookie, udpsock)
+		kcpremote, err := kcp.NewConn(flagClient, nil, 0, 0, obfs)
 		if err != nil {
 			panic(err)
 		}
