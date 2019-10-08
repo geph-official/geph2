@@ -29,8 +29,8 @@ var bclient *bdclient.Client
 
 func main() {
 	flag.StringVar(&cookieSeed, "cookieSeed", "", "seed for generating a cookie")
-	flag.StringVar(&binderFront, "binderFront", "https://ajax.aspnetcdn.com", "binder domain-fronting host")
-	flag.StringVar(&binderReal, "binderReal", "geph2binder.azureedge.net", "real hostname of the binder")
+	flag.StringVar(&binderFront, "binderFront", "https://ajax.aspnetcdn.com/v2", "binder domain-fronting host")
+	flag.StringVar(&binderReal, "binderReal", "gephbinder.azureedge.net", "real hostname of the binder")
 	flag.StringVar(&exitDomain, "exitDomain", ".exits.geph.io", "domain suffix for exit nodes")
 	flag.Parse()
 	if cookieSeed == "" {

@@ -8,7 +8,7 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-const sendQuantum = 4
+const sendQuantum = 1
 
 func (s *UDPSession) defaultTx(txqueue []ipv4.Message) {
 	nbytes := 0
