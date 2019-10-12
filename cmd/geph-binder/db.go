@@ -5,9 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/nullchinchilla/natrium"
@@ -16,17 +14,16 @@ import (
 
 var pgDB *sql.DB
 
-// checkBridge checks whether a bridge cookie is allowed.
-func checkBridge(cookie []byte) (ok bool, err error) {
-	log.Printf("checBridge(%x)", cookie)
+// checkBridgeKey checks whether a bridge cookie is allowed.
+func checkBridgeKey(key string) (ok bool, err error) {
 	tx, err := pgDB.Begin()
 	if err != nil {
 		return
 	}
 	defer tx.Rollback()
 	var cookieCount uint
-	err = tx.QueryRow("select count(cookie) from goodbridges where cookie = $1",
-		hex.EncodeToString(cookie)).Scan(&cookieCount)
+	err = tx.QueryRow("select count(key) from bridgekeys where key = $1",
+		key).Scan(&cookieCount)
 	if err != nil {
 		return
 	}

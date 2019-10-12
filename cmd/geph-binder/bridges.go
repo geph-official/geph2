@@ -73,7 +73,8 @@ func handleAddBridge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// check the cookie
-	ok, err := checkBridge(cookie)
+	_, pwd, _ := r.BasicAuth()
+	ok, err := checkBridgeKey(pwd)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return

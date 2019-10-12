@@ -52,6 +52,7 @@ func main() {
 	r.HandleFunc("/redeem-ticket", handleRedeemTicket)
 	r.HandleFunc("/add-bridge", handleAddBridge)
 	r.HandleFunc("/get-bridges", handleGetBridges)
+	r.HandleFunc("/client-info", handleClientInfo)
 	if err := http.ListenAndServe(":9080", r); err != nil {
 		panic(err)
 	}

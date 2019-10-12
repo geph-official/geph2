@@ -2,16 +2,17 @@ package tinyss
 
 import (
 	"bytes"
-	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
 	"io"
+	"log"
 	"net"
 	"time"
 
 	"github.com/geph-official/geph2/libs/c25519"
+	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/curve25519"
 )
 
@@ -36,16 +37,11 @@ func hm(m, k []byte) []byte {
 }
 
 func aead(key []byte) cipher.AEAD {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		panic(err.Error())
+	k, e := chacha20poly1305.New(key)
+	if e != nil {
+		panic(e)
 	}
-
-	aesgcm, err := cipher.NewGCM(block)
-	if err != nil {
-		panic(err.Error())
-	}
-	return aesgcm
+	return k
 }
 
 func newSocket(plain net.Conn, repk, lesk [32]byte) (sok *Socket, err error) {
@@ -200,6 +196,7 @@ func Handshake(plain net.Conn) (sok *Socket, err error) {
 		curve25519.ScalarBaseMult(&pub, &myesk)
 		msgb.Write(pub[:])
 		io.Copy(plain, &msgb)
+		log.Println("WROTE")
 		close(wet)
 	}()
 	// read hello

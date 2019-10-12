@@ -24,6 +24,7 @@ var cookie []byte
 var binderFront string
 var binderReal string
 var exitDomain string
+var binderKey string
 
 var bclient *bdclient.Client
 
@@ -32,6 +33,7 @@ func main() {
 	flag.StringVar(&binderFront, "binderFront", "https://ajax.aspnetcdn.com/v2", "binder domain-fronting host")
 	flag.StringVar(&binderReal, "binderReal", "gephbinder.azureedge.net", "real hostname of the binder")
 	flag.StringVar(&exitDomain, "exitDomain", ".exits.geph.io", "domain suffix for exit nodes")
+	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.Parse()
 	if cookieSeed == "" {
 		log.Fatal("must specify a good cookie seed")
@@ -57,7 +59,7 @@ func listenLoop() {
 	log.Println("server started UDP on", myAddr)
 	go func() {
 		for {
-			e := bclient.AddBridge(cookie, myAddr)
+			e := bclient.AddBridge(binderKey, cookie, myAddr)
 			if e != nil {
 				log.Println("error adding bridge:", e)
 			}
@@ -73,15 +75,6 @@ func listenLoop() {
 		panic(err)
 	}
 	log.Println("KCP listener spinned up")
-	go func() {
-		for {
-			time.Sleep(time.Second * 5)
-			rt := kcp.DefaultSnmp.RetransSegs
-			tot := kcp.DefaultSnmp.OutPkts
-			log.Printf("%2.f pct retrans, %v recovered", float64(rt)/float64(tot)*100,
-				kcp.DefaultSnmp.FECRecovered)
-		}
-	}()
 	for {
 		client, err := listener.AcceptKCP()
 		if err != nil {

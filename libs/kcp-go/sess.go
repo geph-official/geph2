@@ -686,7 +686,7 @@ func (s *UDPSession) kcpInput(data []byte) {
 					s.notifyReadEvent()
 				}
 				// to notify the writers when queue is shorter(e.g. ACKed)
-				if s.kcp.WaitSnd() < waitsnd {
+				if s.kcp.WaitSnd() < waitsnd || true {
 					s.notifyWriteEvent()
 				}
 				s.uncork()
@@ -706,7 +706,7 @@ func (s *UDPSession) kcpInput(data []byte) {
 		if n := s.kcp.PeekSize(); n > 0 {
 			s.notifyReadEvent()
 		}
-		if s.kcp.WaitSnd() < waitsnd {
+		if s.kcp.WaitSnd() < waitsnd || true {
 			s.notifyWriteEvent()
 		}
 		s.uncork()

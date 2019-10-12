@@ -33,6 +33,8 @@ const (
 	IKCP_PROBE_LIMIT = 120000 // up to 120 secs to probe window
 )
 
+const quiescentMax = 1000
+
 var CongestionControl = "LOL"
 
 // monotonic reference time point
@@ -346,7 +348,7 @@ func (kcp *KCP) Recv(buffer []byte) (n int) {
 
 // Send is user/upper level send, returns below zero for error
 func (kcp *KCP) Send(buffer []byte) int {
-	kcp.quiescent = 100
+	kcp.quiescent = quiescentMax
 	var count int
 	if len(buffer) == 0 {
 		return -1
@@ -538,7 +540,7 @@ func (kcp *KCP) parse_una(una uint32) {
 
 // ack append
 func (kcp *KCP) ack_push(sn, ts uint32) {
-	kcp.quiescent = 100
+	kcp.quiescent = quiescentMax
 	kcp.acklist = append(kcp.acklist, ackItem{sn, ts})
 }
 
@@ -606,7 +608,7 @@ func (kcp *KCP) parse_data(newseg segment) bool {
 //
 // 'ackNoDelay' will trigger immediate ACK, but surely it will not be efficient in bandwidth
 func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
-	kcp.quiescent = 100
+	kcp.quiescent = quiescentMax
 	snd_una := kcp.snd_una
 	if len(data) < IKCP_OVERHEAD {
 		return -1
@@ -744,6 +746,9 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					kcp.cwnd = (kcp.cwnd + float64(acks))
 				} else {
 					kcp.cwnd = bdp * 2
+				}
+				if kcp.cwnd < 32 {
+					kcp.cwnd = 32
 				}
 				log.Printf("CWND=%.2f BDP=%.2f GAIN=%.2f [%vK / %v ms] %.2f%%", kcp.cwnd, bdp, kcp.LOL.gain,
 					int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.minRtt),
@@ -1011,8 +1016,8 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			// 	kcp.cwnd = 1
 			// }
 		}
-		if kcp.cwnd < 1 {
-			kcp.cwnd = 1
+		if kcp.cwnd < 32 {
+			kcp.cwnd = 32
 		}
 	}
 

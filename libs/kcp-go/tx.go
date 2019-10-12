@@ -19,7 +19,7 @@ func (s *UDPSession) defaultTx(txqueue []ipv4.Message) {
 			nbytes += n
 			npkts++
 			if (npkts+ctr)%sendQuantum == 0 && CongestionControl == "LOL" {
-				paceInterval := float64(n) / s.kcp.DRE.maxAckRate
+				paceInterval := float64(s.kcp.mss) / s.kcp.DRE.maxAckRate
 				if paceInterval > 0.001 {
 					paceInterval = 0.001
 				}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"io"
+	"io/ioutil"
 	"log"
 	mrand "math/rand"
 	"net"
@@ -14,11 +15,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bunsim/goproxy"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/cwl"
 	"github.com/geph-official/geph2/libs/tinysocks"
 	"github.com/xtaci/smux"
+	"golang.org/x/net/proxy"
 	"golang.org/x/time/rate"
 )
 
@@ -29,8 +32,10 @@ var binderFront string
 var binderHost string
 var exitName string
 var exitKey string
-var direct bool
+var forceBridge bool
 var loginCheck bool
+
+var direct bool
 
 var socksAddr string
 var statsAddr string
@@ -49,7 +54,7 @@ func main() {
 	flag.StringVar(&binderHost, "binderHost", "gephbinder.azureedge.net", "true hostname of binder")
 	flag.StringVar(&exitName, "exitName", "us-sfo-01.exits.geph.io", "qualified name of the exit node selected")
 	flag.StringVar(&exitKey, "exitKey", "2f8571e4795032433098af285c0ce9e43c973ac3ad71bf178e4f2aaa39794aec", "ed25519 pubkey of the selected exit")
-	flag.BoolVar(&direct, "direct", false, "bypass obfuscated bridges and directly connect")
+	flag.BoolVar(&forceBridge, "forceBridge", false, "force the use of obfuscated bridges")
 	flag.BoolVar(&loginCheck, "loginCheck", false, "do a login check and immediately exit with code 0")
 	flag.StringVar(&socksAddr, "socksAddr", "localhost:9909", "SOCKS5 listening address")
 	flag.StringVar(&statsAddr, "statsAddr", "localhost:9809", "HTTP listener for statistics")
@@ -67,6 +72,22 @@ func main() {
 	// connect to bridge
 	bindClient = bdclient.NewClient(binderFront, binderHost)
 	sWrap = newSmuxWrapper()
+
+	// automatically pick mode
+	if !forceBridge {
+		country, err := bindClient.GetClientInfo()
+		if err != nil {
+			log.Println("cannot get country, conservatively using bridges", err)
+		} else {
+			log.Println("country is", country.Country)
+			if country.Country == "CN" {
+				log.Println("in CHINA, must use bridges")
+			} else {
+				log.Println("disabling bridges")
+				direct = true
+			}
+		}
+	}
 
 	// spin up stats server
 	http.HandleFunc("/", handleStats)
@@ -98,7 +119,33 @@ func main() {
 		}
 	}()
 
+	// HTTP proxy
+	srv := goproxy.NewProxyHttpServer()
+	srv.Tr = &http.Transport{
+		Dial: func(n, d string) (net.Conn, error) {
+			return dialTun(d)
+		},
+		IdleConnTimeout: time.Second * 60,
+		Proxy:           nil,
+	}
+	srv.Logger = log.New(ioutil.Discard, "", 0)
+	go func() {
+		err := http.ListenAndServe("127.0.0.1:8780", srv)
+		if err != nil {
+			panic(err.Error())
+		}
+	}()
+
 	listenLoop()
+}
+
+func dialTun(dest string) (conn net.Conn, err error) {
+	sks, err := proxy.SOCKS5("tcp", "127.0.0.1:9909", nil, proxy.Direct)
+	if err != nil {
+		return
+	}
+	conn, err = sks.Dial("tcp", dest)
+	return
 }
 
 func listenLoop() {
@@ -107,7 +154,6 @@ func listenLoop() {
 		panic(err)
 	}
 	log.Println("SOCKS5 on 9909")
-	upLimit := rate.NewLimiter(100*1000, 100*1000)
 	for {
 		cl, err := listener.Accept()
 		if err != nil {
@@ -130,7 +176,7 @@ func listenLoop() {
 			go func() {
 				defer remote.Close()
 				defer cl.Close()
-				cwl.CopyWithLimit(remote, cl, upLimit, func(n int) {
+				cwl.CopyWithLimit(remote, cl, rate.NewLimiter(rate.Inf, 10000000), func(n int) {
 					useStats(func(sc *stats) {
 						sc.UpBytes += uint64(n)
 					})
@@ -178,6 +224,9 @@ func newSmuxWrapper() *muxWrap {
 				time.Sleep(time.Second)
 				goto retry
 			}
+			useStats(func(sc *stats) {
+				sc.Connected = true
+			})
 			return sm
 		}
 		bridges, err := bindClient.GetBridges(ubmsg, ubsig)

@@ -3,6 +3,7 @@ module github.com/geph-official/geph2
 go 1.12
 
 require (
+	github.com/abh/geoip v0.0.0-20160510155516-07cea4480daa
 	github.com/bunsim/goproxy v0.0.0-20170228195103-3c809b25484a
 	github.com/cryptoballot/fdh v0.0.0-20170924224734-5eb31ce2010c // indirect
 	github.com/cryptoballot/rsablind v0.0.0-20170925165423-14f9913880b7
@@ -16,6 +17,8 @@ require (
 	github.com/lib/pq v1.2.0
 	github.com/lucas-clemente/quic-go v0.12.0
 	github.com/nullchinchilla/natrium v1.1.1
+	github.com/oschwald/geoip2-golang v1.3.0
+	github.com/oschwald/maxminddb-golang v1.5.0 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pkg/errors v0.8.1
 	github.com/templexxx/cpufeat v0.0.0-20180724012125-cef66df7f161 // indirect

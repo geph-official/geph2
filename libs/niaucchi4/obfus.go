@@ -92,6 +92,7 @@ RESTART:
 		if e != nil {
 			goto RESTART
 		}
+		os.tunnels.SetDefault(addr.String(), tun)
 		n = copy(p, plain)
 		if _, ok := os.sscache.Get(string(tun.ss)); ok {
 			os.sscache.SetDefault(string(tun.ss), addr)
@@ -127,6 +128,7 @@ RESTART:
 				os.sscache.SetDefault(string(tun.ss), addr)
 				addr = oAddr(tun.ss)
 			}
+			return
 		}
 	}
 	// otherwise it has to be some sort of tunnel opener
@@ -141,7 +143,6 @@ RESTART:
 	os.wire.WriteTo(myhello, addr)
 	os.wlock.Unlock()
 	os.tunnels.SetDefault(addr.String(), ts)
-	log.Printf("setting sscache %x", ts.ss)
 	os.sscache.SetDefault(string(ts.ss), addr)
 	goto RESTART
 }

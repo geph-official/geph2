@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"time"
 
@@ -36,12 +37,12 @@ func getBridged(greeting [2][]byte, bridgeHost string, bridgeCookie []byte, exit
 }
 
 func getDirect(greeting [2][]byte, host string, pk []byte) (ss *smux.Session, err error) {
-	tcpConn, err := net.Dial("tcp", host+":2389")
+	kcpConn, err := niaucchi4.Dial(host+":2389", make([]byte, 32))
 	if err != nil {
 		err = fmt.Errorf("plain TCP failed: %w", err)
 		return
 	}
-	ss, err = negotiateSmux(greeting, tcpConn, pk)
+	ss, err = negotiateSmux(greeting, kcpConn, pk)
 	return
 }
 
@@ -61,6 +62,7 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 		rawConn.Close()
 		return
 	}
+	log.Println("crypto got")
 	if !ed25519.Verify(pk, cryptConn.SharedSec(), sssig) {
 		err = errors.New("man in the middle")
 		rawConn.Close()
@@ -68,6 +70,7 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 	}
 	// send the greeting
 	rlp.Encode(cryptConn, greeting)
+	log.Println("greeting sent")
 	// wait for the reply
 	var reply string
 	err = rlp.Decode(cryptConn, &reply)

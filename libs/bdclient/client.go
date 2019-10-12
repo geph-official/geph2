@@ -40,10 +40,33 @@ func badStatusCode(s int) error {
 	return fmt.Errorf("unexpected status code %v", s)
 }
 
+// ClientInfo describes user IP and country.
+type ClientInfo struct {
+	Address string
+	Country string
+}
+
+// GetClientInfo checks user info
+func (cl *Client) GetClientInfo() (ui ClientInfo, err error) {
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%v/client-info", cl.frontDomain), bytes.NewReader(nil))
+	req.Host = cl.realDomain
+	resp, err := cl.hclient.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		err = badStatusCode(resp.StatusCode)
+	}
+	err = json.NewDecoder(resp.Body).Decode(&ui)
+	return
+}
+
 // AddBridge uploads some bridge info.
-func (cl *Client) AddBridge(cookie []byte, host string) (err error) {
+func (cl *Client) AddBridge(secret string, cookie []byte, host string) (err error) {
 	req, _ := http.NewRequest("GET", fmt.Sprintf("%v/add-bridge?cookie=%x&host=%v", cl.frontDomain, cookie, host), bytes.NewReader(nil))
 	req.Host = cl.realDomain
+	req.SetBasicAuth("user", secret)
 	resp, err := cl.hclient.Do(req)
 	if err != nil {
 		return
