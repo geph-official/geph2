@@ -37,7 +37,7 @@ func ObfsListen(cookie []byte, wire net.PacketConn) *ObfsSocket {
 		cookie:  cookie,
 		sscache: cache.New(time.Hour, time.Hour),
 		tunnels: cache.New(time.Hour, time.Hour),
-		pending: cache.New(time.Minute, time.Hour),
+		pending: cache.New(time.Second, time.Hour),
 		wire:    wire,
 	}
 }
@@ -61,12 +61,16 @@ func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 		return len(b), nil
 	}
 	// if we are pending, just ignore
-	if _, ok := os.pending.Get(addr.String()); ok {
+	if zz, ok := os.pending.Get(addr.String()); ok {
 		//log.Println("pretending to write since ALREADY PENDING")
+		os.wlock.Lock()
+		os.wire.WriteTo(zz.(*prototun).hello, addr)
+		os.wlock.Unlock()
 		return len(b), nil
 	}
 	// establish a conn
 	pt, hello := newproto(os.cookie)
+	log.Println("N4: establishing to", addr.String())
 	//log.Println("pretending to write, actually ESTABLISHING")
 	os.pending.SetDefault(addr.String(), pt)
 	os.wlock.Lock()
@@ -109,7 +113,7 @@ RESTART:
 			goto RESTART
 		}
 		os.tunnels.SetDefault(addr.String(), ts)
-		//log.Println("got realization of pending", addr)
+		log.Println("got realization of pending", addr)
 		goto RESTART
 	}
 	// iterate through all the stuff to create an association
@@ -141,6 +145,7 @@ RESTART:
 	}
 	os.wlock.Lock()
 	os.wire.WriteTo(myhello, addr)
+	log.Println("responded to a hello from", addr)
 	os.wlock.Unlock()
 	os.tunnels.SetDefault(addr.String(), ts)
 	os.sscache.SetDefault(string(ts.ss), addr)

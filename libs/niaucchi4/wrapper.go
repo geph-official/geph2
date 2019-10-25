@@ -37,10 +37,12 @@ retry:
 	}
 	if err != nil {
 		w.lock.Lock()
-		if w.wire != nil {
-			w.wire.Close()
+		if w.wire == wire {
+			if w.wire != nil {
+				w.wire.Close()
+			}
+			w.wire = w.getConn()
 		}
-		w.wire = w.getConn()
 		w.lock.Unlock()
 		goto retry
 	}
@@ -51,7 +53,7 @@ func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 	w.lock.Lock()
 	defer w.lock.Unlock()
 	if w.wire != nil {
-		if time.Since(w.lastActivity) > time.Second*10 {
+		if time.Since(w.lastActivity) > time.Second*3 {
 			w.wire.Close()
 			w.wire = nil
 			w.wire = w.getConn()

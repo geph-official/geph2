@@ -2,14 +2,17 @@ package main
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"os"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/geph-official/geph2/libs/tinyss"
 	"github.com/xtaci/smux"
@@ -21,15 +24,11 @@ func getBridged(greeting [2][]byte, bridgeHost string, bridgeCookie []byte, exit
 		panic(err)
 	}
 	obfssock := niaucchi4.ObfsListen(bridgeCookie, udpsock)
-	kcpConn, err := kcp.NewConn(bridgeHost, nil, 0, 0, obfssock)
+	kcpConn, err := niaucchi4.Dial(bridgeHost, bridgeCookie)
 	if err != nil {
 		obfssock.Close()
 		return
 	}
-	kcpConn.SetWindowSize(10000, 10000)
-	kcpConn.SetNoDelay(0, 40, 3, 0)
-	kcpConn.SetStreamMode(true)
-	kcpConn.SetMtu(1300)
 	rlp.Encode(kcpConn, "conn")
 	rlp.Encode(kcpConn, exitName)
 	ss, err = negotiateSmux(greeting, kcpConn, exitPK)
@@ -62,7 +61,6 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 		rawConn.Close()
 		return
 	}
-	log.Println("crypto got")
 	if !ed25519.Verify(pk, cryptConn.SharedSec(), sssig) {
 		err = errors.New("man in the middle")
 		rawConn.Close()
@@ -70,7 +68,6 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 	}
 	// send the greeting
 	rlp.Encode(cryptConn, greeting)
-	log.Println("greeting sent")
 	// wait for the reply
 	var reply string
 	err = rlp.Decode(cryptConn, &reply)
@@ -82,7 +79,7 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 	if reply != "OK" {
 		err = errors.New("authentication failed")
 		rawConn.Close()
-		return
+		os.Exit(403)
 	}
 	ss, err = smux.Client(cryptConn, &smux.Config{
 		KeepAliveInterval: time.Minute * 20,
@@ -97,4 +94,88 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 	}
 	rawConn.SetDeadline(time.Time{})
 	return
+}
+
+func newSmuxWrapper() *muxWrap {
+	return &muxWrap{getSession: func() *smux.Session {
+		useStats(func(sc *stats) {
+			sc.Connected = false
+		})
+	retry:
+		// obtain a ticket
+		ubmsg, ubsig, details, err := bindClient.GetTicket(username, password)
+		if err != nil {
+			log.Println("error authenticating:", err)
+			if errors.Is(err, io.EOF) {
+				os.Exit(403)
+			}
+			time.Sleep(time.Second)
+			goto retry
+		}
+		useStats(func(sc *stats) {
+			sc.Username = username
+			sc.Expiry = details.PaidExpiry
+			sc.Tier = details.Tier
+			sc.PayTxes = details.Transactions
+		})
+		realExitKey, err := hex.DecodeString(exitKey)
+		if err != nil {
+			panic(err)
+		}
+		if direct {
+			sm, err := getDirect([2][]byte{ubmsg, ubsig}, exitName, realExitKey)
+			if err != nil {
+				log.Println("direct conn retrying", err)
+				time.Sleep(time.Second)
+				goto retry
+			}
+			useStats(func(sc *stats) {
+				sc.Connected = true
+			})
+			return sm
+		}
+		bridges, err := bindClient.GetBridges(ubmsg, ubsig)
+		if err != nil {
+			log.Println("getting bridges failed, retrying", err)
+			time.Sleep(time.Second)
+			goto retry
+		}
+		log.Println("racing between", len(bridges), "bridges...")
+		bridgeRace := make(chan *smux.Session)
+		bridgeDeadWait := new(sync.WaitGroup)
+		bridgeDeadWait.Add(len(bridges))
+		go func() {
+			bridgeDeadWait.Wait()
+			close(bridgeRace)
+		}()
+		for _, bi := range bridges {
+			bi := bi
+			go func() {
+				defer bridgeDeadWait.Done()
+				sm, err := getBridged([2][]byte{ubmsg, ubsig}, bi.Host, bi.Cookie, exitName, realExitKey)
+				if err != nil {
+					log.Println("dialing to", bi.Host, "failed!")
+					return
+				}
+				select {
+				case bridgeRace <- sm:
+					log.Println(bi.Host, "won race!")
+				default:
+					log.Println(bi.Host, "lost race")
+					sm.Close()
+				}
+			}()
+		}
+		// get the bridge
+		sm, ok := <-bridgeRace
+		if !ok {
+			log.Println("everything failed, retrying")
+			time.Sleep(time.Second)
+			goto retry
+		}
+		useStats(func(sc *stats) {
+			sc.Connected = true
+		})
+		return sm
+	}}
 }

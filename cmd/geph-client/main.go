@@ -1,10 +1,7 @@
 package main
 
 import (
-	"encoding/hex"
-	"errors"
 	"flag"
-	"io"
 	"io/ioutil"
 	"log"
 	mrand "math/rand"
@@ -20,7 +17,6 @@ import (
 	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/cwl"
 	"github.com/geph-official/geph2/libs/tinysocks"
-	"github.com/xtaci/smux"
 	"golang.org/x/net/proxy"
 	"golang.org/x/time/rate"
 )
@@ -165,9 +161,10 @@ func listenLoop() {
 			if err != nil {
 				return
 			}
+			start := time.Now()
 			remote, ok := sWrap.DialCmd("proxy", rmAddr)
 			defer remote.Close()
-			log.Printf("opened %v with ok=%v", rmAddr, ok)
+			log.Printf("opened %v in %v", rmAddr, time.Since(start))
 			if !ok {
 				tinysocks.CompleteRequest(5, cl)
 				return
@@ -190,65 +187,4 @@ func listenLoop() {
 				})
 		}()
 	}
-}
-
-func newSmuxWrapper() *muxWrap {
-	return &muxWrap{getSession: func() *smux.Session {
-		useStats(func(sc *stats) {
-			sc.Connected = false
-		})
-	retry:
-		// obtain a ticket
-		ubmsg, ubsig, details, err := bindClient.GetTicket(username, password)
-		if err != nil {
-			log.Println("error authenticating:", err)
-			if errors.Is(err, io.EOF) {
-				os.Exit(403)
-			}
-			goto retry
-		}
-		useStats(func(sc *stats) {
-			sc.Username = username
-			sc.Expiry = details.PaidExpiry
-			sc.Tier = details.Tier
-			sc.PayTxes = details.Transactions
-		})
-		realExitKey, err := hex.DecodeString(exitKey)
-		if err != nil {
-			panic(err)
-		}
-		if direct {
-			sm, err := getDirect([2][]byte{ubmsg, ubsig}, exitName, realExitKey)
-			if err != nil {
-				log.Println("direct conn retrying", err)
-				time.Sleep(time.Second)
-				goto retry
-			}
-			useStats(func(sc *stats) {
-				sc.Connected = true
-			})
-			return sm
-		}
-		bridges, err := bindClient.GetBridges(ubmsg, ubsig)
-		if err != nil {
-			log.Println("getting bridges failed, retrying", err)
-			time.Sleep(time.Second)
-			goto retry
-		}
-		// TODO parallel
-		for _, bi := range bridges {
-			sm, err := getBridged([2][]byte{ubmsg, ubsig}, bi.Host, bi.Cookie, exitName, realExitKey)
-			if err != nil {
-				log.Println("dialing to", bi.Host, "failed!")
-				continue
-			}
-			useStats(func(sc *stats) {
-				sc.Connected = true
-			})
-			return sm
-		}
-		log.Println("everything failed, retrying")
-		time.Sleep(time.Second)
-		goto retry
-	}}
 }

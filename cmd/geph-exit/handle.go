@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"time"
@@ -16,6 +17,30 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// blacklist of local networks
+var cidrBlacklist []*net.IPNet
+
+func init() {
+	for _, s := range []string{
+		"127.0.0.1/8",
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+	} {
+		_, n, _ := net.ParseCIDR(s)
+		cidrBlacklist = append(cidrBlacklist, n)
+	}
+}
+
+func isBlack(addr *net.TCPAddr) bool {
+	for _, n := range cidrBlacklist {
+		if n.Contains(addr.IP) {
+			return true
+		}
+	}
+	return false
+}
+
 func handle(rawClient net.Conn) {
 	defer rawClient.Close()
 	rawClient.SetDeadline(time.Now().Add(time.Second * 30))
@@ -25,6 +50,8 @@ func handle(rawClient net.Conn) {
 		return
 	}
 	defer tssClient.Close()
+	// HACK: it's bridged if the remote address has a dot in it
+	//isBridged := strings.Contains(rawClient.RemoteAddr().String(), ".")
 	// sign the shared secret
 	ssSignature := ed25519.Sign(seckey, tssClient.SharedSec())
 	rlp.Encode(tssClient, &ssSignature)
@@ -49,6 +76,11 @@ func handle(rawClient net.Conn) {
 	var limiter *rate.Limiter
 	err = bclient.RedeemTicket("paid", greeting[0], greeting[1])
 	if err != nil {
+		if onlyPaid {
+			log.Printf("%v isn't paid and we only accept paid. Failing!", rawClient.RemoteAddr())
+			rlp.Encode(tssClient, "FAIL")
+			return
+		}
 		log.Printf("%v isn't paid, trying free", rawClient.RemoteAddr())
 		err = bclient.RedeemTicket("free", greeting[0], greeting[1])
 		if err != nil {
@@ -87,22 +119,41 @@ func handle(rawClient net.Conn) {
 				if len(command) < 1 {
 					return
 				}
+				rlp.Encode(soxclient, true)
+				dialStart := time.Now()
 				host := command[1]
-				remote, err := net.DialTimeout("tcp", host, time.Second*2)
-				if err != nil {
-					rlp.Encode(soxclient, false)
+				tcpAddr, err := net.ResolveTCPAddr("tcp4", host)
+				if err != nil || isBlack(tcpAddr) {
 					return
 				}
-				log.Println("dialed to", host)
+				remote, err := net.DialTimeout("tcp", host, time.Second*30)
+				if err != nil {
+					return
+				}
+				// measure dial latency
+				dialLatency := time.Since(dialStart)
+				if statClient != nil {
+					statClient.TimingWithSampleRate(hostname+".dialLatency", dialLatency.Milliseconds(), 0.1)
+					statClient.IncrementWithSampling(hostname+".totalConns", 0.1)
+					defer func() {
+						statClient.TimingWithSampleRate(hostname+".connLifetime", dialLatency.Milliseconds(), 0.1)
+					}()
+				}
+
 				remote.SetDeadline(time.Now().Add(time.Hour))
-				rlp.Encode(soxclient, true)
 				defer remote.Close()
+				// copy the streams while
+				onPacket := func(l int) {
+					if statClient != nil && rand.Float64() < float64(l)/1048576.0 {
+						statClient.Increment(hostname + ".transferMB")
+					}
+				}
 				go func() {
 					defer remote.Close()
 					defer soxclient.Close()
-					cwl.CopyWithLimit(remote, soxclient, limiter, nil)
+					cwl.CopyWithLimit(remote, soxclient, limiter, onPacket)
 				}()
-				cwl.CopyWithLimit(soxclient, remote, limiter, nil)
+				cwl.CopyWithLimit(soxclient, remote, limiter, onPacket)
 			case "ip":
 				var ip string
 				if ipi, ok := ipcache.Get("ip"); ok {

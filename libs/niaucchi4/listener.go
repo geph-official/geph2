@@ -1,6 +1,7 @@
 package niaucchi4
 
 import (
+	"log"
 	"net"
 
 	"github.com/geph-official/geph2/libs/kcp-go"
@@ -8,14 +9,17 @@ import (
 
 // Dial dials KCP over obfs in one function.
 func Dial(addr string, cookie []byte) (conn net.Conn, err error) {
-	udpsock, err := net.ListenPacket("udp", "")
+	socket := Wrap(func() net.PacketConn {
+		udpsock, err := net.ListenPacket("udp", "")
+		if err != nil {
+			panic(err)
+		}
+		log.Println("N4: recreating source socket", udpsock.LocalAddr())
+		return udpsock
+	})
+	kcpConn, err := kcp.NewConn(addr, nil, 0, 0, ObfsListen(cookie, socket))
 	if err != nil {
-		panic(err)
-	}
-	obfssock := ObfsListen(cookie, udpsock)
-	kcpConn, err := kcp.NewConn(addr, nil, 0, 0, obfssock)
-	if err != nil {
-		obfssock.Close()
+		socket.Close()
 		return
 	}
 	kcpConn.SetWindowSize(10000, 10000)

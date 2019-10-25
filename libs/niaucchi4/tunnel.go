@@ -67,6 +67,7 @@ func (ts *tunstate) Encrypt(pkt []byte) (ctext []byte) {
 type prototun struct {
 	mySK   [32]byte
 	cookie []byte
+	hello  []byte
 }
 
 func (pt *prototun) realize(response []byte, isserv bool) (ts *tunstate, err error) {
@@ -131,6 +132,7 @@ func newproto(cookie []byte) (pt *prototun, hello []byte) {
 	pt = &prototun{
 		mySK:   sk,
 		cookie: cookie,
+		hello:  hello,
 	}
 	hello = buf.Bytes()
 	return

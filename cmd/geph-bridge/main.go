@@ -82,7 +82,10 @@ func listenLoop() {
 		}
 		log.Println("Accepted client", client.RemoteAddr())
 		go func() {
-			defer log.Println("Closed client", client.RemoteAddr())
+			var err error
+			defer func() {
+				log.Println("Closed client", client.RemoteAddr(), "reason", err)
+			}()
 			defer client.Close()
 			client.SetWindowSize(10000, 10000)
 			client.SetNoDelay(0, 40, 3, 0)
@@ -97,15 +100,17 @@ func listenLoop() {
 				return
 			case "conn":
 				var host string
-				err := rlp.Decode(client, &host)
+				err = rlp.Decode(client, &host)
 				if err != nil {
 					return
 				}
 				if !strings.HasSuffix(host, exitDomain) {
+					err = fmt.Errorf("bad pattern: %v", exitDomain)
 					return
 				}
 				remoteAddr := fmt.Sprintf("%v:2389", host)
-				remote, err := net.Dial("tcp", remoteAddr)
+				var remote net.Conn
+				remote, err = net.Dial("tcp", remoteAddr)
 				if err != nil {
 					return
 				}

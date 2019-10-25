@@ -3,6 +3,7 @@ package kcp
 import (
 	"encoding/binary"
 	"log"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -33,9 +34,15 @@ const (
 	IKCP_PROBE_LIMIT = 120000 // up to 120 secs to probe window
 )
 
-const quiescentMax = 1000
+const quiescentMax = 100000
 
 var CongestionControl = "LOL"
+
+var CWNDLog = false
+
+func init() {
+	CWNDLog = os.Getenv("KCPLOG") != ""
+}
 
 // monotonic reference time point
 var refTime time.Time = time.Now()
@@ -750,9 +757,11 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				if kcp.cwnd < 32 {
 					kcp.cwnd = 32
 				}
-				log.Printf("CWND=%.2f BDP=%.2f GAIN=%.2f [%vK / %v ms] %.2f%%", kcp.cwnd, bdp, kcp.LOL.gain,
-					int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.minRtt),
-					float64(kcp.retrans)/float64(kcp.trans)*100)
+				if CWNDLog {
+					log.Printf("CWND=%.2f BDP=%.2f GAIN=%.2f [%vK / %v ms] %.2f%%", kcp.cwnd, bdp, kcp.LOL.gain,
+						int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.minRtt),
+						float64(kcp.retrans)/float64(kcp.trans)*100)
+				}
 			}
 		}
 	}

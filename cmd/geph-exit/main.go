@@ -6,8 +6,10 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"time"
 
+	statsd "github.com/etsy/statsd/examples/go"
 	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/patrickmn/go-cache"
@@ -16,10 +18,15 @@ import (
 var keyfile string
 var pubkey ed25519.PublicKey
 var seckey ed25519.PrivateKey
+var onlyPaid bool
 
 var binderFront string
 var binderReal string
 var bclient *bdclient.Client
+var hostname string
+var statsdAddr string
+
+var statClient *statsd.StatsdClient
 
 var ipcache = cache.New(time.Hour, time.Hour)
 
@@ -27,8 +34,27 @@ func main() {
 	flag.StringVar(&keyfile, "keyfile", "keyfile.bin", "location of key file")
 	flag.StringVar(&binderFront, "binderFront", "http://binder.geph.io:9080", "binder domain-fronting host")
 	flag.StringVar(&binderReal, "binderReal", "binder.geph.io", "real hostname of the binder")
+	flag.StringVar(&statsdAddr, "statsdAddr", "c2.geph.io:8125", "address of StatsD for gathering statistics")
+	flag.BoolVar(&onlyPaid, "onlyPaid", false, "only allow paying users")
 	flag.Parse()
+
+	var err error
+	hostname, err = os.Hostname()
+	if err != nil {
+		statsdAddr = ""
+	} else {
+		log.Println(hostname)
+	}
+	if statsdAddr != "" {
+		z, e := net.ResolveUDPAddr("udp", statsdAddr)
+		if e != nil {
+			panic(e)
+		}
+		statClient = statsd.New(z.IP.String(), z.Port)
+		log.Println("created statClient!")
+	}
 	bclient = bdclient.NewClient(binderFront, binderReal)
+
 	// load the key
 	loadKey()
 	log.Printf("Loaded PK = %x", pubkey)

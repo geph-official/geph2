@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"io"
-	"log"
 	"net"
 	"time"
 
@@ -196,7 +195,6 @@ func Handshake(plain net.Conn) (sok *Socket, err error) {
 		curve25519.ScalarBaseMult(&pub, &myesk)
 		msgb.Write(pub[:])
 		io.Copy(plain, &msgb)
-		log.Println("WROTE")
 		close(wet)
 	}()
 	// read hello

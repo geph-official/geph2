@@ -10,6 +10,7 @@ require (
 	github.com/elazarl/goproxy v0.0.0-20190911111923-ecfe977594f1 // indirect
 	github.com/elazarl/goproxy/ext v0.0.0-20190911111923-ecfe977594f1 // indirect
 	github.com/ethereum/go-ethereum v1.9.5
+	github.com/etsy/statsd v0.8.5
 	github.com/gorilla/mux v1.7.3
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d
 	github.com/klauspost/cpuid v1.2.1 // indirect
