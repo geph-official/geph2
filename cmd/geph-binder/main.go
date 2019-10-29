@@ -53,6 +53,8 @@ func main() {
 	r.HandleFunc("/add-bridge", handleAddBridge)
 	r.HandleFunc("/get-bridges", handleGetBridges)
 	r.HandleFunc("/client-info", handleClientInfo)
+	r.HandleFunc("/captcha", handleCaptcha)
+	r.HandleFunc("/register", handleRegister)
 	if err := http.ListenAndServe(":9080", r); err != nil {
 		panic(err)
 	}

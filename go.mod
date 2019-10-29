@@ -7,6 +7,7 @@ require (
 	github.com/bunsim/goproxy v0.0.0-20170228195103-3c809b25484a
 	github.com/cryptoballot/fdh v0.0.0-20170924224734-5eb31ce2010c // indirect
 	github.com/cryptoballot/rsablind v0.0.0-20170925165423-14f9913880b7
+	github.com/dchest/captcha v0.0.0-20170622155422-6a29415a8364
 	github.com/elazarl/goproxy v0.0.0-20190911111923-ecfe977594f1 // indirect
 	github.com/elazarl/goproxy/ext v0.0.0-20190911111923-ecfe977594f1 // indirect
 	github.com/ethereum/go-ethereum v1.9.5

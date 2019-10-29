@@ -8,6 +8,8 @@ github.com/cryptoballot/fdh v0.0.0-20170924224734-5eb31ce2010c h1:habgwvtC2G/hgK
 github.com/cryptoballot/fdh v0.0.0-20170924224734-5eb31ce2010c/go.mod h1:5pBX/BVsUUknnixeKb1/q20aCjY7Ig5C3LcCrwTSWoU=
 github.com/cryptoballot/rsablind v0.0.0-20170925165423-14f9913880b7 h1:zkd3AG8n/WAUxTIy5DKd22U8oQGDpbaCsaRKewdxnxQ=
 github.com/cryptoballot/rsablind v0.0.0-20170925165423-14f9913880b7/go.mod h1:Jkrm3gC2eNL7k0K6wlLehI7CHiZVUCZ/cu5xT1aDNb4=
+github.com/dchest/captcha v0.0.0-20170622155422-6a29415a8364 h1:U+BMqUt8LFgyrF0/NKgPZdr1sGZ3j6uBECpOGcISpFI=
+github.com/dchest/captcha v0.0.0-20170622155422-6a29415a8364/go.mod h1:QGrK8vMWWHQYQ3QU9bw9Y9OPNfxccGzfb41qjvVeXtY=
 github.com/elazarl/goproxy v0.0.0-20190911111923-ecfe977594f1 h1:yY9rWGoXv1U5pl4gxqlULARMQD7x0QG85lqEXTWysik=
 github.com/elazarl/goproxy v0.0.0-20190911111923-ecfe977594f1/go.mod h1:Ro8st/ElPeALwNFlcTpWmkr6IoMFfkjXAvTHpevnDsM=
 github.com/elazarl/goproxy/ext v0.0.0-20190711103511-473e67f1d7d2/go.mod h1:gNh8nYJoAm43RfaxurUnxr+N1PwuFV3ZMl/efxlIlY8=
