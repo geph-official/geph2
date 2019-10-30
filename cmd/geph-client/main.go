@@ -40,6 +40,7 @@ var direct bool
 var socksAddr string
 var httpAddr string
 var statsAddr string
+var dnsAddr string
 
 var bindClient *bdclient.Client
 
@@ -62,6 +63,7 @@ func main() {
 	flag.StringVar(&socksAddr, "socksAddr", "localhost:9909", "SOCKS5 listening address")
 	flag.StringVar(&httpAddr, "httpAddr", "localhost:9910", "HTTP proxy listener")
 	flag.StringVar(&statsAddr, "statsAddr", "localhost:9809", "HTTP listener for statistics")
+	flag.StringVar(&dnsAddr, "dnsAddr", "localhost:9983", "local DNS listener")
 	flag.BoolVar(&loginCheck, "loginCheck", false, "do a login check and immediately exit with code 0")
 	flag.StringVar(&binderProxy, "binderProxy", "", "if set, proxy the binder at the given listening address and do nothing else")
 	flag.Parse()
@@ -125,6 +127,10 @@ func main() {
 				direct = true
 			}
 		}
+	}
+
+	if dnsAddr != "" {
+		go doDNSProxy()
 	}
 
 	// spin up stats server
