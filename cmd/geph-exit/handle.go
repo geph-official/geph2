@@ -89,7 +89,7 @@ func handle(rawClient net.Conn) {
 			return
 		}
 		log.Printf("logging in %v as a free user with 800 Kbps", rawClient.RemoteAddr())
-		limiter = rate.NewLimiter(100*1000, 1000*1000)
+		limiter = rate.NewLimiter(100*1000, 100*1000)
 	} else {
 		log.Printf("logging in %v as a paid user", rawClient.RemoteAddr())
 		limiter = rate.NewLimiter(rate.Inf, 10000*1000)
