@@ -47,7 +47,8 @@ start:
 		sw.lock.Lock()
 		sw.session = nil
 		sw.lock.Unlock()
-		log.Println("can't open stream, trying again")
+		log.Println("can't open stream, trying again", err)
+		close(cancel)
 		goto start
 	}
 	// dial command

@@ -749,10 +749,12 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				} else if period%6 == 1 {
 					kcp.LOL.gain *= 0.75
 				}
-				if bdp*2 > kcp.cwnd+float64(acks) {
+				targetBDP := bdp + 0.1*kcp.DRE.maxAckRate/float64(kcp.mss)
+				if targetBDP > kcp.cwnd+float64(acks) {
 					kcp.cwnd = (kcp.cwnd + float64(acks))
 				} else {
-					kcp.cwnd = bdp * 2
+					// BDP + 50 ms worth of packets
+					kcp.cwnd = (kcp.cwnd + targetBDP) / 2
 				}
 				if kcp.cwnd < 32 {
 					kcp.cwnd = 32
@@ -933,7 +935,8 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.acked == 1 {
 			continue
 		}
-		const RTOSLACK = 100
+		// ridiculous slack. We almost always just rely on duplicate ACKs to detect loss. /// this gives room for pacing-induced delays before
+		const RTOSLACK = 300
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto
