@@ -34,7 +34,7 @@ const (
 	IKCP_PROBE_LIMIT = 120000 // up to 120 secs to probe window
 )
 
-const quiescentMax = 100000
+const quiescentMax = 10
 
 var CongestionControl = "LOL"
 
