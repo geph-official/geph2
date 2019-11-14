@@ -485,6 +485,9 @@ func (kcp *KCP) processAck(seg *segment) {
 	appLimited := len(kcp.snd_queue) == 0
 	kcp.DRE.avgAckRate = kcp.DRE.avgAckRate*0.999 + ackRate*0.001
 	if kcp.DRE.maxAckRate < ackRate || (!appLimited && time.Since(kcp.DRE.maxAckTime).Seconds() > 10) {
+		if doLogging {
+			log.Printf("KCP: %p speed %.2fMbps", kcp, kcp.DRE.maxAckRate*8/1000000)
+		}
 		kcp.DRE.maxAckRate = ackRate
 		kcp.DRE.maxAckTime = kcp.DRE.delTime
 	}
@@ -753,16 +756,10 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				if targetBDP > kcp.cwnd+float64(acks) {
 					kcp.cwnd = (kcp.cwnd + float64(acks))
 				} else {
-					// BDP + 50 ms worth of packets
 					kcp.cwnd = (kcp.cwnd + targetBDP) / 2
 				}
 				if kcp.cwnd < 32 {
 					kcp.cwnd = 32
-				}
-				if doLogging {
-					log.Printf("CWND=%.2f BDP=%.2f GAIN=%.2f [%vK / %v ms] %.2f%%", kcp.cwnd, bdp, kcp.LOL.gain,
-						int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.minRtt),
-						float64(kcp.retrans)/float64(kcp.trans)*100)
 				}
 			}
 		}
