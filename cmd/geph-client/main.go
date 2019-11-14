@@ -10,7 +10,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"runtime"
 	"strings"
 	"time"
 
@@ -71,8 +70,6 @@ func main() {
 		GitVersion = "NOVER"
 	}
 	log.Println("GephNG version", GitVersion)
-
-	runtime.GOMAXPROCS(1)
 
 	// special actions
 	if loginCheck {

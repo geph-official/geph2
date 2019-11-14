@@ -38,10 +38,10 @@ const quiescentMax = 10
 
 var CongestionControl = "LOL"
 
-var CWNDLog = false
+var doLogging = false
 
 func init() {
-	CWNDLog = os.Getenv("KCPLOG") != ""
+	doLogging = os.Getenv("KCPLOG") != ""
 }
 
 // monotonic reference time point
@@ -759,7 +759,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				if kcp.cwnd < 32 {
 					kcp.cwnd = 32
 				}
-				if CWNDLog {
+				if doLogging {
 					log.Printf("CWND=%.2f BDP=%.2f GAIN=%.2f [%vK / %v ms] %.2f%%", kcp.cwnd, bdp, kcp.LOL.gain,
 						int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.minRtt),
 						float64(kcp.retrans)/float64(kcp.trans)*100)

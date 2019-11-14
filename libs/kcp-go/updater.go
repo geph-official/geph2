@@ -2,6 +2,7 @@ package kcp
 
 import (
 	"container/heap"
+	"log"
 	"sync"
 	"time"
 )
@@ -107,6 +108,7 @@ func (h *updateHeap) updateTask() {
 					entry.ts = time.Now().Add(interval)
 					heap.Fix(h, 0)
 				} else {
+					log.Printf("parking %p", entry.s)
 					delete(h.exists, entry.s)
 					heap.Fix(h, 0)
 					heap.Remove(h, 0)
