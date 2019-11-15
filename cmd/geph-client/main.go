@@ -131,6 +131,7 @@ func main() {
 	}
 
 	// spin up stats server
+	http.HandleFunc("/proxy.pac", handleProxyPac)
 	http.HandleFunc("/", handleStats)
 	go func() {
 		err := http.ListenAndServe(statsAddr, nil)

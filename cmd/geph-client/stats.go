@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -42,4 +43,12 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 	})
 	w.Header().Add("content-type", "application/json")
 	w.Write(bts)
+}
+
+func handleProxyPac(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte(fmt.Sprintf(`function FindProxyForURL(url, host)
+	{
+		return "PROXY %v";
+	}
+	`, httpAddr)))
 }
