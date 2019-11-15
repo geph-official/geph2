@@ -15,6 +15,8 @@ type stats struct {
 	PublicIP  string
 	UpBytes   uint64
 	DownBytes uint64
+	MinPing   uint64
+	PingTime  time.Time
 	Username  string
 	Tier      string
 	PayTxes   []bdclient.PaymentTx

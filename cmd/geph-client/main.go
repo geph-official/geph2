@@ -210,7 +210,15 @@ func listenLoop() {
 			start := time.Now()
 			remote, ok := sWrap.DialCmd("proxy", rmAddr)
 			defer remote.Close()
-			log.Printf("opened %v in %v", rmAddr, time.Since(start))
+			ping := time.Since(start)
+			log.Printf("opened %v in %v", rmAddr, ping)
+			useStats(func(sc *stats) {
+				pmil := ping.Milliseconds()
+				if time.Since(sc.PingTime).Seconds() > 30 || uint64(pmil) < sc.MinPing {
+					sc.MinPing = uint64(pmil)
+					sc.PingTime = time.Now()
+				}
+			})
 			if !ok {
 				tinysocks.CompleteRequest(5, cl)
 				return
