@@ -23,7 +23,7 @@ func Dial(addr string, cookie []byte) (conn net.Conn, err error) {
 		return
 	}
 	kcpConn.SetWindowSize(100, 10000)
-	kcpConn.SetNoDelay(0, 50, 2, 0)
+	kcpConn.SetNoDelay(0, 50, 3, 0)
 	kcpConn.SetStreamMode(true)
 	kcpConn.SetMtu(1300)
 	conn = kcpConn
@@ -55,7 +55,7 @@ func (l *Listener) Accept() (c net.Conn, err error) {
 		return
 	}
 	kc.SetWindowSize(10000, 100)
-	kc.SetNoDelay(0, 50, 2, 0)
+	kc.SetNoDelay(0, 50, 3, 0)
 	kc.SetStreamMode(true)
 	kc.SetMtu(1300)
 	c = kc

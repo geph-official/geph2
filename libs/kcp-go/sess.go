@@ -286,9 +286,11 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 		waitsnd := s.kcp.WaitSnd()
 		if waitsnd < int(s.kcp.snd_wnd) && waitsnd < int(s.kcp.rmt_wnd) &&
 			(s.kcp.nocwnd == 1 || waitsnd < int(s.kcp.cwnd)) {
+			count := 0
 			for _, b := range v {
 				n += len(b)
 				for {
+					count++
 					if len(b) <= int(s.kcp.mss) {
 						s.kcp.Send(b)
 						break
@@ -306,6 +308,7 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 			}
 			s.mu.Unlock()
 			atomic.AddUint64(&DefaultSnmp.BytesSent, uint64(n))
+			s.paceOnce(count)
 			return n, nil
 		}
 

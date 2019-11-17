@@ -3,6 +3,7 @@ package kcp
 import (
 	"encoding/binary"
 	"log"
+	"math/rand"
 	"os"
 	"sync/atomic"
 	"time"
@@ -34,7 +35,7 @@ const (
 	IKCP_PROBE_LIMIT = 120000 // up to 120 secs to probe window
 )
 
-const quiescentMax = 10
+const quiescentMax = 1
 
 var CongestionControl = "LOL"
 
@@ -485,9 +486,6 @@ func (kcp *KCP) processAck(seg *segment) {
 	appLimited := len(kcp.snd_queue) == 0
 	kcp.DRE.avgAckRate = kcp.DRE.avgAckRate*0.999 + ackRate*0.001
 	if kcp.DRE.maxAckRate < ackRate || (!appLimited && time.Since(kcp.DRE.maxAckTime).Seconds() > 10) {
-		if doLogging {
-			log.Printf("KCP: %p speed %.2fMbps", kcp, kcp.DRE.maxAckRate*8/1000000)
-		}
 		kcp.DRE.maxAckRate = ackRate
 		kcp.DRE.maxAckTime = kcp.DRE.delTime
 	}
@@ -761,6 +759,11 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				if kcp.cwnd < 32 {
 					kcp.cwnd = 32
 				}
+				if doLogging && rand.Float64() < 0.05 {
+					log.Printf("CWND=%.2f BDP=%.2f GAIN=%.2f [%vK / %v ms] %.2f%%", kcp.cwnd, bdp, kcp.LOL.gain,
+						int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.minRtt),
+						float64(kcp.retrans)/float64(kcp.trans)*100)
+				}
 			}
 		}
 	}
@@ -932,8 +935,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.acked == 1 {
 			continue
 		}
-		// ridiculous slack. We almost always just rely on duplicate ACKs to detect loss. /// this gives room for pacing-induced delays before
-		const RTOSLACK = 300
+		const RTOSLACK = 10
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto

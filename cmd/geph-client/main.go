@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	mrand "math/rand"
@@ -69,6 +71,22 @@ func main() {
 	if GitVersion == "" {
 		GitVersion = "NOVER"
 	}
+	logPipeR, logPipeW, _ := os.Pipe()
+	log.SetOutput(logPipeW)
+	go func() {
+		buffi := bufio.NewReader(logPipeR)
+		for {
+			line, err := buffi.ReadString('\n')
+			if err != nil {
+				return
+			}
+			fmt.Fprint(os.Stderr, line)
+			useStats(func(sc *stats) {
+				sc.LogLines = append(sc.LogLines, strings.TrimSpace(line))
+			})
+		}
+	}()
+
 	log.Println("GephNG version", GitVersion)
 
 	// special actions
@@ -133,6 +151,7 @@ func main() {
 	// spin up stats server
 	http.HandleFunc("/proxy.pac", handleProxyPac)
 	http.HandleFunc("/", handleStats)
+	http.HandleFunc("/logs", handleLogs)
 	go func() {
 		err := http.ListenAndServe(statsAddr, nil)
 		if err != nil {

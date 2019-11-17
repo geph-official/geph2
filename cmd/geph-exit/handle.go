@@ -92,7 +92,7 @@ func handle(rawClient net.Conn) {
 		limiter = rate.NewLimiter(100*1000, 100*1000)
 	} else {
 		log.Printf("logging in %v as a paid user", rawClient.RemoteAddr())
-		limiter = rate.NewLimiter(rate.Inf, 10000*1000)
+		limiter = rate.NewLimiter(12500*1000, 1000*1000)
 	}
 	// IGNORE FOR NOW
 	rlp.Encode(tssClient, "OK")

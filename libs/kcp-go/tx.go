@@ -8,28 +8,26 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-const sendQuantum = 1
+func (s *UDPSession) paceOnce(n int) {
+	paceInterval := float64(s.kcp.mss) / s.kcp.DRE.maxAckRate
+	if paceInterval > 0.001 {
+		paceInterval = 0.001
+	}
+	// wait till NST
+	now := time.Now()
+	if !now.After(s.pacer.nextSendTime) {
+		time.Sleep(s.pacer.nextSendTime.Sub(now))
+	}
+	s.pacer.nextSendTime = now.Add(time.Duration(float64(n)*paceInterval*1e6/s.kcp.LOL.gain) * time.Microsecond)
+}
 
 func (s *UDPSession) defaultTx(txqueue []ipv4.Message) {
 	nbytes := 0
 	npkts := 0
-	ctr := int(atomic.LoadUint64(&DefaultSnmp.OutPkts))
 	for k := range txqueue {
 		if n, err := s.conn.WriteTo(txqueue[k].Buffers[0], txqueue[k].Addr); err == nil {
 			nbytes += n
 			npkts++
-			if (npkts+ctr)%sendQuantum == 0 && CongestionControl == "LOL" {
-				paceInterval := float64(s.kcp.mss) / s.kcp.DRE.maxAckRate
-				if paceInterval > 0.001 {
-					paceInterval = 0.001
-				}
-				// wait till NST
-				now := time.Now()
-				if !now.After(s.pacer.nextSendTime) {
-					time.Sleep(s.pacer.nextSendTime.Sub(now))
-				}
-				s.pacer.nextSendTime = now.Add(time.Duration(paceInterval*1e6*sendQuantum/s.kcp.LOL.gain) * time.Microsecond)
-			}
 			xmitBuf.Put(txqueue[k].Buffers[0])
 		} else {
 			s.notifyWriteError(errors.WithStack(err))
