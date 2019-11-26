@@ -12,7 +12,11 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"os/signal"
+	"runtime/debug"
+	"runtime/pprof"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/bunsim/goproxy"
@@ -45,6 +49,8 @@ var dnsAddr string
 
 var bindClient *bdclient.Client
 
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
+
 var sWrap *muxWrap
 
 // GitVersion is the build version
@@ -68,6 +74,25 @@ func main() {
 	flag.BoolVar(&loginCheck, "loginCheck", false, "do a login check and immediately exit with code 0")
 	flag.StringVar(&binderProxy, "binderProxy", "", "if set, proxy the binder at the given listening address and do nothing else")
 	flag.Parse()
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal("could not create CPU profile: ", err)
+		}
+		c := make(chan os.Signal)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		go func() {
+			<-c
+			pprof.StopCPUProfile()
+			f.Close()
+			debug.SetTraceback("all")
+			panic("TB")
+		}()
+	}
+
 	if GitVersion == "" {
 		GitVersion = "NOVER"
 	}
@@ -228,6 +253,9 @@ func listenLoop() {
 			}
 			start := time.Now()
 			remote, ok := sWrap.DialCmd("proxy", rmAddr)
+			if !ok {
+				return
+			}
 			defer remote.Close()
 			ping := time.Since(start)
 			log.Printf("opened %v in %v", rmAddr, ping)

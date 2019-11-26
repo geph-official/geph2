@@ -14,6 +14,7 @@ require (
 	github.com/etsy/statsd v0.8.5
 	github.com/gorilla/mux v1.7.3
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d
+	github.com/kavu/go_reuseport v1.4.0 // indirect
 	github.com/klauspost/cpuid v1.2.1 // indirect
 	github.com/klauspost/reedsolomon v1.9.2
 	github.com/lib/pq v1.2.0
@@ -25,6 +26,7 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/templexxx/cpufeat v0.0.0-20180724012125-cef66df7f161 // indirect
 	github.com/templexxx/xor v0.0.0-20181023030647-4e92f724b73b
+	github.com/tidwall/evio v1.0.3 // indirect
 	github.com/tjfoc/gmsm v1.0.1
 	github.com/xtaci/lossyconn v0.0.0-20190602105132-8df528c0c9ae
 	github.com/xtaci/smux v2.0.1+incompatible

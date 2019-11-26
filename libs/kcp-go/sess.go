@@ -12,6 +12,7 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 	"io"
+	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -146,6 +147,7 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn 
 
 	// cast to writebatch conn
 	if _, ok := conn.(*net.UDPConn); ok {
+		log.Print("IS UDP")
 		addr, err := net.ResolveUDPAddr("udp", conn.LocalAddr().String())
 		if err == nil {
 			if addr.IP.To4() != nil {
@@ -153,6 +155,7 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn 
 			} else {
 				sess.xconn = ipv6.NewPacketConn(conn)
 			}
+			log.Println("XCONN CREATED")
 		}
 	}
 
@@ -308,7 +311,6 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 			}
 			s.mu.Unlock()
 			atomic.AddUint64(&DefaultSnmp.BytesSent, uint64(n))
-			s.paceOnce(count)
 			return n, nil
 		}
 
@@ -343,7 +345,7 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 // uncork sends data in txqueue if there is any
 func (s *UDPSession) uncork() {
 	if len(s.txqueue) > 0 {
-		s.defaultTx(s.txqueue)
+		s.tx(s.txqueue)
 		s.txqueue = s.txqueue[:0]
 	}
 	return

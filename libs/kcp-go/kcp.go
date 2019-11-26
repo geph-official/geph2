@@ -750,17 +750,17 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				} else if period%6 == 1 {
 					kcp.LOL.gain *= 0.75
 				}
-				targetBDP := bdp + 0.1*kcp.DRE.maxAckRate/float64(kcp.mss)
+				targetBDP := bdp * 2
 				if targetBDP > kcp.cwnd+float64(acks) {
 					kcp.cwnd = (kcp.cwnd + float64(acks))
 				} else {
 					kcp.cwnd = (kcp.cwnd + targetBDP) / 2
 				}
-				if kcp.cwnd < 32 {
-					kcp.cwnd = 32
+				if kcp.cwnd < 4 {
+					kcp.cwnd = 4
 				}
 				if doLogging && rand.Float64() < 0.05 {
-					log.Printf("CWND=%.2f BDP=%.2f GAIN=%.2f [%vK / %v ms] %.2f%%", kcp.cwnd, bdp, kcp.LOL.gain,
+					log.Printf("[%p] %vK / %v ms %.2f%%", kcp,
 						int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.minRtt),
 						float64(kcp.retrans)/float64(kcp.trans)*100)
 				}
@@ -820,6 +820,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 	flushBuffer := func() {
 		size := len(buffer) - len(ptr)
 		if size > kcp.reserved {
+			busy = true
 			kcp.output(buffer, size)
 		}
 	}
@@ -935,7 +936,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.acked == 1 {
 			continue
 		}
-		const RTOSLACK = 10
+		const RTOSLACK = 250
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto

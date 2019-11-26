@@ -77,6 +77,8 @@ func newSocket(plain net.Conn, repk, lesk [32]byte) (sok *Socket, err error) {
 	return
 }
 
+var decctr1 uint64
+
 // Read reads into the given byte slice.
 func (sk *Socket) Read(p []byte) (n int, err error) {
 	// if any in buffer, read from buffer

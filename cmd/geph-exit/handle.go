@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ed25519"
 	"io"
 	"io/ioutil"
@@ -66,7 +67,7 @@ func handle(rawClient net.Conn) {
 	muxSrv, err := smux.Server(tssClient, &smux.Config{
 		KeepAliveInterval: time.Minute * 30,
 		KeepAliveTimeout:  time.Minute * 32,
-		MaxFrameSize:      10000,
+		MaxFrameSize:      32768,
 		MaxReceiveBuffer:  1024 * 1024,
 	})
 	if err != nil {
@@ -89,10 +90,11 @@ func handle(rawClient net.Conn) {
 			return
 		}
 		log.Printf("logging in %v as a free user with 800 Kbps", rawClient.RemoteAddr())
-		limiter = rate.NewLimiter(100*1000, 100*1000)
+		limiter = rate.NewLimiter(100*1000, 5*1000*1000)
+		limiter.WaitN(context.Background(), 5*1000*1000-500)
 	} else {
 		log.Printf("logging in %v as a paid user", rawClient.RemoteAddr())
-		limiter = rate.NewLimiter(12500*1000, 1000*1000)
+		limiter = rate.NewLimiter(rate.Inf, 1000*1000*1000)
 	}
 	// IGNORE FOR NOW
 	rlp.Encode(tssClient, "OK")

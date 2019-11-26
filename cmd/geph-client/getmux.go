@@ -84,7 +84,7 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 	ss, err = smux.Client(cryptConn, &smux.Config{
 		KeepAliveInterval: time.Minute * 20,
 		KeepAliveTimeout:  time.Minute * 22,
-		MaxFrameSize:      10000,
+		MaxFrameSize:      32768,
 		MaxReceiveBuffer:  1024 * 1024 * 100,
 	})
 	if err != nil {

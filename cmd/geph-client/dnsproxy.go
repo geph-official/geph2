@@ -19,7 +19,7 @@ func doDNSProxy() {
 	hclient := &http.Client{
 		Transport: &http.Transport{
 			Dial:            tunProx.Dial,
-			IdleConnTimeout: time.Second * 5,
+			IdleConnTimeout: time.Minute * 30,
 		},
 	}
 	socket, err := net.ListenPacket("udp", dnsAddr)
