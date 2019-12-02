@@ -94,7 +94,7 @@ func handle(rawClient net.Conn) {
 		limiter.WaitN(context.Background(), 5*1000*1000-500)
 	} else {
 		log.Printf("logging in %v as a paid user", rawClient.RemoteAddr())
-		limiter = rate.NewLimiter(rate.Inf, 1000*1000*1000)
+		limiter = rate.NewLimiter(125*100*1000, 1000*1000*1000)
 	}
 	// IGNORE FOR NOW
 	rlp.Encode(tssClient, "OK")

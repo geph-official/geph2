@@ -18,17 +18,7 @@ import (
 	"github.com/xtaci/smux"
 )
 
-func getBridged(greeting [2][]byte, bridgeHost string, bridgeCookie []byte, exitName string, exitPK []byte) (ss *smux.Session, err error) {
-	udpsock, err := net.ListenPacket("udp", "")
-	if err != nil {
-		panic(err)
-	}
-	obfssock := niaucchi4.ObfsListen(bridgeCookie, udpsock)
-	kcpConn, err := niaucchi4.Dial(bridgeHost, bridgeCookie)
-	if err != nil {
-		obfssock.Close()
-		return
-	}
+func getBridged(greeting [2][]byte, kcpConn net.Conn, exitName string, exitPK []byte) (ss *smux.Session, err error) {
 	rlp.Encode(kcpConn, "conn")
 	rlp.Encode(kcpConn, exitName)
 	ss, err = negotiateSmux(greeting, kcpConn, exitPK)
@@ -141,7 +131,7 @@ func newSmuxWrapper() *muxWrap {
 			goto retry
 		}
 		log.Println("racing between", len(bridges), "bridges...")
-		bridgeRace := make(chan *smux.Session)
+		bridgeRace := make(chan net.Conn)
 		bridgeDeadWait := new(sync.WaitGroup)
 		bridgeDeadWait.Add(len(bridges))
 		go func() {
@@ -150,29 +140,55 @@ func newSmuxWrapper() *muxWrap {
 		}()
 		for _, bi := range bridges {
 			bi := bi
+			syncChan := time.After(time.Second * 3)
 			go func() {
 				defer bridgeDeadWait.Done()
-				sm, err := getBridged([2][]byte{ubmsg, ubsig}, bi.Host, bi.Cookie, exitName, realExitKey)
+				kcpConn, err := niaucchi4.Dial(bi.Host, bi.Cookie)
 				if err != nil {
 					log.Println("dialing to", bi.Host, "failed!")
 					return
 				}
+				kcpConn.SetDeadline(time.Now().Add(time.Second * 30))
+				for i := 0; i < 3; i++ {
+					rlp.Encode(kcpConn, "ping/repeat")
+					var lel string
+					rlp.Decode(kcpConn, &lel)
+				}
+				<-syncChan
+				start := time.Now()
+				rlp.Encode(kcpConn, "conn/feedback")
+				rlp.Encode(kcpConn, exitName)
+				var out uint
+				err = rlp.Decode(kcpConn, &out)
+				if err != nil {
+					log.Println(bi.Host, "failed feedback:", err)
+					kcpConn.Close()
+					return
+				}
+				log.Println(bi.Host, "latency", time.Since(start))
 				select {
-				case bridgeRace <- sm:
+				case bridgeRace <- kcpConn:
 					log.Println(bi.Host, "won race!")
 				default:
 					log.Println(bi.Host, "lost race")
-					sm.Close()
+					kcpConn.Close()
 				}
 			}()
 		}
 		// get the bridge
-		sm, ok := <-bridgeRace
+		kcpConn, ok := <-bridgeRace
 		if !ok {
 			log.Println("everything failed, retrying")
 			time.Sleep(time.Second)
 			goto retry
 		}
+		sm, err := negotiateSmux([2][]byte{ubmsg, ubsig}, kcpConn, realExitKey)
+		if err != nil {
+			log.Println("Failed negotiating smux:", err)
+			kcpConn.Close()
+			goto retry
+		}
+		kcpConn.SetDeadline(time.Time{})
 		useStats(func(sc *stats) {
 			sc.Connected = true
 		})

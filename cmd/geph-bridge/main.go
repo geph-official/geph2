@@ -9,12 +9,12 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/bdclient"
-	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 )
 
@@ -23,7 +23,7 @@ var cookie []byte
 
 var binderFront string
 var binderReal string
-var exitDomain string
+var exitRegex string
 var binderKey string
 
 var bclient *bdclient.Client
@@ -32,7 +32,7 @@ func main() {
 	flag.StringVar(&cookieSeed, "cookieSeed", "", "seed for generating a cookie")
 	flag.StringVar(&binderFront, "binderFront", "https://ajax.aspnetcdn.com/v2", "binder domain-fronting host")
 	flag.StringVar(&binderReal, "binderReal", "gephbinder.azureedge.net", "real hostname of the binder")
-	flag.StringVar(&exitDomain, "exitDomain", ".exits.geph.io", "domain suffix for exit nodes")
+	flag.StringVar(&exitRegex, "exitRegex", `\.exits\.geph\.io$`, "domain suffix for exit nodes")
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.Parse()
 	if cookieSeed == "" {
@@ -70,13 +70,15 @@ func listenLoop() {
 	if err != nil {
 		panic(err)
 	}
-	listener, err := kcp.ServeConn(nil, 0, 0, e2e)
+	listener := niaucchi4.Listen(e2e)
+	log.Println("KCP listener spinned up")
+	// utilities
+	exitMatcher, err := regexp.Compile(exitRegex)
 	if err != nil {
 		panic(err)
 	}
-	log.Println("KCP listener spinned up")
 	for {
-		client, err := listener.AcceptKCP()
+		client, err := listener.Accept()
 		if err != nil {
 			panic(err)
 		}
@@ -87,41 +89,47 @@ func listenLoop() {
 				log.Println("Closed client", client.RemoteAddr(), "reason", err)
 			}()
 			defer client.Close()
-			client.SetWindowSize(10000, 10000)
-			client.SetNoDelay(0, 40, 3, 0)
-			client.SetStreamMode(true)
-			client.SetMtu(1300)
-			var command string
-			rlp.Decode(client, &command)
-			log.Println("Client", client.RemoteAddr(), "requested", command)
-			switch command {
-			case "ping":
-				rlp.Encode(client, "ping")
-				return
-			case "conn":
-				var host string
-				err = rlp.Decode(client, &host)
-				if err != nil {
+			for {
+				var command string
+				rlp.Decode(client, &command)
+				log.Println("Client", client.RemoteAddr(), "requested", command)
+				switch command {
+				case "ping":
+					rlp.Encode(client, "ping")
 					return
-				}
-				if !strings.HasSuffix(host, exitDomain) {
-					err = fmt.Errorf("bad pattern: %v", exitDomain)
-					return
-				}
-				remoteAddr := fmt.Sprintf("%v:2389", host)
-				var remote net.Conn
-				remote, err = net.Dial("tcp", remoteAddr)
-				if err != nil {
-					return
-				}
-				log.Println("KCP", client.RemoteAddr(), "=> TCP", remoteAddr)
-				go func() {
+				case "ping/repeat":
+					rlp.Encode(client, "ping")
+				case "conn":
+					fallthrough
+				case "conn/feedback":
+					var host string
+					err = rlp.Decode(client, &host)
+					if err != nil {
+						return
+					}
+					if !exitMatcher.MatchString(host) {
+						err = fmt.Errorf("bad pattern: %v", host)
+						return
+					}
+					remoteAddr := fmt.Sprintf("%v:2389", host)
+					var remote net.Conn
+					remote, err = net.Dial("tcp", remoteAddr)
+					if err != nil {
+						return
+					}
+					log.Println("connected to", remoteAddr)
+					if command == "conn/feedback" {
+						rlp.Encode(client, uint(0))
+					}
+					go func() {
+						defer remote.Close()
+						defer client.Close()
+						io.Copy(remote, client)
+					}()
 					defer remote.Close()
-					defer client.Close()
-					io.Copy(remote, client)
-				}()
-				defer remote.Close()
-				io.Copy(client, remote)
+					io.Copy(client, remote)
+					return
+				}
 			}
 		}()
 	}

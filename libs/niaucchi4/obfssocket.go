@@ -113,7 +113,7 @@ RESTART:
 			goto RESTART
 		}
 		os.tunnels.SetDefault(addr.String(), ts)
-		log.Println("got realization of pending", addr)
+		log.Println("N4: got realization of pending", addr)
 		goto RESTART
 	}
 	// iterate through all the stuff to create an association
@@ -125,7 +125,7 @@ RESTART:
 		plain, e := tun.Decrypt(os.rdbuf[:readBytes])
 		if e == nil {
 			os.tunnels.Delete(k)
-			log.Println("found a decryptable session through scanning, ROAM to", addr)
+			log.Println("N4: found a decryptable session through scanning, ROAM to", addr)
 			os.tunnels.SetDefault(addr.String(), tun)
 			n = copy(p, plain)
 			if _, ok := os.sscache.Get(string(tun.ss)); ok {

@@ -3,7 +3,6 @@ package kcp
 import (
 	"encoding/binary"
 	"log"
-	"math/rand"
 	"os"
 	"sync/atomic"
 	"time"
@@ -35,7 +34,8 @@ const (
 	IKCP_PROBE_LIMIT = 120000 // up to 120 secs to probe window
 )
 
-const quiescentMax = 1
+// 10 seconds
+const quiescentMax = 200
 
 var CongestionControl = "LOL"
 
@@ -759,9 +759,11 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				if kcp.cwnd < 4 {
 					kcp.cwnd = 4
 				}
-				if doLogging && rand.Float64() < 0.05 {
-					log.Printf("[%p] %vK / %v ms %.2f%%", kcp,
-						int(kcp.DRE.maxAckRate/1000), int(kcp.DRE.minRtt),
+				if doLogging {
+					log.Printf("[%p] %vK / cwnd %v / gain %v / %v ms %.2f%%", kcp,
+						int(kcp.DRE.maxAckRate/1000),
+						kcp.cwnd, kcp.LOL.gain,
+						int(kcp.DRE.minRtt),
 						float64(kcp.retrans)/float64(kcp.trans)*100)
 				}
 			}
@@ -794,6 +796,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.LOL.filledPipe = false
 				kcp.LOL.fullBwCount = 0
 				kcp.LOL.fullBw = 0
+				kcp.cwnd = 4
 			}
 		}
 	}()
