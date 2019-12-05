@@ -760,9 +760,9 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					kcp.cwnd = 4
 				}
 				if doLogging {
-					log.Printf("[%p] %vK / cwnd %v / gain %v / %v ms %.2f%%", kcp,
+					log.Printf("[%p] %vK / cwnd %v / gain %.2f / %v ms %.2f%%", kcp,
 						int(kcp.DRE.maxAckRate/1000),
-						kcp.cwnd, kcp.LOL.gain,
+						int(kcp.cwnd), kcp.LOL.gain,
 						int(kcp.DRE.minRtt),
 						float64(kcp.retrans)/float64(kcp.trans)*100)
 				}

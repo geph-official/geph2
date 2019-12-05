@@ -67,6 +67,20 @@ func (s *Snmp) Header() []string {
 	}
 }
 
+// RecentLoss computes the recent pkt loss.
+func (s *Snmp) RecentLoss() float64 {
+	retrans := atomic.LoadUint64(&s.RetransSegs)
+	total := atomic.LoadUint64(&s.OutSegs)
+	if retrans+total == 0 {
+		return 0
+	}
+	if total > 1000 {
+		atomic.StoreUint64(&s.RetransSegs, uint64(float64(retrans)*0.9))
+		atomic.StoreUint64(&s.OutSegs, uint64(float64(total)*0.9))
+	}
+	return 1 - float64(total)/(float64(retrans)+float64(total))
+}
+
 // ToSlice returns current snmp info as slice
 func (s *Snmp) ToSlice() []string {
 	snmp := s.Copy()

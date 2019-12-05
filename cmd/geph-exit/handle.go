@@ -6,9 +6,9 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -51,6 +51,8 @@ func handle(rawClient net.Conn) {
 		return
 	}
 	defer tssClient.Close()
+	// copy the streams while
+	var counter uint64
 	// HACK: it's bridged if the remote address has a dot in it
 	//isBridged := strings.Contains(rawClient.RemoteAddr().String(), ".")
 	// sign the shared secret
@@ -89,12 +91,10 @@ func handle(rawClient net.Conn) {
 			rlp.Encode(tssClient, "FAIL")
 			return
 		}
-		log.Printf("logging in %v as a free user with 800 Kbps", rawClient.RemoteAddr())
 		limiter = rate.NewLimiter(100*1000, 5*1000*1000)
 		limiter.WaitN(context.Background(), 5*1000*1000-500)
 	} else {
-		log.Printf("logging in %v as a paid user", rawClient.RemoteAddr())
-		limiter = rate.NewLimiter(125*100*1000, 1000*1000*1000)
+		limiter = rate.NewLimiter(10*1000*1000, 100*1000*1000)
 	}
 	// IGNORE FOR NOW
 	rlp.Encode(tssClient, "OK")
@@ -128,26 +128,31 @@ func handle(rawClient net.Conn) {
 				if err != nil || isBlack(tcpAddr) {
 					return
 				}
-				remote, err := net.DialTimeout("tcp", host, time.Second*30)
+				remote, err := net.DialTimeout("tcp", tcpAddr.String(), time.Second*30)
 				if err != nil {
 					return
 				}
 				// measure dial latency
 				dialLatency := time.Since(dialStart)
+				log.Printf("dialed %v in %.1fms", host, dialLatency.Seconds()*1000)
 				if statClient != nil {
-					statClient.TimingWithSampleRate(hostname+".dialLatency", dialLatency.Milliseconds(), 0.1)
-					statClient.IncrementWithSampling(hostname+".totalConns", 0.1)
+					statClient.Timing(hostname+".dialLatency", dialLatency.Milliseconds())
+					statClient.Increment(hostname + ".totalConns")
 					defer func() {
-						statClient.TimingWithSampleRate(hostname+".connLifetime", dialLatency.Milliseconds(), 0.1)
+						statClient.Timing(hostname+".connLifetime", dialLatency.Milliseconds())
 					}()
 				}
 
 				remote.SetDeadline(time.Now().Add(time.Hour))
 				defer remote.Close()
-				// copy the streams while
 				onPacket := func(l int) {
-					if statClient != nil && rand.Float64() < float64(l)/1048576.0 {
-						statClient.Increment(hostname + ".transferMB")
+					if statClient != nil {
+						before := atomic.LoadUint64(&counter)
+						atomic.AddUint64(&counter, uint64(l))
+						after := atomic.LoadUint64(&counter)
+						if before/1000000 != after/1000000 {
+							statClient.Increment(hostname + ".transferMB")
+						}
 					}
 				}
 				go func() {

@@ -8,13 +8,15 @@ import (
 )
 
 // Dial dials KCP over obfs in one function.
-func Dial(addr string, cookie []byte) (conn net.Conn, err error) {
+func Dial(addr string, cookie []byte) (conn *kcp.UDPSession, err error) {
 	socket := Wrap(func() net.PacketConn {
 		udpsock, err := net.ListenPacket("udp", "")
 		if err != nil {
 			panic(err)
 		}
-		log.Println("N4: recreating source socket", udpsock.LocalAddr())
+		if doLogging {
+			log.Println("N4: recreating source socket", udpsock.LocalAddr())
+		}
 		return udpsock
 	})
 	kcpConn, err := kcp.NewConn(addr, nil, 0, 0, ObfsListen(cookie, socket))
@@ -49,7 +51,7 @@ func Listen(sock *ObfsSocket) *Listener {
 }
 
 // Accept accepts a new connection.
-func (l *Listener) Accept() (c net.Conn, err error) {
+func (l *Listener) Accept() (c *kcp.UDPSession, err error) {
 	kc, err := l.k.AcceptKCP()
 	if err != nil {
 		return

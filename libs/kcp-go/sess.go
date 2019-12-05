@@ -202,6 +202,11 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn 
 	return sess
 }
 
+// FlowStats summarizes flow statistics
+func (s *UDPSession) FlowStats() (btlBw float64, latency float64, lossFrac float64) {
+	return s.kcp.DRE.maxAckRate, s.kcp.DRE.minRtt, float64(s.kcp.retrans) / float64(s.kcp.trans)
+}
+
 // Read implements net.Conn
 func (s *UDPSession) Read(b []byte) (n int, err error) {
 	for {

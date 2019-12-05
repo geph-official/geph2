@@ -149,7 +149,7 @@ func newSmuxWrapper() *muxWrap {
 					return
 				}
 				kcpConn.SetDeadline(time.Now().Add(time.Second * 30))
-				for i := 0; i < 3; i++ {
+				for i := 0; i < 1; i++ {
 					rlp.Encode(kcpConn, "ping/repeat")
 					var lel string
 					rlp.Decode(kcpConn, &lel)
@@ -165,12 +165,11 @@ func newSmuxWrapper() *muxWrap {
 					kcpConn.Close()
 					return
 				}
-				log.Println(bi.Host, "latency", time.Since(start))
 				select {
 				case bridgeRace <- kcpConn:
-					log.Println(bi.Host, "won race!")
+					log.Println(bi.Host, "WON with latency", time.Since(start))
 				default:
-					log.Println(bi.Host, "lost race")
+					log.Println(bi.Host, "LOST with latency", time.Since(start))
 					kcpConn.Close()
 				}
 			}()

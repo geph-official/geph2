@@ -4,11 +4,18 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/patrickmn/go-cache"
 )
+
+var doLogging = false
+
+func init() {
+	doLogging = os.Getenv("N4LOG") != ""
+}
 
 type oAddr []byte
 
@@ -35,8 +42,8 @@ type ObfsSocket struct {
 func ObfsListen(cookie []byte, wire net.PacketConn) *ObfsSocket {
 	return &ObfsSocket{
 		cookie:  cookie,
-		sscache: cache.New(time.Hour, time.Hour),
-		tunnels: cache.New(time.Hour, time.Hour),
+		sscache: cache.New(time.Hour*24, time.Hour),
+		tunnels: cache.New(time.Hour*24, time.Hour),
 		pending: cache.New(time.Second, time.Hour),
 		wire:    wire,
 	}
@@ -70,7 +77,9 @@ func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 	}
 	// establish a conn
 	pt, hello := newproto(os.cookie)
-	log.Println("N4: establishing to", addr.String())
+	if doLogging {
+		log.Println("N4: establishing to", addr.String())
+	}
 	//log.Println("pretending to write, actually ESTABLISHING")
 	os.pending.SetDefault(addr.String(), pt)
 	os.wlock.Lock()
@@ -113,7 +122,9 @@ RESTART:
 			goto RESTART
 		}
 		os.tunnels.SetDefault(addr.String(), ts)
-		log.Println("N4: got realization of pending", addr)
+		if doLogging {
+			log.Println("N4: got realization of pending", addr)
+		}
 		goto RESTART
 	}
 	// iterate through all the stuff to create an association
@@ -125,7 +136,9 @@ RESTART:
 		plain, e := tun.Decrypt(os.rdbuf[:readBytes])
 		if e == nil {
 			os.tunnels.Delete(k)
-			log.Println("N4: found a decryptable session through scanning, ROAM to", addr)
+			if doLogging {
+				log.Println("N4: found a decryptable session through scanning, ROAM to", addr)
+			}
 			os.tunnels.SetDefault(addr.String(), tun)
 			n = copy(p, plain)
 			if _, ok := os.sscache.Get(string(tun.ss)); ok {
@@ -145,7 +158,9 @@ RESTART:
 	}
 	os.wlock.Lock()
 	os.wire.WriteTo(myhello, addr)
-	log.Println("responded to a hello from", addr)
+	if doLogging {
+		log.Println("N4: responded to a hello from", addr)
+	}
 	os.wlock.Unlock()
 	os.tunnels.SetDefault(addr.String(), ts)
 	os.sscache.SetDefault(string(ts.ss), addr)

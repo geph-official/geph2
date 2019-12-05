@@ -27,20 +27,33 @@ func (sw *muxWrap) fixSess() *smux.Session {
 }
 
 func (sw *muxWrap) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
-	timeout := time.After(time.Second * 20)
-	cancel := make(chan bool)
 	retval := make(chan net.Conn)
 	go func() {
 	start:
 		sess := sw.fixSess()
+		timeoutCancel := make(chan bool)
+		go func() {
+			select {
+			case <-time.After(time.Second * 10):
+				log.Println(cmds, "timing out, resetting")
+				sess.Close()
+			case <-timeoutCancel:
+			}
+		}()
+		// markSessionNil marks the session nil only if it hasn't already been changed
+		markSessionNil := func() {
+			sw.lock.Lock()
+			if sw.session == sess {
+				sw.session = nil
+			}
+			sw.lock.Unlock()
+		}
 		strm, err := sess.OpenStream()
 		if err != nil {
 			sess.Close()
-			sw.lock.Lock()
-			sw.session = nil
-			sw.lock.Unlock()
-			log.Println("can't open stream, trying again", err)
-			close(cancel)
+			log.Println(cmds, "can't open stream, trying again", err)
+			close(timeoutCancel)
+			markSessionNil()
 			goto start
 		}
 		// dial command
@@ -50,23 +63,19 @@ func (sw *muxWrap) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 		err = rlp.Decode(strm, &connected)
 		if err != nil {
 			sess.Close()
-			sw.lock.Lock()
-			sw.session = nil
-			sw.lock.Unlock()
-			log.Println("can't read response, trying again:", err)
+			markSessionNil()
+			log.Println(cmds, "can't read response, trying again:", err)
 			goto start
 		}
+		close(timeoutCancel)
 		select {
 		case retval <- strm:
 		default:
-			log.Println("closing late stream", cmds)
+			log.Println(cmds, "closing late stream. This is BAAAAAD")
 			strm.Close()
 		}
 	}()
 	select {
-	case <-timeout:
-		log.Println("timing out", cmds, "after 20 secs")
-		return nil, false
 	case conn = <-retval:
 		ok = true
 		return
