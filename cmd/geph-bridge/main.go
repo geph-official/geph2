@@ -60,9 +60,16 @@ func main() {
 	generateCookie()
 	bclient = bdclient.NewClient(binderFront, binderReal)
 	go func() {
+		lastTotal := uint64(0)
+		lastRetrans := uint64(0)
 		for {
-			time.Sleep(time.Second * 1)
-			RL := int64(kcp.DefaultSnmp.RecentLoss() * 10000)
+			time.Sleep(time.Second * 10)
+			s := kcp.DefaultSnmp.Copy()
+			deltaTotal := float64(s.OutSegs - lastTotal)
+			lastTotal = s.OutSegs
+			deltaRetrans := float64(s.RetransSegs - lastRetrans)
+			lastRetrans = s.RetransSegs
+			RL := int64(10000 * deltaRetrans / (deltaRetrans + deltaTotal))
 			statClient.Timing(allocGroup+".lossPct", RL)
 		}
 	}()

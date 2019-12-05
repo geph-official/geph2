@@ -43,6 +43,8 @@ func isBlack(addr *net.TCPAddr) bool {
 }
 
 func handle(rawClient net.Conn) {
+	log.Printf("C<%p> accept", rawClient)
+	defer log.Printf("C<%p> close", rawClient)
 	defer rawClient.Close()
 	rawClient.SetDeadline(time.Now().Add(time.Second * 30))
 	tssClient, err := tinyss.Handshake(rawClient)
@@ -70,7 +72,7 @@ func handle(rawClient net.Conn) {
 		KeepAliveInterval: time.Minute * 30,
 		KeepAliveTimeout:  time.Minute * 32,
 		MaxFrameSize:      32768,
-		MaxReceiveBuffer:  1024 * 1024,
+		MaxReceiveBuffer:  10 * 1024 * 1024,
 	})
 	if err != nil {
 		log.Println("Error negotiating smux from", rawClient.RemoteAddr(), err)
@@ -94,7 +96,7 @@ func handle(rawClient net.Conn) {
 		limiter = rate.NewLimiter(100*1000, 5*1000*1000)
 		limiter.WaitN(context.Background(), 5*1000*1000-500)
 	} else {
-		limiter = rate.NewLimiter(10*1000*1000, 100*1000*1000)
+		limiter = rate.NewLimiter(rate.Inf, 10*1000*1000)
 	}
 	// IGNORE FOR NOW
 	rlp.Encode(tssClient, "OK")

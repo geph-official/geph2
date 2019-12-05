@@ -13,6 +13,7 @@ import (
 	"hash/crc32"
 	"io"
 	"log"
+	"math"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -218,6 +219,11 @@ func (s *UDPSession) Read(b []byte) (n int, err error) {
 			atomic.AddUint64(&DefaultSnmp.BytesReceived, uint64(n))
 			return n, nil
 		}
+		if s.kcp.isDead {
+			go s.Close()
+			err = io.ErrClosedPipe
+			return
+		}
 
 		if size := s.kcp.PeekSize(); size > 0 { // peek data size from kcp
 			if len(b) >= size { // receive data into 'b' directly
@@ -308,7 +314,7 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 					}
 				}
 			}
-
+			paceFactor := math.Pow(1.0+math.Max(float64(waitsnd)*2/float64(s.kcp.cwnd)-1, 0), 2)
 			waitsnd = s.kcp.WaitSnd()
 			if waitsnd >= int(s.kcp.snd_wnd) || waitsnd >= int(s.kcp.rmt_wnd) || !s.writeDelay {
 				s.kcp.flush(false)
@@ -316,6 +322,7 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 			}
 			s.mu.Unlock()
 			atomic.AddUint64(&DefaultSnmp.BytesSent, uint64(n))
+			s.paceOnce(int(float64(n) * paceFactor))
 			return n, nil
 		}
 
@@ -585,12 +592,13 @@ func (s *UDPSession) output(buf []byte) {
 // kcp update, returns interval for next calling
 func (s *UDPSession) update() (interval time.Duration) {
 	s.mu.Lock()
-	waitsnd := s.kcp.WaitSnd()
-	cwnd := s.kcp.cwnd
+	//waitsnd := s.kcp.WaitSnd()
+	//cwnd := s.kcp.cwnd
 	interval = time.Duration(s.kcp.flush(false)) * time.Millisecond
-	if s.kcp.WaitSnd() < waitsnd || s.kcp.cwnd != cwnd {
-		s.notifyWriteEvent()
-	}
+	//if s.kcp.WaitSnd() < waitsnd || s.kcp.cwnd != cwnd {
+	s.notifyWriteEvent()
+	s.notifyReadEvent()
+	//}
 	s.uncork()
 	if s.kcp.quiescent <= 0 {
 		interval = 0

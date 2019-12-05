@@ -146,7 +146,7 @@ func (seg *segment) encode(ptr []byte) []byte {
 
 // KCP defines a single KCP connection
 type KCP struct {
-	conv, mtu, mss, state            uint32
+	conv, mtu, mss                   uint32
 	snd_una, snd_nxt, rcv_nxt        uint32
 	ssthresh                         uint32
 	rx_rttvar, rx_srtt               int32
@@ -156,10 +156,12 @@ type KCP struct {
 	interval, ts_flush               uint32
 	nodelay, updated                 uint32
 	ts_probe, probe_wait             uint32
-	dead_link                        uint32
-	wmax                             float64
-	retrans                          uint64
-	trans                            uint64
+
+	isDead bool
+
+	wmax    float64
+	retrans uint64
+	trans   uint64
 
 	DRE struct {
 		delivered   float64
@@ -226,7 +228,6 @@ func NewKCP(conv uint32, output output_callback) *KCP {
 	kcp.interval = IKCP_INTERVAL
 	kcp.ts_flush = IKCP_INTERVAL
 	kcp.ssthresh = IKCP_THRESH_INIT
-	kcp.dead_link = IKCP_DEADLINK
 	kcp.output = output
 	kcp.wmax = 1 << 30
 	kcp.DRE.ppDelTime = make(map[uint32]time.Time)
@@ -484,9 +485,9 @@ func (kcp *KCP) processAck(seg *segment) {
 	delete(kcp.DRE.ppDelTime, seg.sn)
 	ackRate := dataAcked / ackElapsed.Seconds()
 	appLimited := len(kcp.snd_queue) == 0
-	kcp.DRE.avgAckRate = kcp.DRE.avgAckRate*0.999 + ackRate*0.001
-	if kcp.DRE.maxAckRate < ackRate || (!appLimited && time.Since(kcp.DRE.maxAckTime).Seconds() > 10) {
-		kcp.DRE.maxAckRate = ackRate
+	kcp.DRE.avgAckRate = kcp.DRE.avgAckRate*0.99 + ackRate*0.01
+	if kcp.DRE.maxAckRate < kcp.DRE.avgAckRate || (!appLimited && time.Since(kcp.DRE.maxAckTime).Seconds() > 10) {
+		kcp.DRE.maxAckRate = kcp.DRE.avgAckRate
 		kcp.DRE.maxAckTime = kcp.DRE.delTime
 	}
 }
@@ -750,7 +751,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				} else if period%6 == 1 {
 					kcp.LOL.gain *= 0.75
 				}
-				targetBDP := bdp * 2
+				targetBDP := bdp * 4
 				if targetBDP > kcp.cwnd+float64(acks) {
 					kcp.cwnd = (kcp.cwnd + float64(acks))
 				} else {
@@ -760,8 +761,9 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					kcp.cwnd = 4
 				}
 				if doLogging {
-					log.Printf("[%p] %vK / cwnd %v / gain %.2f / %v ms %.2f%%", kcp,
+					log.Printf("[%p] %vK / %vK / cwnd %v / gain %.2f / %v ms %.2f%%", kcp,
 						int(kcp.DRE.maxAckRate/1000),
+						int(kcp.DRE.avgAckRate/1000),
 						int(kcp.cwnd), kcp.LOL.gain,
 						int(kcp.DRE.minRtt),
 						float64(kcp.retrans)/float64(kcp.trans)*100)
@@ -939,7 +941,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.acked == 1 {
 			continue
 		}
-		const RTOSLACK = 250
+		const RTOSLACK = 500
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto
@@ -949,25 +951,32 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			needsend = true
 			segment.fastack = 0
 			segment.rto = kcp.rx_rto
-			segment.resendts = current + segment.rto + RTOSLACK
+			segment.resendts = current + segment.rto
 			change++
 			fastRetransSegs++
 		} else if segment.fastack > 0 && newSegsCount == 0 { // early retransmit
 			needsend = true
 			segment.fastack = 0
 			segment.rto = kcp.rx_rto
-			segment.resendts = current + segment.rto + RTOSLACK
+			segment.resendts = current + segment.rto
 			change++
 			earlyRetransSegs++
 		} else if _itimediff(current, segment.resendts) >= 0 { // RTO
 			needsend = true
-			if kcp.nodelay == 0 {
-				segment.rto += kcp.rx_rto
-			} else {
-				segment.rto += kcp.rx_rto / 2
-			}
+			// if kcp.nodelay == 0 {
+			// 	segment.rto += kcp.rx_rto
+			// } else {
+			// 	segment.rto += kcp.rx_rto / 2
+			// }
+			segment.rto *= 2
 			segment.fastack = 0
-			segment.resendts = current + segment.rto + RTOSLACK
+			segment.resendts = current + segment.rto
+			if segment.rto > IKCP_RTO_MAX {
+				if doLogging {
+					log.Printf("[%p] self-destruct due to far too long RTO", kcp)
+				}
+				kcp.isDead = true
+			}
 			lost++
 			lostSegs++
 		}
@@ -984,10 +993,6 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			ptr = segment.encode(ptr)
 			copy(ptr, segment.data)
 			ptr = ptr[len(segment.data):]
-
-			if segment.xmit >= kcp.dead_link {
-				kcp.state = 0xFFFFFFFF
-			}
 		}
 
 		// get the nearest rto

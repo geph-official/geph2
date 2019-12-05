@@ -18,7 +18,8 @@ func (s *UDPSession) paceOnce(bytes int) {
 	if !now.After(s.pacer.nextSendTime) {
 		time.Sleep(s.pacer.nextSendTime.Sub(now))
 	}
-	s.pacer.nextSendTime = now.Add(time.Duration(paceInterval*1e6/s.kcp.LOL.gain) * time.Microsecond)
+	ival := paceInterval * 1e6 / s.kcp.LOL.gain
+	s.pacer.nextSendTime = now.Add(time.Duration(ival) * time.Microsecond)
 }
 
 func (s *UDPSession) defaultTx(txqueue []ipv4.Message) {
@@ -31,7 +32,6 @@ func (s *UDPSession) defaultTx(txqueue []ipv4.Message) {
 			nbytes += n
 			npkts++
 			xmitBuf.Put(txqueue[k].Buffers[0])
-			s.paceOnce(int(s.kcp.mss))
 		} else {
 			s.notifyWriteError(errors.WithStack(err))
 			break
