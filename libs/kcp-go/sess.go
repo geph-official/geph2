@@ -220,7 +220,8 @@ func (s *UDPSession) Read(b []byte) (n int, err error) {
 			return n, nil
 		}
 		if s.kcp.isDead {
-			go s.Close()
+			s.mu.Unlock()
+			s.Close()
 			err = io.ErrClosedPipe
 			return
 		}

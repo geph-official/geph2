@@ -56,14 +56,45 @@ var sWrap *muxWrap
 // GitVersion is the build version
 var GitVersion string
 
+// find the fastest binder and stick to it
+func binderRace() {
+restart:
+	fronts := strings.Split(binderFront, ",")
+	hosts := strings.Split(binderHost, ",")
+	if len(fronts) != len(hosts) {
+		panic("binderFront and binderHost must be of identical length")
+	}
+	winner := make(chan int, 1000)
+	for i := 0; i < len(fronts); i++ {
+		i := i
+		bdc := bdclient.NewClient(fronts[i], hosts[i])
+		go func() {
+			_, err := bdc.GetClientInfo()
+			if err != nil {
+				log.Printf("[%v %v] failed: %e", fronts[i], hosts[i], err)
+				return
+			}
+			winner <- i
+		}()
+	}
+	select {
+	case i := <-winner:
+		log.Printf("[%v %v] won binder race", fronts[i], hosts[i])
+		binderFront = fronts[i]
+		binderHost = hosts[i]
+	case <-time.After(time.Second * 20):
+		goto restart
+	}
+}
+
 func main() {
 	mrand.Seed(time.Now().UnixNano())
 	// flags
 	flag.StringVar(&username, "username", "pwtest", "username")
 	flag.StringVar(&password, "password", "pwtest", "password")
 	flag.StringVar(&ticketFile, "ticketFile", "", "location for caching auth tickets")
-	flag.StringVar(&binderFront, "binderFront", "https://ajax.aspnetcdn.com/v2", "front location of binder")
-	flag.StringVar(&binderHost, "binderHost", "gephbinder.azureedge.net", "true hostname of binder")
+	flag.StringVar(&binderFront, "binderFront", "https://www.cdn77.com/v2,https://netlify.com/front/v2,https://ajax.aspnetcdn.com/v2", "binder domain-fronting hosts, comma separated")
+	flag.StringVar(&binderHost, "binderHost", "1680337695.rsc.cdn77.org,gracious-payne-f3e2ed.netlify.com,gephbinder.azureedge.net", "real hostname of the binder, comma separated")
 	flag.StringVar(&exitName, "exitName", "us-sfo-01.exits.geph.io", "qualified name of the exit node selected")
 	flag.StringVar(&exitKey, "exitKey", "2f8571e4795032433098af285c0ce9e43c973ac3ad71bf178e4f2aaa39794aec", "ed25519 pubkey of the selected exit")
 	flag.BoolVar(&forceBridge, "forceBridge", false, "force the use of obfuscated bridges")
@@ -113,6 +144,7 @@ func main() {
 	}()
 
 	log.Println("GephNG version", GitVersion)
+	binderRace()
 
 	// special actions
 	if loginCheck {

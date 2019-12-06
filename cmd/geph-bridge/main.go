@@ -181,7 +181,10 @@ func listenLoop() {
 					defer remote.Close()
 					io.Copy(client, remote)
 					return
+				default:
+					return
 				}
+
 			}
 		}()
 	}

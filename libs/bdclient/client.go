@@ -30,6 +30,7 @@ func NewClient(frontDomain, realDomain string) *Client {
 			Transport: &http.Transport{
 				Proxy: nil,
 			},
+			Timeout: time.Second * 10,
 		},
 		frontDomain: frontDomain,
 		realDomain:  realDomain,

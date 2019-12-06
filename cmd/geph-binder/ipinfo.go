@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/abh/geoip"
 )
@@ -22,7 +23,8 @@ func handleClientInfo(w http.ResponseWriter, r *http.Request) {
 		Address string
 		Country string
 	}
-	addr := r.Header.Get("X-Forwarded-For")
+	addrs := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+	addr := addrs[0]
 	cinfo.Address = addr
 	w.Header().Add("content-type", "application/json")
 
