@@ -144,8 +144,6 @@ func main() {
 	}()
 
 	log.Println("GephNG version", GitVersion)
-	binderRace()
-
 	// special actions
 	if loginCheck {
 		log.Println("loginCheck mode")
@@ -154,6 +152,7 @@ func main() {
 			os.Exit(10)
 		}()
 	}
+	binderRace()
 	if binderProxy != "" {
 		log.Println("binderProxy mode on", binderProxy)
 		binderURL, err := url.Parse(binderFront)
