@@ -40,12 +40,26 @@ func getBridges(id string) []string {
 	itms := bridgeCache.Items()
 	seed := fmt.Sprintf("%v-%v", id, time.Now())
 	probability := 10.0 / float64(len(itms))
+	candidates := make([][]string, 10)
+	candidateWeights := make([]int, 10)
+	// try 10 times
+	for i := 0; i < 10; i++ {
+		for k := range itms {
+			h := sha256.Sum256([]byte(k + seed))
+			num := binary.BigEndian.Uint32(h[:4])
+			if float64(num) < probability*float64(4294967295) {
+				candidates[i] = append(candidates[i], k)
+			}
+			//TODO diversity
+			candidateWeights[i] = len(candidates[i])
+		}
+	}
 	var toret []string
-	for k := range itms {
-		h := sha256.Sum256([]byte(k + seed))
-		num := binary.BigEndian.Uint32(h[:4])
-		if float64(num) < probability*float64(4294967295) {
-			toret = append(toret, k)
+	trweight := -1
+	for i := 0; i < 10; i++ {
+		if candidateWeights[i] > trweight {
+			trweight = candidateWeights[i]
+			toret = candidates[i]
 		}
 	}
 	bridgeMapCache.SetDefault(id, toret)

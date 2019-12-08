@@ -68,7 +68,8 @@ func main() {
 		for {
 			rawClient, err := tcpListener.Accept()
 			if err != nil {
-				panic(err)
+				log.Println("error while accepting TCP:", err)
+				continue
 			}
 			go handle(rawClient)
 		}
@@ -86,9 +87,9 @@ func main() {
 	for {
 		rc, err := kcpListener.Accept()
 		if err != nil {
-			panic(err)
+			log.Println("error while accepting TCP:", err)
+			continue
 		}
-		log.Println("GOT KCP!")
 		go handle(rc)
 	}
 }

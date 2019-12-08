@@ -67,7 +67,6 @@ func (ts *tunstate) Encrypt(pkt []byte) (ctext []byte) {
 type prototun struct {
 	mySK   [32]byte
 	cookie []byte
-	hello  []byte
 }
 
 func (pt *prototun) realize(response []byte, isserv bool) (ts *tunstate, err error) {
@@ -78,7 +77,7 @@ func (pt *prototun) realize(response []byte, isserv bool) (ts *tunstate, err err
 		return
 	}
 	// create possible nowcookies
-	for i := -3; i < 3; i++ {
+	for i := -30; i < 30; i++ {
 		// derive nowcookie
 		nowcookie := hm(pt.cookie, []byte(fmt.Sprintf("%v", time.Now().Unix()/30+int64(i))))
 		//log.Printf("trying nowcookie %x", nowcookie[:5])
@@ -103,14 +102,22 @@ func (pt *prototun) realize(response []byte, isserv bool) (ts *tunstate, err err
 	return
 }
 
-func newproto(cookie []byte) (pt *prototun, hello []byte) {
-	// derive nowcookie
-	nowcookie := hm(cookie, []byte(fmt.Sprintf("%v", time.Now().Unix()/30)))
+func newproto(cookie []byte) (pt *prototun) {
 	//log.Printf("newproto with cookie = %x and nowcookie = %x", cookie[:5], nowcookie[:5])
 	// generate keys
 	sk := c25519.GenSK()
+	pt = &prototun{
+		mySK:   sk,
+		cookie: cookie,
+	}
+	return
+}
+
+func (pt *prototun) genHello() []byte {
 	var pk [32]byte
-	curve25519.ScalarBaseMult(&pk, &sk)
+	curve25519.ScalarBaseMult(&pk, &pt.mySK)
+	// derive nowcookie
+	nowcookie := hm(pt.cookie, []byte(fmt.Sprintf("%v", time.Now().Unix()/30)))
 	// create hello
 	nonce := make([]byte, 32)
 	rand.Read(nonce)
@@ -127,15 +134,9 @@ func newproto(cookie []byte) (pt *prototun, hello []byte) {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.BigEndian, tosend)
 	padd := make([]byte, mrand.Int()%1000)
+	mrand.Read(padd)
 	buf.Write(padd)
-	// return
-	pt = &prototun{
-		mySK:   sk,
-		cookie: cookie,
-		hello:  hello,
-	}
-	hello = buf.Bytes()
-	return
+	return buf.Bytes()
 }
 
 func aead(key []byte) cipher.AEAD {

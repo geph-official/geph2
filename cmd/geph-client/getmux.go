@@ -69,6 +69,7 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 	if reply != "OK" {
 		err = errors.New("authentication failed")
 		rawConn.Close()
+		log.Println("authentication failed", reply)
 		os.Exit(403)
 	}
 	ss, err = smux.Client(cryptConn, &smux.Config{

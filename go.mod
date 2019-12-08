@@ -34,4 +34,5 @@ require (
 	golang.org/x/crypto v0.0.0-20191205180655-e7c4368fe9dd
 	golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0
+	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 )

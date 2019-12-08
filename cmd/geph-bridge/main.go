@@ -96,7 +96,7 @@ func listenLoop() {
 			if e != nil {
 				log.Println("error adding bridge:", e)
 			}
-			time.Sleep(time.Minute * 10)
+			time.Sleep(time.Minute)
 		}
 	}()
 	e2e := niaucchi4.ObfsListen(cookie, udpsock)

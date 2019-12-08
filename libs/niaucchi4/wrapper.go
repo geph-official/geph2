@@ -2,6 +2,7 @@ package niaucchi4
 
 import (
 	"errors"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -18,8 +19,7 @@ type Wrapper struct {
 // Wrap creates a new Wrapper instance.
 func Wrap(getConn func() net.PacketConn) *Wrapper {
 	return &Wrapper{
-		getConn:      getConn,
-		lastActivity: time.Now(),
+		getConn: getConn,
 	}
 }
 
@@ -53,10 +53,13 @@ func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 	w.lock.Lock()
 	defer w.lock.Unlock()
 	if w.wire != nil {
-		if time.Since(w.lastActivity) > time.Second*30 {
+		if time.Since(w.lastActivity) > time.Second*3 {
 			w.wire.Close()
 			w.wire = nil
 			w.wire = w.getConn()
+			if doLogging {
+				log.Println("N4: reallocating to", w.wire.LocalAddr())
+			}
 			w.lastActivity = time.Now()
 		}
 		w.wire.WriteTo(b, addr)
@@ -70,6 +73,7 @@ func (w *Wrapper) Close() error {
 	if w.wire != nil {
 		w.wire.Close()
 	}
+	w.wire = nil
 	return nil
 }
 

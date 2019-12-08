@@ -44,7 +44,7 @@ func ObfsListen(cookie []byte, wire net.PacketConn) *ObfsSocket {
 		cookie:  cookie,
 		sscache: cache.New(time.Hour*24, time.Hour),
 		tunnels: cache.New(time.Hour*24, time.Hour),
-		pending: cache.New(time.Second, time.Hour),
+		pending: cache.New(time.Hour, time.Hour),
 		wire:    wire,
 	}
 }
@@ -71,19 +71,23 @@ func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 	if zz, ok := os.pending.Get(addr.String()); ok {
 		//log.Println("pretending to write since ALREADY PENDING")
 		os.wlock.Lock()
-		os.wire.WriteTo(zz.(*prototun).hello, addr)
+		os.wire.WriteTo(zz.(*prototun).genHello(), addr)
 		os.wlock.Unlock()
+		if doLogging {
+			log.Println("N4: retransmitting existing pending to", addr.String())
+		}
 		return len(b), nil
 	}
 	// establish a conn
-	pt, hello := newproto(os.cookie)
+	pt := newproto(os.cookie)
 	if doLogging {
 		log.Println("N4: establishing to", addr.String())
 	}
 	//log.Println("pretending to write, actually ESTABLISHING")
 	os.pending.SetDefault(addr.String(), pt)
 	os.wlock.Lock()
-	_, err := os.wire.WriteTo(hello, addr)
+	var err error
+	_, err = os.wire.WriteTo(pt.genHello(), addr)
 	os.wlock.Unlock()
 	if err != nil {
 		return 0, nil
@@ -102,16 +106,18 @@ RESTART:
 		tun := tuni.(*tunstate)
 		//log.Println("got packet of known tunnel from", addr.String())
 		plain, e := tun.Decrypt(os.rdbuf[:readBytes])
-		if e != nil {
-			goto RESTART
+		if e == nil {
+			os.tunnels.SetDefault(addr.String(), tun)
+			n = copy(p, plain)
+			if _, ok := os.sscache.Get(string(tun.ss)); ok {
+				os.sscache.SetDefault(string(tun.ss), addr)
+				addr = oAddr(tun.ss)
+			}
+			return
 		}
-		os.tunnels.SetDefault(addr.String(), tun)
-		n = copy(p, plain)
-		if _, ok := os.sscache.Get(string(tun.ss)); ok {
-			os.sscache.SetDefault(string(tun.ss), addr)
-			addr = oAddr(tun.ss)
+		if doLogging {
+			log.Println("N4: apparently invalid pkt from known host", addr.String())
 		}
-		return
 	}
 	// check if the packet belongs to a pending thing
 	if proti, ok := os.pending.Get(addr.String()); ok {
@@ -150,14 +156,16 @@ RESTART:
 	}
 	// otherwise it has to be some sort of tunnel opener
 	//log.Println("got suspected hello")
-	pt, myhello := newproto(os.cookie)
+	pt := newproto(os.cookie)
 	ts, e := pt.realize(os.rdbuf[:readBytes], true)
 	if e != nil {
-		// log.Println("got bad hello", e)
+		if doLogging {
+			log.Println("N4: bad hello from", addr.String())
+		}
 		goto RESTART
 	}
 	os.wlock.Lock()
-	os.wire.WriteTo(myhello, addr)
+	os.wire.WriteTo(pt.genHello(), addr)
 	if doLogging {
 		log.Println("N4: responded to a hello from", addr)
 	}
