@@ -150,8 +150,8 @@ func main() {
 	if loginCheck {
 		log.Println("loginCheck mode")
 		go func() {
-			time.Sleep(time.Second * 30)
-			os.Exit(-1)
+			time.Sleep(time.Second * 60)
+			os.Exit(10)
 		}()
 	}
 	if binderProxy != "" {
@@ -224,7 +224,7 @@ func main() {
 		err := rlp.Decode(rm, &ip)
 		if err != nil {
 			log.Println("Uh oh, cannot get IP!")
-			os.Exit(404)
+			os.Exit(10)
 		}
 		ip = strings.TrimSpace(ip)
 		log.Println("Successfully got external IP", ip)

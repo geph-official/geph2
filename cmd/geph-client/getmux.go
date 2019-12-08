@@ -70,7 +70,7 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 		err = errors.New("authentication failed")
 		rawConn.Close()
 		log.Println("authentication failed", reply)
-		os.Exit(403)
+		os.Exit(11)
 	}
 	ss, err = smux.Client(cryptConn, &smux.Config{
 		KeepAliveInterval: time.Minute * 20,
@@ -98,7 +98,7 @@ func newSmuxWrapper() *muxWrap {
 		if err != nil {
 			log.Println("error authenticating:", err)
 			if errors.Is(err, io.EOF) {
-				os.Exit(403)
+				os.Exit(11)
 			}
 			time.Sleep(time.Second)
 			goto retry
