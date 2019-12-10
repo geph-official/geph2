@@ -93,10 +93,10 @@ func handle(rawClient net.Conn) {
 			rlp.Encode(tssClient, "FAIL")
 			return
 		}
-		limiter = rate.NewLimiter(100*1000, 5*1000*1000)
-		limiter.WaitN(context.Background(), 5*1000*1000-500)
+		limiter = rate.NewLimiter(100*1000, 1*1000*1000)
+		limiter.WaitN(context.Background(), 1*1000*1000-500)
 	} else {
-		limiter = rate.NewLimiter(rate.Inf, 10*1000*1000)
+		limiter = rate.NewLimiter(rate.Inf, 100*1000*1000)
 	}
 	// IGNORE FOR NOW
 	rlp.Encode(tssClient, "OK")

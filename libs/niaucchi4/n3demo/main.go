@@ -15,8 +15,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/geph-official/geph2/libs/kcp-go"
-	"github.com/geph-official/geph2/libs/niaucchi4/connswarm"
+	"github.com/geph-official/geph2/libs/niaucchi4/backedtcp"
+	"github.com/geph-official/geph2/libs/tinysocks"
+	"github.com/geph-official/geph2/libs/tinyss"
 	"github.com/hashicorp/yamux"
 	"golang.org/x/net/proxy"
 )
@@ -74,49 +75,24 @@ func main() {
 	if flagClient != "" && flagServer != "" {
 		log.Fatal("cannot give both -c or -s")
 	}
-	// STATS
-	go func() {
-		for {
-			time.Sleep(time.Second * 5)
-			rt := kcp.DefaultSnmp.RetransSegs
-			tot := kcp.DefaultSnmp.OutPkts
-			log.Printf("%2.f pct retrans, %v recovered", float64(rt)/float64(tot)*100,
-				kcp.DefaultSnmp.FECRecovered)
-		}
-	}()
 	// server
 	if flagServer != "" {
-		swarm := connswarm.NewSwarm()
-		go func() {
-			ts, err := net.Listen("tcp", flagServer)
-			if err != nil {
-				panic(err)
-			}
-			for {
-				c, e := ts.Accept()
-				if e != nil {
-					panic(e)
-				}
-				swarm.AddConn(c, time.Minute)
-			}
-		}()
-		listener, err := kcp.ServeConn(nil, 0, 0, swarm)
+		tlistener, err := net.Listen("tcp", flagServer)
 		if err != nil {
 			panic(err)
 		}
+		listener := backedtcp.Listen(tlistener)
 		log.Println("KCP socks5 listener spinned up!")
 		for {
-			kclient, err := listener.AcceptKCP()
+			kclient, err := listener.Accept()
 			if err != nil {
 				panic(err)
 			}
 			log.Println("Accepted kclient from", kclient.RemoteAddr())
-			kclient.SetWindowSize(10000, 10000)
-			kclient.SetNoDelay(0, 50, 3, 0)
-			kclient.SetStreamMode(true)
 			go func() {
 				defer kclient.Close()
-				client, err := yamux.Server(kclient, yamuxCfg)
+				cryptClient, _ := tinyss.Handshake(kclient)
+				client, err := yamux.Server(cryptClient, yamuxCfg)
 				if err != nil {
 					log.Println("cannot start yamux:", err)
 					return
@@ -131,25 +107,24 @@ func main() {
 					log.Println("accepted stream")
 					go func() {
 						defer stream.Close()
-						io.Copy(stream, stream)
-						// host, err := tinysocks.ReadRequest(stream)
-						// if err != nil {
-						// 	log.Println("error reading socks5:", err)
-						// 	return
-						// }
-						// remote, err := net.Dial("tcp", host)
-						// if err != nil {
-						// 	tinysocks.CompleteRequest(0x04, stream)
-						// 	return
-						// }
-						// defer remote.Close()
-						// tinysocks.CompleteRequest(0, stream)
-						// go func() {
-						// 	defer remote.Close()
-						// 	defer stream.Close()
-						// 	io.Copy(remote, stream)
-						// }()
-						// io.Copy(stream, remote)
+						host, err := tinysocks.ReadRequest(stream)
+						if err != nil {
+							log.Println("error reading socks5:", err)
+							return
+						}
+						remote, err := net.Dial("tcp", host)
+						if err != nil {
+							tinysocks.CompleteRequest(0x04, stream)
+							return
+						}
+						defer remote.Close()
+						tinysocks.CompleteRequest(0, stream)
+						go func() {
+							defer remote.Close()
+							defer stream.Close()
+							io.Copy(remote, stream)
+						}()
+						io.Copy(stream, remote)
 					}()
 				}
 			}()
@@ -157,31 +132,33 @@ func main() {
 	}
 	// client
 	if flagClient != "" {
-		swarm := connswarm.NewSwarm()
-		go func() {
-			for {
-				rem, err := net.Dial("tcp", flagClient)
-				if err != nil {
-					panic(err)
-				}
-				swarm.AddConn(rem, time.Minute)
-				time.Sleep(time.Second * 20)
-			}
-		}()
 		listener, err := net.Listen("tcp", "localhost:8808")
 		if err != nil {
 			panic(err)
 		}
 		log.Println("TCP listener started on", listener.Addr())
-		kcpremote, err := kcp.NewConn(flagClient, nil, 0, 0, swarm)
+		zremote, err := net.Dial("tcp", flagClient)
 		if err != nil {
 			panic(err)
 		}
-		defer kcpremote.Close()
-		kcpremote.SetWindowSize(10000, 10000)
-		kcpremote.SetNoDelay(0, 50, 3, 0)
-		kcpremote.SetStreamMode(true)
-		bremote, err := yamux.Client(kcpremote, yamuxCfg)
+		defer zremote.Close()
+		zremote.Write(make([]byte, 8))
+		remote := backedtcp.NewSocket(zremote)
+		go func() {
+			for {
+				time.Sleep(time.Second * 10)
+				zremote, err := net.Dial("tcp", flagClient)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
+				defer zremote.Close()
+				zremote.Write(make([]byte, 8))
+				remote.Replace(zremote)
+			}
+		}()
+		cryptRemote, _ := tinyss.Handshake(remote)
+		bremote, err := yamux.Client(cryptRemote, yamuxCfg)
 		if err != nil {
 			panic(err)
 		}

@@ -35,7 +35,7 @@ var binderFront string
 var binderHost string
 var exitName string
 var exitKey string
-var forceBridge bool
+var forceNoBridge bool
 
 var loginCheck bool
 var binderProxy string
@@ -97,7 +97,7 @@ func main() {
 	flag.StringVar(&binderHost, "binderHost", "1680337695.rsc.cdn77.org,gracious-payne-f3e2ed.netlify.com,gephbinder.azureedge.net", "real hostname of the binder, comma separated")
 	flag.StringVar(&exitName, "exitName", "us-sfo-01.exits.geph.io", "qualified name of the exit node selected")
 	flag.StringVar(&exitKey, "exitKey", "2f8571e4795032433098af285c0ce9e43c973ac3ad71bf178e4f2aaa39794aec", "ed25519 pubkey of the selected exit")
-	flag.BoolVar(&forceBridge, "forceBridge", false, "force the use of obfuscated bridges")
+	flag.BoolVar(&forceNoBridge, "forceNoBridge", false, "force the use of obfuscated bridges")
 	flag.StringVar(&socksAddr, "socksAddr", "localhost:9909", "SOCKS5 listening address")
 	flag.StringVar(&httpAddr, "httpAddr", "localhost:9910", "HTTP proxy listener")
 	flag.StringVar(&statsAddr, "statsAddr", "localhost:9809", "HTTP listener for statistics")
@@ -185,7 +185,7 @@ func main() {
 	sWrap = newSmuxWrapper()
 
 	// automatically pick mode
-	if !forceBridge {
+	if !forceNoBridge {
 		country, err := bindClient.GetClientInfo()
 		if err != nil {
 			log.Println("cannot get country, conservatively using bridges", err)
@@ -198,6 +198,8 @@ func main() {
 				direct = true
 			}
 		}
+	} else {
+		direct = true
 	}
 
 	if dnsAddr != "" {

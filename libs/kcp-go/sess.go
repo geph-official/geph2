@@ -13,7 +13,6 @@ import (
 	"hash/crc32"
 	"io"
 	"log"
-	"math"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -281,7 +280,12 @@ func (s *UDPSession) Read(b []byte) (n int, err error) {
 }
 
 // Write implements net.Conn
-func (s *UDPSession) Write(b []byte) (n int, err error) { return s.WriteBuffers([][]byte{b}) }
+func (s *UDPSession) Write(b []byte) (n int, err error) {
+	if CongestionControl == "LOL" {
+		s.paceOnce(len(b))
+	}
+	return s.WriteBuffers([][]byte{b})
+}
 
 // WriteBuffers write a vector of byte slices to the underlying connection
 func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
@@ -315,7 +319,6 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 					}
 				}
 			}
-			paceFactor := math.Pow(1.0+math.Max(float64(waitsnd)*2/float64(s.kcp.cwnd)-1, 0), 2)
 			waitsnd = s.kcp.WaitSnd()
 			if waitsnd >= int(s.kcp.snd_wnd) || waitsnd >= int(s.kcp.rmt_wnd) || !s.writeDelay {
 				s.kcp.flush(false)
@@ -323,7 +326,7 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 			}
 			s.mu.Unlock()
 			atomic.AddUint64(&DefaultSnmp.BytesSent, uint64(n))
-			s.paceOnce(int(float64(n) * paceFactor))
+
 			return n, nil
 		}
 

@@ -173,6 +173,9 @@ type KCP struct {
 		maxAckTime  time.Time
 		minRtt      float64
 		minRttTime  time.Time
+
+		runSampleSum float64
+		runSamples   int
 	}
 
 	LOL struct {
@@ -484,19 +487,15 @@ func (kcp *KCP) processAck(seg *segment) {
 	ackElapsed := kcp.DRE.delTime.Sub(pDelTime)
 	delete(kcp.DRE.ppDelTime, seg.sn)
 	ackRate := dataAcked / ackElapsed.Seconds()
-	appLimited := len(kcp.snd_queue) == 0
-	kcp.DRE.avgAckRate = kcp.DRE.avgAckRate*0.99 + ackRate*0.01
-	if kcp.DRE.maxAckRate < kcp.DRE.avgAckRate || (!appLimited && time.Since(kcp.DRE.maxAckTime).Seconds() > 10) {
-		kcp.DRE.maxAckRate = kcp.DRE.avgAckRate
-		kcp.DRE.maxAckTime = kcp.DRE.delTime
-	}
+	//appLimited := len(kcp.snd_queue) == 0
+	kcp.DRE.runSamples += len(seg.data)
+	kcp.DRE.runSampleSum += ackRate * float64(len(seg.data))
 }
 
 func (kcp *KCP) parse_ack(sn uint32) {
 	if _itimediff(sn, kcp.snd_una) < 0 || _itimediff(sn, kcp.snd_nxt) >= 0 {
 		return
 	}
-
 	for k := range kcp.snd_buf {
 		seg := &kcp.snd_buf[k]
 		if sn == seg.sn {
@@ -721,7 +720,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 			case "BIC":
 				kcp.bic_onack(acks)
 			case "LOL":
-				bdp := kcp.bdp()/float64(kcp.mss) + 16
+				bdp := kcp.bdp() / float64(kcp.mss)
 				kcp.LOL.gain = 1
 				if !kcp.LOL.filledPipe {
 					// check for filled pipe
@@ -733,7 +732,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					} else {
 						kcp.LOL.fullBwCount++
 					}
-					if kcp.LOL.fullBwCount >= 3 {
+					if kcp.LOL.fullBwCount >= 5 {
 						//log.Printf("BW filled at %2.fK", kcp.LOL.fullBw/1000)
 						kcp.LOL.filledPipe = true
 						kcp.LOL.lastFillTime = time.Now()
@@ -744,14 +743,14 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					//log.Println("pipe not filled, pumping desired up")
 					kcp.LOL.gain *= 2.89
 				}
-				// vibrate the gain up and down every 10 rtts
-				period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
+				// vibrate the gain up and down every 50 rtts
+				period := int(float64(time.Now().UnixNano()) / 5e6 / kcp.DRE.minRtt)
 				if period%6 == 0 {
-					kcp.LOL.gain *= 1.25
+					kcp.LOL.gain *= 1.5
 				} else if period%6 == 1 {
-					kcp.LOL.gain *= 0.75
+					kcp.LOL.gain /= 1.5
 				}
-				targetBDP := bdp * 4
+				targetBDP := bdp * 2 * kcp.LOL.gain
 				if targetBDP > kcp.cwnd+float64(acks) {
 					kcp.cwnd = (kcp.cwnd + float64(acks))
 				} else {
@@ -787,6 +786,21 @@ func (kcp *KCP) wnd_unused() uint16 {
 
 var ackDebugCache = cache.New(time.Hour, time.Hour)
 
+func (kcp *KCP) updateSample() {
+	if kcp.DRE.runSamples > 0 {
+		avgRate := kcp.DRE.runSampleSum / float64(kcp.DRE.runSamples)
+		kcp.DRE.avgAckRate = 0.99*kcp.DRE.avgAckRate + 0.01*avgRate
+		if kcp.DRE.maxAckRate < avgRate || float64(time.Since(kcp.DRE.maxAckTime).Milliseconds()) > 10000 {
+			kcp.DRE.maxAckRate = avgRate
+			kcp.DRE.maxAckTime = kcp.DRE.delTime
+		}
+	}
+	if kcp.DRE.runSamples != 0 {
+		kcp.DRE.runSamples = 0
+		kcp.DRE.runSampleSum = 0
+	}
+}
+
 // flush pending data
 func (kcp *KCP) flush(ackOnly bool) uint32 {
 	var busy bool
@@ -798,10 +812,10 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.LOL.filledPipe = false
 				kcp.LOL.fullBwCount = 0
 				kcp.LOL.fullBw = 0
-				kcp.cwnd = 4
 			}
 		}
 	}()
+	defer kcp.updateSample()
 
 	var seg segment
 	seg.conv = kcp.conv
@@ -941,7 +955,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.acked == 1 {
 			continue
 		}
-		const RTOSLACK = 500
+		const RTOSLACK = 50
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto
@@ -968,7 +982,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			// } else {
 			// 	segment.rto += kcp.rx_rto / 2
 			// }
-			segment.rto *= 2
+			segment.rto += segment.rto / 2
 			segment.fastack = 0
 			segment.resendts = current + segment.rto
 			if segment.rto > IKCP_RTO_MAX {
@@ -1027,17 +1041,20 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		switch CongestionControl {
 		case "BIC":
 			// congestion control, https://tools.ietf.org/html/rfc5681
-			if lostSegs > 10 || change > 20 {
+			if lostSegs > 1 || change > 1 {
 				kcp.bic_onloss()
 			}
 		case "LOL":
-			// if lostSegs > 0 {
-			// 	log.Println("RTO timeout, cutting cwnd to 1")
-			// 	kcp.cwnd = 1
+			// if lostSegs > 10 || change > 10 {
+			// 	kcp.cwnd /= 2
+			// 	kcp.DRE.runSamples = -1000
+			// 	// if kcp.DRE.maxAckRate > kcp.DRE.avgAckRate {
+			// 	// 	kcp.DRE.maxAckRate = kcp.DRE.avgAckRate
+			// 	// }
 			// }
 		}
-		if kcp.cwnd < 32 {
-			kcp.cwnd = 32
+		if kcp.cwnd < 4 {
+			kcp.cwnd = 4
 		}
 	}
 

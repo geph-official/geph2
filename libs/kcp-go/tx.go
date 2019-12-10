@@ -10,8 +10,8 @@ import (
 
 func (s *UDPSession) paceOnce(bytes int) {
 	paceInterval := float64(bytes) / s.kcp.DRE.maxAckRate
-	if paceInterval > 0.001 {
-		paceInterval = 0.001
+	if paceInterval > 0.01 {
+		paceInterval = 0.01
 	}
 	// wait till NST
 	now := time.Now()
