@@ -164,15 +164,16 @@ type KCP struct {
 	trans   uint64
 
 	DRE struct {
-		delivered   float64
-		ppDelivered map[uint32]float64
-		delTime     time.Time
-		ppDelTime   map[uint32]time.Time
-		avgAckRate  float64
-		maxAckRate  float64
-		maxAckTime  time.Time
-		minRtt      float64
-		minRttTime  time.Time
+		delivered    float64
+		ppDelivered  map[uint32]float64
+		delTime      time.Time
+		ppDelTime    map[uint32]time.Time
+		ppAppLimited map[uint32]bool
+		avgAckRate   float64
+		maxAckRate   float64
+		maxAckTime   time.Time
+		minRtt       float64
+		minRttTime   time.Time
 
 		runSampleSum float64
 		runSamples   int
@@ -235,6 +236,7 @@ func NewKCP(conv uint32, output output_callback) *KCP {
 	kcp.wmax = 1 << 30
 	kcp.DRE.ppDelTime = make(map[uint32]time.Time)
 	kcp.DRE.ppDelivered = make(map[uint32]float64)
+	kcp.DRE.ppAppLimited = make(map[uint32]bool)
 	if CongestionControl == "BBR" {
 		//kcp.bbrOnConnectionInit()
 	}
@@ -486,10 +488,17 @@ func (kcp *KCP) processAck(seg *segment) {
 	}
 	ackElapsed := kcp.DRE.delTime.Sub(pDelTime)
 	delete(kcp.DRE.ppDelTime, seg.sn)
+	appLimited, ok := kcp.DRE.ppAppLimited[seg.sn]
+	if !ok {
+		return
+	}
+	delete(kcp.DRE.ppAppLimited, seg.sn)
 	ackRate := dataAcked / ackElapsed.Seconds()
-	//appLimited := len(kcp.snd_queue) == 0
-	kcp.DRE.runSamples += len(seg.data)
-	kcp.DRE.runSampleSum += ackRate * float64(len(seg.data))
+	if !appLimited || ackRate > kcp.DRE.maxAckRate {
+		kcp.DRE.runSamples += len(seg.data)
+		kcp.DRE.runSampleSum += ackRate * float64(len(seg.data))
+		kcp.updateSample()
+	}
 }
 
 func (kcp *KCP) parse_ack(sn uint32) {
@@ -744,13 +753,13 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					kcp.LOL.gain *= 2.89
 				}
 				// vibrate the gain up and down every 50 rtts
-				period := int(float64(time.Now().UnixNano()) / 5e6 / kcp.DRE.minRtt)
+				period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
 				if period%6 == 0 {
-					kcp.LOL.gain *= 1.5
+					kcp.LOL.gain *= 1.25
 				} else if period%6 == 1 {
-					kcp.LOL.gain /= 1.5
+					kcp.LOL.gain /= 1.25
 				}
-				targetBDP := bdp * 2 * kcp.LOL.gain
+				targetBDP := bdp * 3
 				if targetBDP > kcp.cwnd+float64(acks) {
 					kcp.cwnd = (kcp.cwnd + float64(acks))
 				} else {
@@ -790,8 +799,12 @@ func (kcp *KCP) updateSample() {
 	if kcp.DRE.runSamples > 0 {
 		avgRate := kcp.DRE.runSampleSum / float64(kcp.DRE.runSamples)
 		kcp.DRE.avgAckRate = 0.99*kcp.DRE.avgAckRate + 0.01*avgRate
-		if kcp.DRE.maxAckRate < avgRate || float64(time.Since(kcp.DRE.maxAckTime).Milliseconds()) > 10000 {
-			kcp.DRE.maxAckRate = avgRate
+		if kcp.DRE.maxAckRate < avgRate || float64(time.Since(kcp.DRE.maxAckTime).Milliseconds()) > kcp.DRE.minRtt*10 {
+			if kcp.DRE.maxAckRate > avgRate {
+				kcp.DRE.maxAckRate = kcp.DRE.maxAckRate*0.5 + avgRate*0.5
+			} else {
+				kcp.DRE.maxAckRate = avgRate
+			}
 			kcp.DRE.maxAckTime = kcp.DRE.delTime
 		}
 	}
@@ -815,7 +828,6 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			}
 		}
 	}()
-	defer kcp.updateSample()
 
 	var seg segment
 	seg.conv = kcp.conv
@@ -916,6 +928,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 
 	// sliding window, controlled by snd_nxt && sna_una+cwnd
 	newSegsCount := 0
+	appLimited := len(kcp.snd_buf) < 2
 	for k := range kcp.snd_queue {
 		busy = true
 		if _itimediff(kcp.snd_nxt, kcp.snd_una+cwnd) >= 0 {
@@ -927,6 +940,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		newseg.sn = kcp.snd_nxt
 		kcp.DRE.ppDelivered[newseg.sn] = kcp.DRE.delivered
 		kcp.DRE.ppDelTime[newseg.sn] = kcp.DRE.delTime
+		kcp.DRE.ppAppLimited[newseg.sn] = appLimited
 		kcp.snd_buf = append(kcp.snd_buf, newseg)
 		kcp.snd_nxt++
 		newSegsCount++
@@ -955,7 +969,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.acked == 1 {
 			continue
 		}
-		const RTOSLACK = 50
+		const RTOSLACK = 250
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto

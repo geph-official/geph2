@@ -32,6 +32,9 @@ func (s *UDPSession) defaultTx(txqueue []ipv4.Message) {
 			nbytes += n
 			npkts++
 			xmitBuf.Put(txqueue[k].Buffers[0])
+			if CongestionControl == "LOL" {
+				s.paceOnce(n)
+			}
 		} else {
 			s.notifyWriteError(errors.WithStack(err))
 			break

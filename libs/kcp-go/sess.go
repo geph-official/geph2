@@ -220,7 +220,7 @@ func (s *UDPSession) Read(b []byte) (n int, err error) {
 		}
 		if s.kcp.isDead {
 			s.mu.Unlock()
-			s.Close()
+			go s.Close()
 			err = io.ErrClosedPipe
 			return
 		}
@@ -281,9 +281,6 @@ func (s *UDPSession) Read(b []byte) (n int, err error) {
 
 // Write implements net.Conn
 func (s *UDPSession) Write(b []byte) (n int, err error) {
-	if CongestionControl == "LOL" {
-		s.paceOnce(len(b))
-	}
 	return s.WriteBuffers([][]byte{b})
 }
 
@@ -606,6 +603,9 @@ func (s *UDPSession) update() (interval time.Duration) {
 	s.uncork()
 	if s.kcp.quiescent <= 0 {
 		interval = 0
+	}
+	if s.kcp.isDead {
+		go s.Close()
 	}
 	s.mu.Unlock()
 	return
