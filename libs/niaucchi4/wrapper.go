@@ -3,6 +3,7 @@ package niaucchi4
 import (
 	"errors"
 	"log"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -53,7 +54,7 @@ func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 	w.lock.Lock()
 	defer w.lock.Unlock()
 	if w.wire != nil {
-		if time.Since(w.lastActivity) > time.Second*3 {
+		if time.Since(w.lastActivity) > time.Millisecond*time.Duration(rand.ExpFloat64()*20000.0) {
 			w.wire.Close()
 			w.wire = nil
 			w.wire = w.getConn()

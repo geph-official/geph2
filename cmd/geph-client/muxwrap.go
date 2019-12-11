@@ -31,15 +31,6 @@ func (sw *muxWrap) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 	go func() {
 	start:
 		sess := sw.fixSess()
-		timeoutCancel := make(chan bool)
-		go func() {
-			select {
-			case <-time.After(time.Second * 10):
-				log.Println(cmds, "timing out, resetting")
-				sess.Close()
-			case <-timeoutCancel:
-			}
-		}()
 		// markSessionNil marks the session nil only if it hasn't already been changed
 		markSessionNil := func() {
 			sw.lock.Lock()
@@ -52,7 +43,6 @@ func (sw *muxWrap) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 		if err != nil {
 			sess.Close()
 			log.Println(cmds, "can't open stream, trying again", err)
-			close(timeoutCancel)
 			markSessionNil()
 			goto start
 		}
@@ -67,7 +57,6 @@ func (sw *muxWrap) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 			log.Println(cmds, "can't read response, trying again:", err)
 			goto start
 		}
-		close(timeoutCancel)
 		select {
 		case retval <- strm:
 		default:
@@ -77,6 +66,7 @@ func (sw *muxWrap) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 	}()
 	select {
 	case conn = <-retval:
+		conn.SetDeadline(time.Now().Add(time.Hour))
 		ok = true
 		return
 	}
