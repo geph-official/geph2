@@ -37,7 +37,7 @@ const (
 // 10 seconds
 const quiescentMax = 200
 
-var CongestionControl = "LOL"
+var CongestionControl = "BIC"
 
 var doLogging = false
 
@@ -240,6 +240,8 @@ func NewKCP(conv uint32, output output_callback) *KCP {
 	kcp.DRE.ppDelTime = make(map[uint32]time.Time)
 	kcp.DRE.ppDelivered = make(map[uint32]float64)
 	kcp.DRE.ppAppLimited = make(map[uint32]bool)
+	kcp.shortLoss = 1
+	kcp.longLoss = 1
 	if CongestionControl == "BBR" {
 		//kcp.bbrOnConnectionInit()
 	}
@@ -978,7 +980,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.acked == 1 {
 			continue
 		}
-		const RTOSLACK = 600
+		const RTOSLACK = 60
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto
