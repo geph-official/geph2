@@ -1,6 +1,7 @@
 package kcp
 
 import (
+	"math"
 	"sync/atomic"
 	"time"
 
@@ -9,16 +10,13 @@ import (
 )
 
 func (s *UDPSession) paceOnce(bytes int) {
-	paceInterval := float64(bytes) / s.kcp.DRE.maxAckRate
-	if paceInterval > 0.01 {
-		paceInterval = 0.01
-	}
+	paceInterval := float64(bytes) / math.Max(s.kcp.DRE.maxAckRate, 100*1000)
 	// wait till NST
 	now := time.Now()
 	if !now.After(s.pacer.nextSendTime) {
 		time.Sleep(s.pacer.nextSendTime.Sub(now))
 	}
-	ival := paceInterval * 1e6 / s.kcp.LOL.gain
+	ival := paceInterval * 1e6 / s.kcp.paceGain()
 	s.pacer.nextSendTime = now.Add(time.Duration(ival) * time.Microsecond)
 }
 

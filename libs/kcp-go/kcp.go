@@ -206,6 +206,9 @@ type KCP struct {
 	output   output_callback
 
 	quiescent int
+
+	shortLoss float64
+	longLoss  float64
 }
 
 type ackItem struct {
@@ -730,35 +733,6 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				kcp.bic_onack(acks)
 			case "LOL":
 				bdp := kcp.bdp() / float64(kcp.mss)
-				kcp.LOL.gain = 1
-				if !kcp.LOL.filledPipe {
-					// check for filled pipe
-					if kcp.DRE.maxAckRate > kcp.LOL.fullBw {
-						// still growing
-						kcp.LOL.fullBw = kcp.DRE.maxAckRate
-						kcp.LOL.fullBwCount = 0
-						//log.Println("growing...")
-					} else {
-						kcp.LOL.fullBwCount++
-					}
-					if kcp.LOL.fullBwCount >= 5 {
-						//log.Printf("BW filled at %2.fK", kcp.LOL.fullBw/1000)
-						kcp.LOL.filledPipe = true
-						kcp.LOL.lastFillTime = time.Now()
-						kcp.LOL.gain /= 2.89
-					}
-				}
-				if !kcp.LOL.filledPipe {
-					//log.Println("pipe not filled, pumping desired up")
-					kcp.LOL.gain *= 2.89
-				}
-				// vibrate the gain up and down every 50 rtts
-				period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
-				if period%6 == 0 {
-					kcp.LOL.gain *= 1.25
-				} else if period%6 == 1 {
-					kcp.LOL.gain /= 1.25
-				}
 				targetBDP := bdp * 3
 				if targetBDP > kcp.cwnd+float64(acks) {
 					kcp.cwnd = (kcp.cwnd + float64(acks))
@@ -784,6 +758,39 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 		kcp.flush(true)
 	}
 	return 0
+}
+
+func (kcp *KCP) paceGain() float64 {
+	kcp.LOL.gain = 1
+	if !kcp.LOL.filledPipe {
+		// check for filled pipe
+		if kcp.DRE.maxAckRate > kcp.LOL.fullBw {
+			// still growing
+			kcp.LOL.fullBw = kcp.DRE.maxAckRate
+			kcp.LOL.fullBwCount = 0
+			//log.Println("growing...")
+		} else {
+			kcp.LOL.fullBwCount++
+		}
+		if kcp.LOL.fullBwCount >= 5 {
+			//log.Printf("BW filled at %2.fK", kcp.LOL.fullBw/1000)
+			kcp.LOL.filledPipe = true
+			kcp.LOL.lastFillTime = time.Now()
+			kcp.LOL.gain /= 2.89
+		}
+	}
+	if !kcp.LOL.filledPipe {
+		//log.Println("pipe not filled, pumping desired up")
+		kcp.LOL.gain *= 2.89
+	}
+	// vibrate the gain up and down every 50 rtts
+	period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
+	if period%6 == 0 {
+		kcp.LOL.gain *= 1.25
+	} else if period%6 == 1 {
+		kcp.LOL.gain /= 1.25
+	}
+	return kcp.LOL.gain
 }
 
 func (kcp *KCP) wnd_unused() uint16 {
@@ -825,6 +832,8 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.LOL.filledPipe = false
 				kcp.LOL.fullBwCount = 0
 				kcp.LOL.fullBw = 0
+				kcp.longLoss = 1
+				kcp.shortLoss = 1
 			}
 		}
 	}()
@@ -969,12 +978,14 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.acked == 1 {
 			continue
 		}
-		const RTOSLACK = 250
+		const RTOSLACK = 600
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto
 			segment.resendts = current + segment.rto + RTOSLACK
 			kcp.trans++
+			kcp.shortLoss = kcp.shortLoss*0.999 + 0.001
+			kcp.longLoss = kcp.longLoss*0.9999 + 0.0001
 		} else if segment.fastack >= resent { // fast retransmit
 			needsend = true
 			segment.fastack = 0
@@ -1055,8 +1066,8 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		switch CongestionControl {
 		case "BIC":
 			// congestion control, https://tools.ietf.org/html/rfc5681
-			if lostSegs > 1 || change > 1 {
-				kcp.bic_onloss()
+			if sum > 0 {
+				kcp.bic_onloss(int(sum))
 			}
 		case "LOL":
 			// if lostSegs > 10 || change > 10 {
