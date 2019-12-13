@@ -83,7 +83,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	kcpListener := niaucchi4.Listen(obfs)
+	kcpListener := niaucchi4.ListenKCP(obfs)
 	for {
 		rc, err := kcpListener.Accept()
 		if err != nil {

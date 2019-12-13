@@ -7,8 +7,8 @@ import (
 	"github.com/geph-official/geph2/libs/kcp-go"
 )
 
-// Dial dials KCP over obfs in one function.
-func Dial(addr string, cookie []byte) (conn *kcp.UDPSession, err error) {
+// DialKCP dials KCP over obfs in one function.
+func DialKCP(addr string, cookie []byte) (conn net.Conn, err error) {
 	socket := Wrap(func() net.PacketConn {
 		udpsock, err := net.ListenPacket("udp", "")
 		if err != nil {
@@ -32,26 +32,26 @@ func Dial(addr string, cookie []byte) (conn *kcp.UDPSession, err error) {
 	return
 }
 
-// Listener operates KCP over obfs. Standard caveats about KCP not having proper open and close signaling apply.
-type Listener struct {
+// KCPListener operates KCP over obfs. Standard caveats about KCP not having proper open and close signaling apply.
+type KCPListener struct {
 	k    *kcp.Listener
 	conn *ObfsSocket
 }
 
-// Listen creates a new listener.
-func Listen(sock *ObfsSocket) *Listener {
+// ListenKCP creates a new listener.
+func ListenKCP(sock *ObfsSocket) *KCPListener {
 	listener, err := kcp.ServeConn(nil, 0, 0, sock)
 	if err != nil {
 		panic(err)
 	}
-	return &Listener{
+	return &KCPListener{
 		k:    listener,
 		conn: sock,
 	}
 }
 
 // Accept accepts a new connection.
-func (l *Listener) Accept() (c *kcp.UDPSession, err error) {
+func (l *KCPListener) Accept() (c *kcp.UDPSession, err error) {
 	kc, err := l.k.AcceptKCP()
 	if err != nil {
 		return

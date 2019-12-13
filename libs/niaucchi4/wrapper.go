@@ -33,7 +33,9 @@ retry:
 	} else {
 		wire.SetReadDeadline(time.Now().Add(time.Minute * 30))
 		n, addr, err = wire.ReadFrom(p)
+		w.lock.Lock()
 		w.lastActivity = time.Now()
+		w.lock.Unlock()
 	}
 	if err != nil {
 		w.lock.Lock()

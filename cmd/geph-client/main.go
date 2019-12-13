@@ -37,7 +37,7 @@ var binderFront string
 var binderHost string
 var exitName string
 var exitKey string
-var forceNoBridge bool
+var forceBridges bool
 
 var loginCheck bool
 var binderProxy string
@@ -48,6 +48,8 @@ var socksAddr string
 var httpAddr string
 var statsAddr string
 var dnsAddr string
+
+var useTCP bool
 
 var bindClient *bdclient.Client
 
@@ -101,13 +103,14 @@ func main() {
 	flag.StringVar(&binderHost, "binderHost", "1680337695.rsc.cdn77.org,gracious-payne-f3e2ed.netlify.com,gephbinder.azureedge.net", "real hostname of the binder, comma separated")
 	flag.StringVar(&exitName, "exitName", "us-sfo-01.exits.geph.io", "qualified name of the exit node selected")
 	flag.StringVar(&exitKey, "exitKey", "2f8571e4795032433098af285c0ce9e43c973ac3ad71bf178e4f2aaa39794aec", "ed25519 pubkey of the selected exit")
-	flag.BoolVar(&forceNoBridge, "forceNoBridge", false, "force the use of obfuscated bridges")
+	flag.BoolVar(&forceBridges, "forceBridges", false, "force the use of obfuscated bridges")
 	flag.StringVar(&socksAddr, "socksAddr", "localhost:9909", "SOCKS5 listening address")
 	flag.StringVar(&httpAddr, "httpAddr", "localhost:9910", "HTTP proxy listener")
 	flag.StringVar(&statsAddr, "statsAddr", "localhost:9809", "HTTP listener for statistics")
 	flag.StringVar(&dnsAddr, "dnsAddr", "localhost:9983", "local DNS listener")
 	flag.BoolVar(&loginCheck, "loginCheck", false, "do a login check and immediately exit with code 0")
 	flag.StringVar(&binderProxy, "binderProxy", "", "if set, proxy the binder at the given listening address and do nothing else")
+	flag.BoolVar(&useTCP, "useExperimentalTCP", false, "use TCP to connect to bridges")
 	flag.Parse()
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
@@ -189,13 +192,13 @@ func main() {
 	sWrap = newSmuxWrapper()
 
 	// automatically pick mode
-	if !forceNoBridge {
+	if !forceBridges {
 		country, err := bindClient.GetClientInfo()
 		if err != nil {
 			log.Println("cannot get country, conservatively using bridges", err)
 		} else {
 			log.Println("country is", country.Country)
-			if country.Country == "CN" {
+			if country.Country == "CN" || country.Country == "" {
 				log.Println("in CHINA, must use bridges")
 			} else {
 				log.Println("disabling bridges")
@@ -203,7 +206,7 @@ func main() {
 			}
 		}
 	} else {
-		direct = true
+		direct = false
 	}
 
 	if dnsAddr != "" {

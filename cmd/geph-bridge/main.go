@@ -7,14 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/rlp"
 	statsd "github.com/etsy/statsd/examples/go"
 	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/kcp-go"
@@ -103,90 +100,15 @@ func listenLoop() {
 	if err != nil {
 		panic(err)
 	}
-	listener := niaucchi4.Listen(e2e)
+	listener := niaucchi4.ListenKCP(e2e)
 	log.Println("KCP listener spinned up")
-	// utilities
-	exitMatcher, err := regexp.Compile(exitRegex)
-	if err != nil {
-		panic(err)
-	}
 	for {
 		client, err := listener.Accept()
 		if err != nil {
 			panic(err)
 		}
 		log.Println("Accepted client", client.RemoteAddr())
-		go func() {
-			var err error
-			defer func() {
-				log.Println("Closed client", client.RemoteAddr(), "reason", err)
-			}()
-			defer client.Close()
-			for {
-				var command string
-				rlp.Decode(client, &command)
-				log.Println("Client", client.RemoteAddr(), "requested", command)
-				switch command {
-				case "ping":
-					rlp.Encode(client, "ping")
-					return
-				case "ping/repeat":
-					rlp.Encode(client, "ping")
-				case "conn":
-					fallthrough
-				case "conn/feedback":
-					var host string
-					err = rlp.Decode(client, &host)
-					if err != nil {
-						return
-					}
-					if !exitMatcher.MatchString(host) {
-						err = fmt.Errorf("bad pattern: %v", host)
-						return
-					}
-					remoteAddr := fmt.Sprintf("%v:2389", host)
-					var remote net.Conn
-					remote, err = net.Dial("tcp", remoteAddr)
-					if err != nil {
-						return
-					}
-					log.Println("connected to", remoteAddr)
-					if command == "conn/feedback" {
-						rlp.Encode(client, uint(0))
-					}
-					// report stats in the background
-					if statClient != nil {
-						statsDone := make(chan bool)
-						defer func() {
-							close(statsDone)
-						}()
-						go func() {
-							for {
-								select {
-								case <-statsDone:
-									return
-								case <-time.After(time.Millisecond * time.Duration(rand.ExpFloat64()*3000)):
-									btlBw, latency, _ := client.FlowStats()
-									statClient.Timing(allocGroup+".clientLatency", int64(latency))
-									statClient.Timing(allocGroup+".btlBw", int64(btlBw))
-								}
-							}
-						}()
-					}
-					go func() {
-						defer remote.Close()
-						defer client.Close()
-						io.Copy(remote, client)
-					}()
-					defer remote.Close()
-					io.Copy(client, remote)
-					return
-				default:
-					return
-				}
-
-			}
-		}()
+		go handle(client)
 	}
 }
 

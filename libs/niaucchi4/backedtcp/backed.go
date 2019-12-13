@@ -2,6 +2,7 @@ package backedtcp
 
 import (
 	"encoding/binary"
+	"io"
 	"log"
 	"net"
 	"sync"
@@ -43,6 +44,7 @@ type Socket struct {
 	wire   net.Conn
 	wready chan bool
 	glock  sync.RWMutex
+	dead   bool
 }
 
 func NewSocket(wire net.Conn) *Socket {
@@ -61,6 +63,10 @@ func (sock *Socket) Replace(conn net.Conn) (err error) {
 	sock.glock.RUnlock()
 	sock.glock.Lock()
 	defer sock.glock.Unlock()
+	if sock.dead {
+		err = io.ErrClosedPipe
+		return
+	}
 	sock.wire.Close()
 	// negotiate new stuff
 	dun := make(chan bool)
@@ -89,13 +95,23 @@ func (sock *Socket) Replace(conn net.Conn) (err error) {
 }
 
 func (sock *Socket) Close() (err error) {
-	log.Println("no-op!")
+	sock.glock.RLock()
+	sock.wire.Close()
+	sock.glock.RUnlock()
+	sock.glock.Lock()
+	sock.dead = true
+	sock.glock.Unlock()
 	return
 }
 
 func (sock *Socket) Read(p []byte) (n int, err error) {
 	for i := 1; i < 100; i++ {
 		sock.glock.RLock()
+		if sock.dead {
+			sock.wire.Close()
+			err = io.ErrClosedPipe
+			return
+		}
 		wire := sock.wire
 		// read lock to make sure stuff doesn't get replaced suddenly
 		n, err = wire.Read(p)
@@ -116,6 +132,11 @@ func (sock *Socket) Write(p []byte) (n int, err error) {
 	for i := 1; i < 100; i++ {
 		// read lock to make sure stuff doesn't get replaced suddenly
 		sock.glock.RLock()
+		if sock.dead {
+			sock.wire.Close()
+			err = io.ErrClosedPipe
+			return
+		}
 		<-sock.wready
 		wire := sock.wire
 		sock.glock.RUnlock()

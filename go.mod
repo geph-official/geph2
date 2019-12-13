@@ -10,7 +10,7 @@ require (
 	github.com/dchest/captcha v0.0.0-20170622155422-6a29415a8364
 	github.com/elazarl/goproxy v0.0.0-20190911111923-ecfe977594f1 // indirect
 	github.com/elazarl/goproxy/ext v0.0.0-20190911111923-ecfe977594f1 // indirect
-	github.com/ethereum/go-ethereum v1.9.5
+	github.com/ethereum/go-ethereum v1.9.9
 	github.com/etsy/statsd v0.8.5
 	github.com/gorilla/mux v1.7.3
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d
@@ -32,7 +32,7 @@ require (
 	github.com/xtaci/lossyconn v0.0.0-20190602105132-8df528c0c9ae
 	github.com/xtaci/smux v1.4.6
 	golang.org/x/crypto v0.0.0-20191205180655-e7c4368fe9dd
-	golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3
+	golang.org/x/net v0.0.0-20190628185345-da137c7871d7
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 )

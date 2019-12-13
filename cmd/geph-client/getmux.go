@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,7 +28,7 @@ func getBridged(greeting [2][]byte, kcpConn net.Conn, exitName string, exitPK []
 }
 
 func getDirect(greeting [2][]byte, host string, pk []byte) (ss *smux.Session, err error) {
-	kcpConn, err := niaucchi4.Dial(host+":2389", make([]byte, 32))
+	kcpConn, err := niaucchi4.DialKCP(host+":2389", make([]byte, 32))
 	if err != nil {
 		err = fmt.Errorf("plain TCP failed: %w", err)
 		return
@@ -72,12 +74,17 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 		log.Println("authentication failed", reply)
 		os.Exit(11)
 	}
-	ss, err = smux.Client(cryptConn, &smux.Config{
+	smuxConf := &smux.Config{
 		KeepAliveInterval: time.Minute * 30,
 		KeepAliveTimeout:  time.Minute * 32,
 		MaxFrameSize:      4096,
 		MaxReceiveBuffer:  100 * 1024 * 1024,
-	})
+	}
+	if useTCP {
+		smuxConf.KeepAliveInterval = time.Minute * 2
+		smuxConf.KeepAliveTimeout = time.Minute*2 + time.Second*10
+	}
+	ss, err = smux.Client(cryptConn, smuxConf)
 	if err != nil {
 		rawConn.Close()
 		err = fmt.Errorf("smux error: %w", err)
@@ -144,30 +151,54 @@ func newSmuxWrapper() *muxWrap {
 			syncChan := time.After(time.Second * 3)
 			go func() {
 				defer bridgeDeadWait.Done()
-				kcpConn, err := niaucchi4.Dial(bi.Host, bi.Cookie)
+				kcpConn, err := niaucchi4.DialKCP(bi.Host, bi.Cookie)
 				if err != nil {
 					log.Println("dialing to", bi.Host, "failed!")
 					return
 				}
 				kcpConn.SetDeadline(time.Now().Add(time.Second * 30))
-				for i := 0; i < 1; i++ {
-					rlp.Encode(kcpConn, "ping/repeat")
-					var lel string
-					rlp.Decode(kcpConn, &lel)
+				var realConn net.Conn
+				if !useTCP {
+					for i := 0; i < 1; i++ {
+						rlp.Encode(kcpConn, "ping/repeat")
+						var lel string
+						rlp.Decode(kcpConn, &lel)
+					}
+					realConn = kcpConn
+				} else {
+					log.Println("** requesting TCP **")
+					rlp.Encode(kcpConn, "tcp")
+					var port uint
+					var key []byte
+					rlp.Decode(kcpConn, &port)
+					rlp.Decode(kcpConn, &key)
+					host := fmt.Sprintf("%v:%v", strings.Split(bi.Host, ":")[0], port)
+					log.Println("got ephemeral TCP host at", host, hex.EncodeToString(key))
+					rawTCP, err := net.Dial("tcp", host)
+					if err != nil {
+						log.Println("dialing TCP to", host, "failed")
+						return
+					}
+					kcpConn.Close()
+					realConn = niaucchi4.NewObfsStream(rawTCP, key, false)
 				}
+				realConn.SetDeadline(time.Now().Add(time.Second * 30))
 				<-syncChan
 				start := time.Now()
-				rlp.Encode(kcpConn, "conn/feedback")
-				rlp.Encode(kcpConn, exitName)
+				buff := new(bytes.Buffer)
+				rlp.Encode(buff, "conn/feedback")
+				rlp.Encode(buff, exitName)
+				io.Copy(realConn, buff)
+				log.Println("sent conn/feedback", exitName)
 				var out uint
-				err = rlp.Decode(kcpConn, &out)
+				err = rlp.Decode(realConn, &out)
 				if err != nil {
 					log.Println(bi.Host, "failed feedback:", err)
 					kcpConn.Close()
 					return
 				}
 				select {
-				case bridgeRace <- kcpConn:
+				case bridgeRace <- realConn:
 					log.Println(bi.Host, "WON with latency", time.Since(start))
 				default:
 					log.Println(bi.Host, "LOST with latency", time.Since(start))
