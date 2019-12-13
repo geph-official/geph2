@@ -28,13 +28,23 @@ func getBridged(greeting [2][]byte, kcpConn net.Conn, exitName string, exitPK []
 }
 
 func getDirect(greeting [2][]byte, host string, pk []byte) (ss *smux.Session, err error) {
-	kcpConn, err := niaucchi4.DialKCP(host+":2389", make([]byte, 32))
+	var conn net.Conn
+	if useTCP {
+		conn, err = net.Dial("tcp", host+":2389")
+		if err != nil {
+			return
+		}
+		ss, err = negotiateSmux(greeting, conn, pk)
+		return
+	}
+	conn, err = niaucchi4.DialKCP(host+":2389", make([]byte, 32))
 	if err != nil {
 		err = fmt.Errorf("plain TCP failed: %w", err)
 		return
 	}
-	ss, err = negotiateSmux(greeting, kcpConn, pk)
+	ss, err = negotiateSmux(greeting, conn, pk)
 	return
+
 }
 
 func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Session, err error) {
