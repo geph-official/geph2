@@ -14,7 +14,7 @@ func (kcp *KCP) bic_onloss(lost int) {
 	if kcp.cwnd > 8 {
 		if kcp.shortLoss < kcp.longLoss/1.1 {
 			kcp.shortLoss = 1.0
-			beta := 0.1
+			beta := 0.25
 			if kcp.cwnd < kcp.wmax {
 				kcp.wmax = kcp.cwnd * (2.0 - beta) / 2.0
 			} else {

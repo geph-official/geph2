@@ -30,7 +30,7 @@ require (
 	github.com/tidwall/evio v1.0.3 // indirect
 	github.com/tjfoc/gmsm v1.0.1
 	github.com/xtaci/lossyconn v0.0.0-20190602105132-8df528c0c9ae
-	github.com/xtaci/smux v2.0.1+incompatible
+	github.com/xtaci/smux v1.4.6
 	golang.org/x/crypto v0.0.0-20191205180655-e7c4368fe9dd
 	golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0

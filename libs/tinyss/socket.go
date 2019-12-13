@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"io"
+	"log"
 	"net"
 	"time"
 
@@ -27,6 +28,8 @@ type Socket struct {
 
 	plain     net.Conn
 	sharedsec []byte
+
+	nextprot byte
 }
 
 func hm(m, k []byte) []byte {
@@ -43,7 +46,7 @@ func aead(key []byte) cipher.AEAD {
 	return k
 }
 
-func newSocket(plain net.Conn, repk, lesk [32]byte) (sok *Socket, err error) {
+func newSocket(plain net.Conn, repk, lesk [32]byte) (sok *Socket) {
 	// calc
 	var lepk [32]byte
 	curve25519.ScalarBaseMult(&lepk, &lesk)
@@ -69,15 +72,16 @@ func newSocket(plain net.Conn, repk, lesk [32]byte) (sok *Socket, err error) {
 		plain:     plain,
 		sharedsec: sharedsec[:],
 	}
-	// check that everything went well
-	/*go func() {
-		sok.Write(make([]byte, 16))
-	}()
-	_, err = sok.Read(make([]byte, 16))*/
+
 	return
 }
 
 var decctr1 uint64
+
+// NextProt returns the "next protocol" signal given by the remote.
+func (sk *Socket) NextProt() byte {
+	return sk.nextprot
+}
 
 // Read reads into the given byte slice.
 func (sk *Socket) Read(p []byte) (n int, err error) {
@@ -185,14 +189,20 @@ func (sk *Socket) SharedSec() []byte {
 }
 
 // Handshake upgrades a plaintext socket to a MiniSS socket, given our secret key.
-func Handshake(plain net.Conn) (sok *Socket, err error) {
+func Handshake(plain net.Conn, nextProtocol byte) (sok *Socket, err error) {
+	log.Println("handshake", nextProtocol)
 	// generate ephemeral key
 	myesk := c25519.GenSK()
 	// in another thread, send over hello
 	wet := make(chan bool)
 	go func() {
 		var msgb bytes.Buffer
-		msgb.Write([]byte("TinySS-1"))
+		// if nextProtocol isn't zero, we send a different protocol header
+		if nextProtocol == 0 {
+			msgb.Write([]byte("TinySS-1"))
+		} else {
+			msgb.Write([]byte("TinySS-2"))
+		}
 		var pub [32]byte
 		curve25519.ScalarBaseMult(&pub, &myesk)
 		msgb.Write(pub[:])
@@ -206,14 +216,39 @@ func Handshake(plain net.Conn) (sok *Socket, err error) {
 		return
 	}
 	// check version
-	if string(bts[:8]) != "TinySS-1" {
+	if string(bts[:7]) != "TinySS-" {
 		err = io.ErrClosedPipe
 		return
 	}
-	// read rest of hello
-	bts = bts[8:]
 	<-wet
+	// read rest of hello
 	var repk [32]byte
-	copy(repk[:], bts[:32])
-	return newSocket(plain, repk, myesk)
+	copy(repk[:], bts[8:][:32])
+	ns := newSocket(plain, repk, myesk)
+	wait := make(chan bool)
+	if nextProtocol != 0 {
+		go func() {
+			binary.Write(ns, binary.BigEndian, nextProtocol)
+			log.Println("written nextProtocol", nextProtocol)
+			close(wait)
+		}()
+	}
+	switch string(bts[:8]) {
+	case "TinySS-1":
+	case "TinySS-2":
+		log.Println("waiting for their protocol")
+		// then we wait for their next protocol
+		var theirNextProt byte
+		err = binary.Read(ns, binary.BigEndian, &theirNextProt)
+		if err != nil {
+			return
+		}
+		log.Println("got nextProtocol", theirNextProt)
+		ns.nextprot = theirNextProt
+	}
+	sok = ns
+	if nextProtocol != 0 {
+		<-wait
+	}
+	return
 }

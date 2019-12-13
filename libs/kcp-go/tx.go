@@ -1,24 +1,11 @@
 package kcp
 
 import (
-	"math"
 	"sync/atomic"
-	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/net/ipv4"
 )
-
-func (s *UDPSession) paceOnce(bytes int) {
-	paceInterval := float64(bytes) / math.Max(s.kcp.DRE.maxAckRate, 100*1000)
-	// wait till NST
-	now := time.Now()
-	if !now.After(s.pacer.nextSendTime) {
-		time.Sleep(s.pacer.nextSendTime.Sub(now))
-	}
-	ival := paceInterval * 1e6 / s.kcp.paceGain()
-	s.pacer.nextSendTime = now.Add(time.Duration(ival) * time.Microsecond)
-}
 
 func (s *UDPSession) defaultTx(txqueue []ipv4.Message) {
 	nbytes := 0
@@ -30,9 +17,6 @@ func (s *UDPSession) defaultTx(txqueue []ipv4.Message) {
 			nbytes += n
 			npkts++
 			xmitBuf.Put(txqueue[k].Buffers[0])
-			if CongestionControl == "LOL" {
-				s.paceOnce(n)
-			}
 		} else {
 			s.notifyWriteError(errors.WithStack(err))
 			break

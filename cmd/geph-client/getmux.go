@@ -36,8 +36,8 @@ func getDirect(greeting [2][]byte, host string, pk []byte) (ss *smux.Session, er
 }
 
 func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Session, err error) {
-	rawConn.SetDeadline(time.Now().Add(time.Second * 10))
-	cryptConn, err := tinyss.Handshake(rawConn)
+	rawConn.SetDeadline(time.Now().Add(time.Second * 20))
+	cryptConn, err := tinyss.Handshake(rawConn, 0)
 	if err != nil {
 		err = fmt.Errorf("tinyss handshake failed: %w", err)
 		rawConn.Close()
@@ -73,10 +73,10 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 		os.Exit(11)
 	}
 	ss, err = smux.Client(cryptConn, &smux.Config{
-		KeepAliveInterval: time.Minute * 20,
-		KeepAliveTimeout:  time.Minute * 22,
-		MaxFrameSize:      32768,
-		MaxReceiveBuffer:  1024 * 1024 * 100,
+		KeepAliveInterval: time.Minute * 30,
+		KeepAliveTimeout:  time.Minute * 32,
+		MaxFrameSize:      4096,
+		MaxReceiveBuffer:  100 * 1024 * 1024,
 	})
 	if err != nil {
 		rawConn.Close()

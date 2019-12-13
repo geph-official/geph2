@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/cwl"
+	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/tinysocks"
 	"golang.org/x/net/proxy"
 	"golang.org/x/time/rate"
@@ -89,9 +91,11 @@ restart:
 
 func main() {
 	mrand.Seed(time.Now().UnixNano())
+	runtime.GOMAXPROCS(1)
+	kcp.CongestionControl = "BIC"
 	// flags
-	flag.StringVar(&username, "username", "pwtest", "username")
-	flag.StringVar(&password, "password", "pwtest", "password")
+	flag.StringVar(&username, "username", "", "username")
+	flag.StringVar(&password, "password", "", "password")
 	flag.StringVar(&ticketFile, "ticketFile", "", "location for caching auth tickets")
 	flag.StringVar(&binderFront, "binderFront", "https://www.cdn77.com/v2,https://netlify.com/front/v2,https://ajax.aspnetcdn.com/v2", "binder domain-fronting hosts, comma separated")
 	flag.StringVar(&binderHost, "binderHost", "1680337695.rsc.cdn77.org,gracious-payne-f3e2ed.netlify.com,gephbinder.azureedge.net", "real hostname of the binder, comma separated")
@@ -219,22 +223,25 @@ func main() {
 
 	// confirm we are connected
 	func() {
-		rm, _ := sWrap.DialCmd("ip")
-		defer rm.Close()
-		var ip string
-		err := rlp.Decode(rm, &ip)
-		if err != nil {
-			log.Println("Uh oh, cannot get IP!")
-			os.Exit(10)
-		}
-		ip = strings.TrimSpace(ip)
-		log.Println("Successfully got external IP", ip)
-		useStats(func(sc *stats) {
-			sc.Connected = true
-			sc.PublicIP = ip
-		})
-		if loginCheck {
-			os.Exit(0)
+		for {
+			rm, _ := sWrap.DialCmd("ip")
+			defer rm.Close()
+			var ip string
+			err := rlp.Decode(rm, &ip)
+			if err != nil {
+				log.Println("Uh oh, cannot get IP!", err)
+				continue
+			}
+			ip = strings.TrimSpace(ip)
+			log.Println("Successfully got external IP", ip)
+			useStats(func(sc *stats) {
+				sc.Connected = true
+				sc.PublicIP = ip
+			})
+			if loginCheck {
+				os.Exit(0)
+			}
+			return
 		}
 	}()
 

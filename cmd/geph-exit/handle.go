@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/cwl"
 	"github.com/geph-official/geph2/libs/tinyss"
+	"github.com/hashicorp/yamux"
 	"github.com/xtaci/smux"
 	"golang.org/x/time/rate"
 )
@@ -47,7 +48,7 @@ func handle(rawClient net.Conn) {
 	defer log.Printf("C<%p> close", rawClient)
 	defer rawClient.Close()
 	rawClient.SetDeadline(time.Now().Add(time.Second * 30))
-	tssClient, err := tinyss.Handshake(rawClient)
+	tssClient, err := tinyss.Handshake(rawClient, 0)
 	if err != nil {
 		log.Println("Error doing TinySS from", rawClient.RemoteAddr(), err)
 		return
@@ -67,16 +68,43 @@ func handle(rawClient net.Conn) {
 		log.Println("Error decoding greeting from", rawClient.RemoteAddr(), err)
 		return
 	}
-	// create smux context
-	muxSrv, err := smux.Server(tssClient, &smux.Config{
-		KeepAliveInterval: time.Minute * 30,
-		KeepAliveTimeout:  time.Minute * 32,
-		MaxFrameSize:      32768,
-		MaxReceiveBuffer:  10 * 1024 * 1024,
-	})
-	if err != nil {
-		log.Println("Error negotiating smux from", rawClient.RemoteAddr(), err)
-		return
+	// "generic" stuff
+	var acceptStream func() (net.Conn, error)
+	switch tssClient.NextProt() {
+	case 0:
+		// create smux context
+		muxSrv, err := smux.Server(tssClient, &smux.Config{
+			KeepAliveInterval: time.Minute * 30,
+			KeepAliveTimeout:  time.Minute * 32,
+			MaxFrameSize:      8192,
+			MaxReceiveBuffer:  10 * 1024 * 1024,
+		})
+		if err != nil {
+			log.Println("Error negotiating smux from", rawClient.RemoteAddr(), err)
+			return
+		}
+		acceptStream = func() (n net.Conn, e error) {
+			n, e = muxSrv.AcceptStream()
+			return
+		}
+	case 'S':
+		// create smux context
+		muxSrv, err := yamux.Server(tssClient, &yamux.Config{
+			AcceptBacklog:          1000,
+			EnableKeepAlive:        false,
+			KeepAliveInterval:      time.Hour,
+			ConnectionWriteTimeout: time.Minute * 30,
+			MaxStreamWindowSize:    100 * 1024 * 1024,
+			LogOutput:              ioutil.Discard,
+		})
+		if err != nil {
+			log.Println("Error negotiating yamux from", rawClient.RemoteAddr(), err)
+			return
+		}
+		acceptStream = func() (n net.Conn, e error) {
+			n, e = muxSrv.AcceptStream()
+			return
+		}
 	}
 	var limiter *rate.Limiter
 	err = bclient.RedeemTicket("paid", greeting[0], greeting[1])
@@ -101,9 +129,8 @@ func handle(rawClient net.Conn) {
 	// IGNORE FOR NOW
 	rlp.Encode(tssClient, "OK")
 	rawClient.SetDeadline(time.Time{})
-	defer muxSrv.Close()
 	for {
-		soxclient, err := muxSrv.AcceptStream()
+		soxclient, err := acceptStream()
 		if err != nil {
 			return
 		}
@@ -182,6 +209,7 @@ func handle(rawClient net.Conn) {
 				}
 				rlp.Encode(soxclient, true)
 				rlp.Encode(soxclient, ip)
+				time.Sleep(time.Second)
 			}
 		}()
 	}
