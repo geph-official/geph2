@@ -1,3 +1,7 @@
+## Download mirror / 免「翻牆」下載鏡像
+
+https://waa.ai/getmiwutong
+
 ## Tech support / 客戶服務
 
 Please contact us at contact@geph.io or use the [official Telegram group](https://t.me/joinchat/Pc6C1hMBREf-8_TZM5z6_g) for tech support questions about the Geph service. **Use GitHub only for bug reports!**
