@@ -8,6 +8,7 @@ import (
 	"log"
 	mrand "math/rand"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -15,9 +16,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/geph-official/geph2/libs/niaucchi4/backedtcp"
+	"github.com/bunsim/goproxy"
+	"github.com/geph-official/geph2/libs/kcp-go"
+	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/geph-official/geph2/libs/tinysocks"
-	"github.com/geph-official/geph2/libs/tinyss"
 	"github.com/hashicorp/yamux"
 	"golang.org/x/net/proxy"
 )
@@ -77,22 +79,39 @@ func main() {
 	}
 	// server
 	if flagServer != "" {
-		tlistener, err := net.Listen("tcp", flagServer)
+		udpsock, err := net.ListenPacket("udp", flagServer)
 		if err != nil {
 			panic(err)
 		}
-		listener := backedtcp.Listen(tlistener)
+		log.Println("server started UDP on", udpsock.LocalAddr())
+		e2e := niaucchi4.NewE2EConn(niaucchi4.ObfsListen(nil, udpsock))
+		if err != nil {
+			panic(err)
+		}
+		go func() {
+			for {
+				e2e.DebugInfo()
+				time.Sleep(time.Second)
+			}
+		}()
+
+		listener, err := kcp.ServeConn(nil, 0, 0, e2e)
+		if err != nil {
+			panic(err)
+		}
 		log.Println("KCP socks5 listener spinned up!")
 		for {
-			kclient, err := listener.Accept()
+			kclient, err := listener.AcceptKCP()
 			if err != nil {
 				panic(err)
 			}
 			log.Println("Accepted kclient from", kclient.RemoteAddr())
+			kclient.SetWindowSize(10000, 10000)
+			kclient.SetNoDelay(1, 50, 3, 0)
+			kclient.SetStreamMode(true)
 			go func() {
 				defer kclient.Close()
-				cryptClient, _ := tinyss.Handshake(kclient)
-				client, err := yamux.Server(cryptClient, yamuxCfg)
+				client, err := yamux.Server(kclient, yamuxCfg)
 				if err != nil {
 					log.Println("cannot start yamux:", err)
 					return
@@ -104,7 +123,6 @@ func main() {
 						log.Println("error accepting stream:", err)
 						return
 					}
-					log.Println("accepted stream")
 					go func() {
 						defer stream.Close()
 						host, err := tinysocks.ReadRequest(stream)
@@ -132,33 +150,54 @@ func main() {
 	}
 	// client
 	if flagClient != "" {
-		listener, err := net.Listen("tcp", "localhost:8808")
+		listener, err := net.Listen("tcp", "localhost:9909")
 		if err != nil {
 			panic(err)
 		}
-		log.Println("TCP listener started on", listener.Addr())
-		zremote, err := net.Dial("tcp", flagClient)
-		if err != nil {
-			panic(err)
+		srv := goproxy.NewProxyHttpServer()
+		srv.Tr = &http.Transport{
+			Dial: func(n, d string) (net.Conn, error) {
+				log.Println("GONNA DIAL", n, d)
+				return dialTun(d)
+			},
+			IdleConnTimeout: time.Second * 10,
+			Proxy:           nil,
 		}
-		defer zremote.Close()
-		zremote.Write(make([]byte, 8))
-		remote := backedtcp.NewSocket(zremote)
+		srv.Logger = log.New(ioutil.Discard, "", 0)
 		go func() {
-			for {
-				time.Sleep(time.Second * 10)
-				zremote, err := net.Dial("tcp", flagClient)
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-				defer zremote.Close()
-				zremote.Write(make([]byte, 8))
-				remote.Replace(zremote)
+			err := http.ListenAndServe("127.0.0.1:8780", srv)
+			if err != nil {
+				panic(err.Error())
 			}
 		}()
-		cryptRemote, _ := tinyss.Handshake(remote)
-		bremote, err := yamux.Client(cryptRemote, yamuxCfg)
+		log.Println("KCP listener started on", listener.Addr())
+		udpsock, err := net.ListenPacket("udp", "")
+		if err != nil {
+			panic(err)
+		}
+		servAddr, err := net.ResolveUDPAddr("udp", flagClient)
+		if err != nil {
+			panic(err)
+		}
+		log.Println("made new udpsock at", udpsock.LocalAddr())
+		e2e := niaucchi4.NewE2EConn(niaucchi4.ObfsListen(nil, udpsock))
+		go func() {
+			for {
+				e2e.DebugInfo()
+				time.Sleep(time.Second)
+			}
+		}()
+		sid := niaucchi4.NewSessAddr()
+		e2e.SetSessPath(sid, servAddr)
+		kcpremote, err := kcp.NewConn2(sid, nil, 0, 0, e2e)
+		if err != nil {
+			panic(err)
+		}
+		defer kcpremote.Close()
+		kcpremote.SetWindowSize(10000, 10000)
+		kcpremote.SetNoDelay(1, 50, 3, 0)
+		kcpremote.SetStreamMode(true)
+		bremote, err := yamux.Client(kcpremote, yamuxCfg)
 		if err != nil {
 			panic(err)
 		}

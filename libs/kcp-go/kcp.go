@@ -115,19 +115,20 @@ func _itimediff(later, earlier uint32) int32 {
 
 // segment defines a KCP segment
 type segment struct {
-	conv     uint32
-	cmd      uint8
-	frg      uint8
-	wnd      uint16
-	ts       uint32
-	sn       uint32
-	una      uint32
-	rto      uint32
-	xmit     uint32
-	resendts uint32
-	fastack  uint32
-	acked    uint32 // mark if the seg has acked
-	data     []byte
+	conv        uint32
+	cmd         uint8
+	frg         uint8
+	wnd         uint16
+	ts          uint32
+	sn          uint32
+	una         uint32
+	rto         uint32
+	xmit        uint32
+	resendts    uint32
+	fastack     uint32
+	lastfastack uint32
+	acked       uint32 // mark if the seg has acked
+	data        []byte
 }
 
 // encode a segment into buffer
@@ -550,7 +551,11 @@ func (kcp *KCP) parse_fastack(sn, ts uint32) {
 		if _itimediff(sn, seg.sn) < 0 {
 			break
 		} else if sn != seg.sn && _itimediff(seg.ts, ts) <= 0 {
-			seg.fastack++
+			if seg.lastfastack == sn {
+			} else {
+				seg.fastack++
+				seg.lastfastack = sn
+			}
 		}
 	}
 }
@@ -756,6 +761,37 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				if kcp.cwnd < 4 {
 					kcp.cwnd = 4
 				}
+
+				kcp.LOL.gain = 1
+				if !kcp.LOL.filledPipe {
+					// check for filled pipe
+					if kcp.DRE.maxAckRate > kcp.LOL.fullBw {
+						// still growing
+						kcp.LOL.fullBw = kcp.DRE.maxAckRate
+						kcp.LOL.fullBwCount = 0
+						//log.Println("growing...")
+					} else {
+						kcp.LOL.fullBwCount++
+					}
+					if kcp.LOL.fullBwCount >= 5 {
+						//log.Printf("BW filled at %2.fK", kcp.LOL.fullBw/1000)
+						kcp.LOL.filledPipe = true
+						kcp.LOL.lastFillTime = time.Now()
+						kcp.LOL.gain /= 2.89
+					}
+				}
+				if !kcp.LOL.filledPipe {
+					//log.Println("pipe not filled, pumping desired up")
+					kcp.LOL.gain *= 2.89
+				}
+				// vibrate the gain up and down every 50 rtts
+				period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
+				if period%6 == 0 {
+					kcp.LOL.gain *= 1.25
+				} else if period%6 == 1 {
+					kcp.LOL.gain /= 1.25
+				}
+
 				if doLogging {
 					log.Printf("[%p] %vK / %vK / cwnd %v / gain %.2f / %v ms %.2f%%", kcp,
 						int(kcp.DRE.maxAckRate/1000),
@@ -775,35 +811,6 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 }
 
 func (kcp *KCP) paceGain() float64 {
-	kcp.LOL.gain = 1
-	if !kcp.LOL.filledPipe {
-		// check for filled pipe
-		if kcp.DRE.maxAckRate > kcp.LOL.fullBw {
-			// still growing
-			kcp.LOL.fullBw = kcp.DRE.maxAckRate
-			kcp.LOL.fullBwCount = 0
-			//log.Println("growing...")
-		} else {
-			kcp.LOL.fullBwCount++
-		}
-		if kcp.LOL.fullBwCount >= 5 {
-			//log.Printf("BW filled at %2.fK", kcp.LOL.fullBw/1000)
-			kcp.LOL.filledPipe = true
-			kcp.LOL.lastFillTime = time.Now()
-			kcp.LOL.gain /= 2.89
-		}
-	}
-	if !kcp.LOL.filledPipe {
-		//log.Println("pipe not filled, pumping desired up")
-		kcp.LOL.gain *= 2.89
-	}
-	// vibrate the gain up and down every 50 rtts
-	period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
-	if period%6 == 0 {
-		kcp.LOL.gain *= 1.25
-	} else if period%6 == 1 {
-		kcp.LOL.gain /= 1.25
-	}
 	return kcp.LOL.gain
 }
 
@@ -825,6 +832,10 @@ func (kcp *KCP) updateSample(appLimited bool) {
 				kcp.DRE.maxAckRate = kcp.DRE.maxAckRate*0.5 + avgRate*0.5
 			} else {
 				kcp.DRE.maxAckRate = avgRate
+			}
+			if kcp.DRE.maxAckRate < 100*1000 {
+				kcp.LOL.filledPipe = false
+				kcp.DRE.maxAckRate = 100 * 1000 // HACK
 			}
 			kcp.DRE.maxAckTime = kcp.DRE.delTime
 		}
@@ -970,7 +981,6 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		kcp.snd_nxt++
 		newSegsCount++
 	}
-	kcp.paceOnce(total)
 	if newSegsCount > 0 {
 		busy = true
 		kcp.snd_queue = kcp.remove_front(kcp.snd_queue, newSegsCount)

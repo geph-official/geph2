@@ -124,7 +124,7 @@ func handle(rawClient net.Conn) {
 		limiter = rate.NewLimiter(100*1000, 1*1000*1000)
 		limiter.WaitN(context.Background(), 1*1000*1000-500)
 	} else {
-		limiter = rate.NewLimiter(rate.Inf, 100*1000*1000)
+		limiter = rate.NewLimiter(10*1024*1024, 1*1000*1000)
 	}
 	// IGNORE FOR NOW
 	rlp.Encode(tssClient, "OK")
@@ -163,7 +163,6 @@ func handle(rawClient net.Conn) {
 				}
 				// measure dial latency
 				dialLatency := time.Since(dialStart)
-				log.Printf("dialed %v in %.1fms", host, dialLatency.Seconds()*1000)
 				if statClient != nil {
 					statClient.Timing(hostname+".dialLatency", dialLatency.Milliseconds())
 					statClient.Increment(hostname + ".totalConns")

@@ -32,6 +32,30 @@ func handle(client net.Conn) {
 		dec.Decode(&command)
 		log.Println("Client", client.RemoteAddr(), "requested", command)
 		switch command {
+		case "conn/e2e":
+			var host string
+			err = dec.Decode(&host)
+			if err != nil {
+				return
+			}
+			if !exitMatcher.MatchString(host) {
+				err = fmt.Errorf("bad pattern: %v", host)
+				return
+			}
+			var cookie []byte
+			err = dec.Decode(&cookie)
+			if err != nil {
+				return
+			}
+			port, err := e2enat(fmt.Sprintf("%v:2399", host), cookie)
+			if err != nil {
+				log.Println("cannot e2enat:", err)
+				return
+			}
+			log.Printf("created e2enat at port %v (%x)", port, cookie[:10])
+			rlp.Encode(client, uint(port))
+			time.Sleep(time.Second * 20)
+			return
 		case "tcp":
 			lsnr, err := net.Listen("tcp", "")
 			if err != nil {
@@ -55,18 +79,6 @@ func handle(client net.Conn) {
 				}
 				clnt = niaucchi4.NewObfsStream(clnt, randokey, true)
 				handle(clnt)
-				// go func() {
-				// 	clnt.SetDeadline(time.Now().Add(time.Hour))
-				// 	clnt = niaucchi4.NewObfsStream(clnt, randokey, true)
-				// 	if masterConn == nil {
-				// 		masterConn = backedtcp.NewSocket(clnt)
-				// 		log.Println("created new master conn!")
-				// 		handle(masterConn)
-				// 	} else {
-				// 		masterConn.Replace(clnt)
-				// 	}
-				// }()
-				//}
 			}()
 			return
 		case "ping":

@@ -74,6 +74,7 @@ func main() {
 			go handle(rawClient)
 		}
 	}()
+	go e2elisten()
 	udpsock, err := net.ListenPacket("udp", ":2389")
 	if err != nil {
 		panic(err)
@@ -90,6 +91,29 @@ func main() {
 			log.Println("error while accepting TCP:", err)
 			continue
 		}
+		go handle(rc)
+	}
+}
+
+func e2elisten() {
+	udpsock, err := net.ListenPacket("udp", ":2399")
+	if err != nil {
+		panic(err)
+	}
+	log.Println("e2elisten on 2399")
+	udpsock.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
+	e2e := niaucchi4.NewE2EConn(udpsock)
+	kcpListener := niaucchi4.ListenKCP(e2e)
+	for {
+		rc, err := kcpListener.Accept()
+		if err != nil {
+			log.Println("error while accepting E2E:", err)
+			continue
+		}
+		rc.SetWindowSize(10000, 1000)
+		rc.SetNoDelay(0, 50, 5, 0)
+		rc.SetStreamMode(true)
+		rc.SetMtu(1300)
 		go handle(rc)
 	}
 }

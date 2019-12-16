@@ -35,11 +35,11 @@ func DialKCP(addr string, cookie []byte) (conn net.Conn, err error) {
 // KCPListener operates KCP over obfs. Standard caveats about KCP not having proper open and close signaling apply.
 type KCPListener struct {
 	k    *kcp.Listener
-	conn *ObfsSocket
+	conn net.PacketConn
 }
 
 // ListenKCP creates a new listener.
-func ListenKCP(sock *ObfsSocket) *KCPListener {
+func ListenKCP(sock net.PacketConn) *KCPListener {
 	listener, err := kcp.ServeConn(nil, 0, 0, sock)
 	if err != nil {
 		panic(err)

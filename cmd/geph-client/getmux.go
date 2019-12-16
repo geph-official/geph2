@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -15,17 +15,11 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/geph-official/geph2/libs/tinyss"
 	"github.com/xtaci/smux"
 )
-
-func getBridged(greeting [2][]byte, kcpConn net.Conn, exitName string, exitPK []byte) (ss *smux.Session, err error) {
-	rlp.Encode(kcpConn, "conn")
-	rlp.Encode(kcpConn, exitName)
-	ss, err = negotiateSmux(greeting, kcpConn, exitPK)
-	return
-}
 
 func getDirect(greeting [2][]byte, host string, pk []byte) (ss *smux.Session, err error) {
 	var conn net.Conn
@@ -149,16 +143,32 @@ func newSmuxWrapper() *muxWrap {
 			goto retry
 		}
 		log.Println("racing between", len(bridges), "bridges...")
-		bridgeRace := make(chan net.Conn)
+		bridgeRace := make(chan bool)
 		bridgeDeadWait := new(sync.WaitGroup)
 		bridgeDeadWait.Add(len(bridges))
+		usocket, err := net.ListenPacket("udp", ":")
+		if err != nil {
+			panic(err)
+		}
+		cookie := make([]byte, 23)
+		rand.Read(cookie)
+		log.Printf("creating OBFS with COOKIE %x", cookie[:10])
+		osocket := niaucchi4.ObfsListen(cookie, usocket)
+		e2esid := niaucchi4.NewSessAddr()
+		e2e := niaucchi4.NewE2EConn(osocket)
+		go func() {
+			for !e2e.Closed {
+				time.Sleep(time.Second * 30)
+				log.Println("******* multipath info: *******")
+				e2e.DebugInfo()
+			}
+		}()
 		go func() {
 			bridgeDeadWait.Wait()
 			close(bridgeRace)
 		}()
 		for _, bi := range bridges {
 			bi := bi
-			syncChan := time.After(time.Second * 3)
 			go func() {
 				defer bridgeDeadWait.Done()
 				kcpConn, err := niaucchi4.DialKCP(bi.Host, bi.Cookie)
@@ -166,63 +176,48 @@ func newSmuxWrapper() *muxWrap {
 					log.Println("dialing to", bi.Host, "failed!")
 					return
 				}
+				defer kcpConn.Close()
 				kcpConn.SetDeadline(time.Now().Add(time.Second * 30))
-				var realConn net.Conn
-				if !useTCP {
-					for i := 0; i < 1; i++ {
-						rlp.Encode(kcpConn, "ping/repeat")
-						var lel string
-						rlp.Decode(kcpConn, &lel)
-					}
-					realConn = kcpConn
-				} else {
-					log.Println("** requesting TCP **")
-					rlp.Encode(kcpConn, "tcp")
-					var port uint
-					var key []byte
-					rlp.Decode(kcpConn, &port)
-					rlp.Decode(kcpConn, &key)
-					host := fmt.Sprintf("%v:%v", strings.Split(bi.Host, ":")[0], port)
-					log.Println("got ephemeral TCP host at", host, hex.EncodeToString(key))
-					rawTCP, err := net.Dial("tcp", host)
-					if err != nil {
-						log.Println("dialing TCP to", host, "failed")
-						return
-					}
-					kcpConn.Close()
-					realConn = niaucchi4.NewObfsStream(rawTCP, key, false)
-				}
-				realConn.SetDeadline(time.Now().Add(time.Second * 30))
-				<-syncChan
-				start := time.Now()
-				buff := new(bytes.Buffer)
-				rlp.Encode(buff, "conn/feedback")
-				rlp.Encode(buff, exitName)
-				io.Copy(realConn, buff)
-				log.Println("sent conn/feedback", exitName)
-				var out uint
-				err = rlp.Decode(realConn, &out)
-				if err != nil {
-					log.Println(bi.Host, "failed feedback:", err)
-					kcpConn.Close()
+				rlp.Encode(kcpConn, "conn/e2e")
+				rlp.Encode(kcpConn, exitName)
+				rlp.Encode(kcpConn, cookie)
+				var port uint
+				e := rlp.Decode(kcpConn, &port)
+				if e != nil {
+					log.Println("conn/e2e to", bi.Host, "failed:", e)
 					return
 				}
+				complete := fmt.Sprintf("%v:%v", strings.Split(bi.Host, ":")[0], port)
+				compudp, err := net.ResolveUDPAddr("udp", complete)
+				if err != nil {
+					log.Println("cannot resolve udp for", complete, err)
+					return
+				}
+				log.Println("adding", complete, "to our e2e")
+				e2e.SetSessPath(e2esid, compudp)
 				select {
-				case bridgeRace <- realConn:
-					log.Println(bi.Host, "WON with latency", time.Since(start))
+				case bridgeRace <- true:
+					log.Println(bi.Host, "FIRST")
 				default:
-					log.Println(bi.Host, "LOST with latency", time.Since(start))
-					kcpConn.Close()
+					log.Println(bi.Host, "SUBSEQ")
 				}
 			}()
 		}
 		// get the bridge
-		kcpConn, ok := <-bridgeRace
+		_, ok := <-bridgeRace
 		if !ok {
 			log.Println("everything failed, retrying")
 			time.Sleep(time.Second)
 			goto retry
 		}
+		kcpConn, err := kcp.NewConn2(e2esid, nil, 0, 0, e2e)
+		if err != nil {
+			panic(err)
+		}
+		kcpConn.SetWindowSize(1000, 10000)
+		kcpConn.SetNoDelay(0, 50, 5, 0)
+		kcpConn.SetStreamMode(true)
+		kcpConn.SetMtu(1300)
 		sm, err := negotiateSmux([2][]byte{ubmsg, ubsig}, kcpConn, realExitKey)
 		if err != nil {
 			log.Println("Failed negotiating smux:", err)
