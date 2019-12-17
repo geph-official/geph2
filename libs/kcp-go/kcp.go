@@ -752,12 +752,15 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				kcp.bic_onack(acks)
 			case "LOL":
 				bdp := kcp.bdp() / float64(kcp.mss)
-				targetBDP := bdp * 4
-				if targetBDP > kcp.cwnd+float64(acks) {
+				targetCwnd := bdp * 4
+				if targetCwnd > kcp.cwnd+float64(acks) {
 					kcp.cwnd = (kcp.cwnd + float64(acks))
+				} else if targetCwnd > kcp.cwnd {
+					kcp.cwnd = targetCwnd
 				} else {
-					kcp.cwnd = (kcp.cwnd + targetBDP) / 2
+					kcp.cwnd = kcp.cwnd*0.9 + targetCwnd*0.1
 				}
+				kcp.cwnd = targetCwnd
 				if kcp.cwnd < 4 {
 					kcp.cwnd = 4
 				}
@@ -828,7 +831,11 @@ func (kcp *KCP) updateSample(appLimited bool) {
 		avgRate := kcp.DRE.runSampleSum / float64(kcp.DRE.runSamples)
 		kcp.DRE.avgAckRate = 0.99*kcp.DRE.avgAckRate + 0.01*avgRate
 		if kcp.DRE.maxAckRate < avgRate || (!appLimited && float64(time.Since(kcp.DRE.maxAckTime).Milliseconds()) > kcp.DRE.minRtt*10) {
-			kcp.DRE.maxAckRate = avgRate
+			if kcp.DRE.maxAckRate > avgRate {
+				kcp.DRE.maxAckRate = kcp.DRE.avgAckRate
+			} else {
+				kcp.DRE.maxAckRate = avgRate
+			}
 			if kcp.DRE.maxAckRate < 200*1000 {
 				kcp.LOL.filledPipe = false
 				kcp.DRE.maxAckRate = 200 * 1000 // HACK
@@ -1001,7 +1008,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.acked == 1 {
 			continue
 		}
-		const RTOSLACK = 250
+		const RTOSLACK = 500
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto

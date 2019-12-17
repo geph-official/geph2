@@ -39,7 +39,6 @@ func doDNSProxy() {
 			burl := base64.RawURLEncoding.EncodeToString(smabuf)
 			rsp, err := hclient.Get("https://cloudflare-dns.com/dns-query?dns=" + burl)
 			if err != nil {
-				log.Println("error from Cloudflare DNS:", err)
 				return
 			}
 			response, err := ioutil.ReadAll(rsp.Body)

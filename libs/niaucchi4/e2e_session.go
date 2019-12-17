@@ -94,19 +94,16 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 	}
 	// parse the stuff
 	if pkt.Sn < es.info[remid].recvsn {
-		if doLogging {
-			log.Println("N4: e2eSession.Input() got late packet", pkt.Sn, "<", es.info[remid].recvsn)
+	} else {
+		es.info[remid].recvsn = pkt.Sn
+		es.info[remid].acksn = pkt.Ack
+		es.info[remid].lastRecv = time.Now().UnixNano() / 1000000
+		now := time.Now().UnixNano() / 1000000
+		sentTime := es.info[remid].sendTimes[pkt.Ack%1024]
+		ping := now - sentTime
+		if ping < 1000 {
+			es.info[remid].lastPing = ping
 		}
-		return
-	}
-	es.info[remid].recvsn = pkt.Sn
-	es.info[remid].acksn = pkt.Ack
-	es.info[remid].lastRecv = time.Now().UnixNano() / 1000000
-	now := time.Now().UnixNano() / 1000000
-	sentTime := es.info[remid].sendTimes[pkt.Ack%1024]
-	ping := now - sentTime
-	if ping < 1000 {
-		es.info[remid].lastPing = ping
 	}
 	es.rdqueue = append(es.rdqueue, pkt.Body)
 }
