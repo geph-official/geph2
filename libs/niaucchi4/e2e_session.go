@@ -136,7 +136,7 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 	} else {
 		remid := -1
 		now := time.Now()
-		if now.Sub(es.lastSend).Milliseconds() > 100 {
+		if now.Sub(es.lastSend).Milliseconds() > 500 {
 			lowPoint := 1e20
 			for i, li := range es.info {
 				if score := li.getScore(); score < lowPoint {

@@ -322,6 +322,7 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 				s.uncork()
 			}
 			s.mu.Unlock()
+			s.kcp.paceOnce(n)
 			atomic.AddUint64(&DefaultSnmp.BytesSent, uint64(n))
 
 			return n, nil

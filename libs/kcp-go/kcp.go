@@ -752,7 +752,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				kcp.bic_onack(acks)
 			case "LOL":
 				bdp := kcp.bdp() / float64(kcp.mss)
-				targetBDP := bdp * 3
+				targetBDP := bdp * 4
 				if targetBDP > kcp.cwnd+float64(acks) {
 					kcp.cwnd = (kcp.cwnd + float64(acks))
 				} else {
@@ -828,14 +828,10 @@ func (kcp *KCP) updateSample(appLimited bool) {
 		avgRate := kcp.DRE.runSampleSum / float64(kcp.DRE.runSamples)
 		kcp.DRE.avgAckRate = 0.99*kcp.DRE.avgAckRate + 0.01*avgRate
 		if kcp.DRE.maxAckRate < avgRate || (!appLimited && float64(time.Since(kcp.DRE.maxAckTime).Milliseconds()) > kcp.DRE.minRtt*10) {
-			if kcp.DRE.maxAckRate > avgRate {
-				kcp.DRE.maxAckRate = kcp.DRE.maxAckRate*0.5 + avgRate*0.5
-			} else {
-				kcp.DRE.maxAckRate = avgRate
-			}
-			if kcp.DRE.maxAckRate < 100*1000 {
+			kcp.DRE.maxAckRate = avgRate
+			if kcp.DRE.maxAckRate < 200*1000 {
 				kcp.LOL.filledPipe = false
-				kcp.DRE.maxAckRate = 100 * 1000 // HACK
+				kcp.DRE.maxAckRate = 200 * 1000 // HACK
 			}
 			kcp.DRE.maxAckTime = kcp.DRE.delTime
 		}
