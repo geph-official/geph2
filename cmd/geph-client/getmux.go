@@ -146,10 +146,13 @@ func newSmuxWrapper() *muxWrap {
 		bridgeRace := make(chan bool)
 		bridgeDeadWait := new(sync.WaitGroup)
 		bridgeDeadWait.Add(len(bridges))
-		usocket, err := net.ListenPacket("udp", ":")
-		if err != nil {
-			panic(err)
-		}
+		usocket := niaucchi4.Wrap(func() net.PacketConn {
+			us, err := net.ListenPacket("udp", ":")
+			if err != nil {
+				panic(err)
+			}
+			return us
+		})
 		cookie := make([]byte, 23)
 		rand.Read(cookie)
 		log.Printf("creating OBFS with COOKIE %x", cookie[:10])

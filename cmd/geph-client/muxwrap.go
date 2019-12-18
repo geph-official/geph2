@@ -48,6 +48,7 @@ func (sw *muxWrap) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 		}
 		// dial command
 		rlp.Encode(strm, cmds)
+		strm.SetDeadline(time.Now().Add(time.Second * 10))
 		// wait for response
 		var connected bool
 		err = rlp.Decode(strm, &connected)
