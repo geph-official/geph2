@@ -128,7 +128,7 @@ func handle(rawClient net.Conn) {
 	}
 	// IGNORE FOR NOW
 	rlp.Encode(tssClient, "OK")
-	rawClient.SetDeadline(time.Time{})
+	rawClient.SetDeadline(time.Now().Add(time.Hour * 24))
 	for {
 		soxclient, err := acceptStream()
 		if err != nil {

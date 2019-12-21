@@ -115,9 +115,6 @@ RESTART:
 			}
 			return
 		}
-		if doLogging {
-			log.Println("N4: apparently invalid pkt from known host", addr.String())
-		}
 	}
 	// check if the packet belongs to a pending thing
 	if proti, ok := os.pending.Get(addr.String()); ok {
@@ -160,7 +157,7 @@ RESTART:
 	ts, e := pt.realize(os.rdbuf[:readBytes], true)
 	if e != nil {
 		if doLogging {
-			log.Println("N4: bad hello from", addr.String())
+			log.Println("N4: bad hello from", addr.String(), e.Error())
 		}
 		goto RESTART
 	}

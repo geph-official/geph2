@@ -17,6 +17,7 @@ import (
 )
 
 func handle(client net.Conn) {
+	client.SetDeadline(time.Now().Add(time.Minute * 5))
 	var err error
 	defer func() {
 		log.Println("Closed client", client.RemoteAddr(), "reason", err)
@@ -89,6 +90,7 @@ func handle(client net.Conn) {
 		case "conn":
 			fallthrough
 		case "conn/feedback":
+			client.SetDeadline(time.Now().Add(time.Hour * 24))
 			var host string
 			log.Println("waiting for host...")
 			err = dec.Decode(&host)
