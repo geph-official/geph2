@@ -79,14 +79,10 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 		os.Exit(11)
 	}
 	smuxConf := &smux.Config{
-		KeepAliveInterval: time.Minute * 30,
-		KeepAliveTimeout:  time.Minute * 32,
+		KeepAliveInterval: time.Minute * 20,
+		KeepAliveTimeout:  time.Minute * 22,
 		MaxFrameSize:      4096,
 		MaxReceiveBuffer:  100 * 1024 * 1024,
-	}
-	if useTCP {
-		smuxConf.KeepAliveInterval = time.Minute * 2
-		smuxConf.KeepAliveTimeout = time.Minute*2 + time.Second*10
 	}
 	ss, err = smux.Client(cryptConn, smuxConf)
 	if err != nil {
@@ -94,7 +90,7 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 		err = fmt.Errorf("smux error: %w", err)
 		return
 	}
-	rawConn.SetDeadline(time.Time{})
+	rawConn.SetDeadline(time.Now().Add(time.Hour * 12))
 	return
 }
 
@@ -218,7 +214,7 @@ func newSmuxWrapper() *muxWrap {
 			panic(err)
 		}
 		kcpConn.SetWindowSize(1000, 10000)
-		kcpConn.SetNoDelay(0, 50, 5, 0)
+		kcpConn.SetNoDelay(0, 50, 3, 0)
 		kcpConn.SetStreamMode(true)
 		kcpConn.SetMtu(1300)
 		sm, err := negotiateSmux([2][]byte{ubmsg, ubsig}, kcpConn, realExitKey)

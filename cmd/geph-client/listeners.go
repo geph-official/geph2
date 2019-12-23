@@ -1,11 +1,13 @@
 package main
 
 import (
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"time"
 
+	"github.com/bunsim/goproxy"
 	"github.com/geph-official/geph2/libs/cwl"
 	"github.com/geph-official/geph2/libs/tinysocks"
 	"golang.org/x/time/rate"
@@ -26,6 +28,29 @@ func listenStats() {
 	err := statsServ.ListenAndServe()
 	if err != nil {
 		panic(err)
+	}
+}
+
+func listenHTTP() {
+	// HTTP proxy
+	srv := goproxy.NewProxyHttpServer()
+	srv.Tr = &http.Transport{
+		Dial: func(n, d string) (net.Conn, error) {
+			return dialTun(d)
+		},
+		IdleConnTimeout: time.Second * 60,
+		Proxy:           nil,
+	}
+	srv.Logger = log.New(ioutil.Discard, "", 0)
+	proxServ := &http.Server{
+		Addr:        httpAddr,
+		Handler:     srv,
+		ReadTimeout: time.Minute * 5,
+		IdleTimeout: time.Minute * 5,
+	}
+	err := proxServ.ListenAndServe()
+	if err != nil {
+		panic(err.Error())
 	}
 }
 
