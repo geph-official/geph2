@@ -23,11 +23,8 @@ import (
 	"github.com/bunsim/goproxy"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/bdclient"
-	"github.com/geph-official/geph2/libs/cwl"
 	"github.com/geph-official/geph2/libs/kcp-go"
-	"github.com/geph-official/geph2/libs/tinysocks"
 	"golang.org/x/net/proxy"
-	"golang.org/x/time/rate"
 )
 
 var username string
@@ -48,6 +45,7 @@ var socksAddr string
 var httpAddr string
 var statsAddr string
 var dnsAddr string
+var cachePath string
 
 var useTCP bool
 
@@ -111,6 +109,7 @@ func main() {
 	flag.StringVar(&dnsAddr, "dnsAddr", "localhost:9983", "local DNS listener")
 	flag.BoolVar(&loginCheck, "loginCheck", false, "do a login check and immediately exit with code 0")
 	flag.StringVar(&binderProxy, "binderProxy", "", "if set, proxy the binder at the given listening address and do nothing else")
+	flag.StringVar(&cachePath, "cachePath", os.TempDir()+"geph-cache.db", "location of state cache")
 	flag.BoolVar(&useTCP, "useExperimentalTCP", false, "use TCP to connect to bridges")
 	flag.Parse()
 	if *cpuprofile != "" {
@@ -131,7 +130,6 @@ func main() {
 			panic("TB")
 		}()
 	}
-
 	if GitVersion == "" {
 		GitVersion = "NOVER"
 	}
@@ -213,24 +211,7 @@ func main() {
 	if dnsAddr != "" {
 		go doDNSProxy()
 	}
-
-	// spin up stats server
-	statsMux := http.NewServeMux()
-	statsServ := &http.Server{
-		Addr:         statsAddr,
-		Handler:      statsMux,
-		ReadTimeout:  time.Minute,
-		WriteTimeout: time.Minute,
-	}
-	statsMux.HandleFunc("/proxy.pac", handleProxyPac)
-	statsMux.HandleFunc("/", handleStats)
-	statsMux.HandleFunc("/logs", handleLogs)
-	go func() {
-		err := statsServ.ListenAndServe()
-		if err != nil {
-			panic(err)
-		}
-	}()
+	go listenStats()
 
 	// confirm we are connected
 	func() {
@@ -279,7 +260,7 @@ func main() {
 		}
 	}()
 
-	listenLoop()
+	listenSocks()
 }
 
 func dialTun(dest string) (conn net.Conn, err error) {
@@ -289,76 +270,4 @@ func dialTun(dest string) (conn net.Conn, err error) {
 	}
 	conn, err = sks.Dial("tcp", dest)
 	return
-}
-
-func listenLoop() {
-	listener, err := net.Listen("tcp", socksAddr)
-	if err != nil {
-		panic(err)
-	}
-	semaphore := make(chan bool, 512)
-	downLimit := rate.NewLimiter(rate.Inf, 10000000)
-	upLimit := rate.NewLimiter(rate.Inf, 10000000)
-	useStats(func(sc *stats) {
-		if sc.Tier == "free" {
-			upLimit = rate.NewLimiter(100*1000, 1000*1000)
-		}
-	})
-	log.Println("SOCKS5 on 9909")
-	for {
-		cl, err := listener.Accept()
-		if err != nil {
-			panic(err)
-		}
-		go func() {
-			defer cl.Close()
-			select {
-			case semaphore <- true:
-				defer func() {
-					<-semaphore
-				}()
-			default:
-				return
-			}
-			rmAddr, err := tinysocks.ReadRequest(cl)
-			if err != nil {
-				return
-			}
-			start := time.Now()
-			remote, ok := sWrap.DialCmd("proxy", rmAddr)
-			if !ok {
-				return
-			}
-			defer remote.Close()
-			ping := time.Since(start)
-			log.Printf("[%v] opened %v in %v", len(semaphore), rmAddr, ping)
-			useStats(func(sc *stats) {
-				pmil := ping.Milliseconds()
-				if time.Since(sc.PingTime).Seconds() > 30 || uint64(pmil) < sc.MinPing {
-					sc.MinPing = uint64(pmil)
-					sc.PingTime = time.Now()
-				}
-			})
-			if !ok {
-				tinysocks.CompleteRequest(5, cl)
-				return
-			}
-			tinysocks.CompleteRequest(0, cl)
-			go func() {
-				defer remote.Close()
-				defer cl.Close()
-				cwl.CopyWithLimit(remote, cl, downLimit, func(n int) {
-					useStats(func(sc *stats) {
-						sc.UpBytes += uint64(n)
-					})
-				})
-			}()
-			cwl.CopyWithLimit(cl, remote,
-				upLimit, func(n int) {
-					useStats(func(sc *stats) {
-						sc.DownBytes += uint64(n)
-					})
-				})
-		}()
-	}
 }
