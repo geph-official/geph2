@@ -11,7 +11,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/patrickmn/go-cache"
-	"golang.org/x/time/rate"
 )
 
 // SessionAddr is a net.Addr that represents the ultimate counterparty in an e2e session.
@@ -70,7 +69,7 @@ func (e2e *E2EConn) SetSessPath(sid SessionAddr, host net.Addr) {
 	if sessi, ok := e2e.sidToSess.Get(sid.String()); ok {
 		sess = sessi.(*e2eSession)
 	} else {
-		sess = &e2eSession{sessid: sid, dupRateLimit: rate.NewLimiter(10, 100)}
+		sess = newSession(sid)
 	}
 	e2e.sidToSess.SetDefault(sid.String(), sess)
 	sess.AddPath(host)
@@ -156,7 +155,7 @@ func (e2e *E2EConn) readOnePacket() error {
 	if sessi, ok := e2e.sidToSess.Get(pkt.Session.String()); ok {
 		sess = sessi.(*e2eSession)
 	} else {
-		sess = &e2eSession{sessid: pkt.Session, dupRateLimit: rate.NewLimiter(10, 100)}
+		sess = newSession(pkt.Session)
 	}
 	e2e.sidToSess.SetDefault(pkt.Session.String(), sess)
 	sess.AddPath(from)

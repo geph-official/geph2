@@ -111,7 +111,7 @@ func e2elisten() {
 			continue
 		}
 		rc.SetWindowSize(10000, 1000)
-		rc.SetNoDelay(0, 50, 5, 0)
+		rc.SetNoDelay(0, 50, 3, 0)
 		rc.SetStreamMode(true)
 		rc.SetMtu(1300)
 		go handle(rc)

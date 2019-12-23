@@ -62,6 +62,7 @@ var GitVersion string
 
 // find the fastest binder and stick to it
 func binderRace() {
+	log.Println("starting binder race...")
 restart:
 	fronts := strings.Split(binderFront, ",")
 	hosts := strings.Split(binderHost, ",")
@@ -214,11 +215,18 @@ func main() {
 	}
 
 	// spin up stats server
-	http.HandleFunc("/proxy.pac", handleProxyPac)
-	http.HandleFunc("/", handleStats)
-	http.HandleFunc("/logs", handleLogs)
+	statsMux := http.NewServeMux()
+	statsServ := &http.Server{
+		Addr:         statsAddr,
+		Handler:      statsMux,
+		ReadTimeout:  time.Minute,
+		WriteTimeout: time.Minute,
+	}
+	statsMux.HandleFunc("/proxy.pac", handleProxyPac)
+	statsMux.HandleFunc("/", handleStats)
+	statsMux.HandleFunc("/logs", handleLogs)
 	go func() {
-		err := http.ListenAndServe(statsAddr, nil)
+		err := statsServ.ListenAndServe()
 		if err != nil {
 			panic(err)
 		}
@@ -259,7 +267,13 @@ func main() {
 	}
 	srv.Logger = log.New(ioutil.Discard, "", 0)
 	go func() {
-		err := http.ListenAndServe(httpAddr, srv)
+		proxServ := &http.Server{
+			Addr:        httpAddr,
+			Handler:     srv,
+			ReadTimeout: time.Minute * 5,
+			IdleTimeout: time.Minute * 5,
+		}
+		err := proxServ.ListenAndServe()
 		if err != nil {
 			panic(err.Error())
 		}
@@ -282,6 +296,14 @@ func listenLoop() {
 	if err != nil {
 		panic(err)
 	}
+	semaphore := make(chan bool, 512)
+	downLimit := rate.NewLimiter(rate.Inf, 10000000)
+	upLimit := rate.NewLimiter(rate.Inf, 10000000)
+	useStats(func(sc *stats) {
+		if sc.Tier == "free" {
+			upLimit = rate.NewLimiter(100*1000, 1000*1000)
+		}
+	})
 	log.Println("SOCKS5 on 9909")
 	for {
 		cl, err := listener.Accept()
@@ -290,6 +312,14 @@ func listenLoop() {
 		}
 		go func() {
 			defer cl.Close()
+			select {
+			case semaphore <- true:
+				defer func() {
+					<-semaphore
+				}()
+			default:
+				return
+			}
 			rmAddr, err := tinysocks.ReadRequest(cl)
 			if err != nil {
 				return
@@ -301,7 +331,7 @@ func listenLoop() {
 			}
 			defer remote.Close()
 			ping := time.Since(start)
-			log.Printf("opened %v in %v", rmAddr, ping)
+			log.Printf("[%v] opened %v in %v", len(semaphore), rmAddr, ping)
 			useStats(func(sc *stats) {
 				pmil := ping.Milliseconds()
 				if time.Since(sc.PingTime).Seconds() > 30 || uint64(pmil) < sc.MinPing {
@@ -317,14 +347,14 @@ func listenLoop() {
 			go func() {
 				defer remote.Close()
 				defer cl.Close()
-				cwl.CopyWithLimit(remote, cl, rate.NewLimiter(rate.Inf, 10000000), func(n int) {
+				cwl.CopyWithLimit(remote, cl, downLimit, func(n int) {
 					useStats(func(sc *stats) {
 						sc.UpBytes += uint64(n)
 					})
 				})
 			}()
 			cwl.CopyWithLimit(cl, remote,
-				rate.NewLimiter(rate.Inf, 10000000), func(n int) {
+				upLimit, func(n int) {
 					useStats(func(sc *stats) {
 						sc.DownBytes += uint64(n)
 					})
