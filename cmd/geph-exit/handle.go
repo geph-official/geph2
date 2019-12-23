@@ -114,7 +114,6 @@ func handle(rawClient net.Conn) {
 			rlp.Encode(tssClient, "FAIL")
 			return
 		}
-		log.Printf("%v isn't paid, trying free", rawClient.RemoteAddr())
 		err = bclient.RedeemTicket("free", greeting[0], greeting[1])
 		if err != nil {
 			log.Printf("%v isn't free either. fail", rawClient.RemoteAddr())
@@ -144,6 +143,7 @@ func handle(rawClient net.Conn) {
 			if len(command) == 0 {
 				return
 			}
+			log.Printf("C<%p> cmd %v", rawClient, command)
 			// match command
 			switch command[0] {
 			case "proxy":
