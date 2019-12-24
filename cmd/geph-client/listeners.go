@@ -44,7 +44,7 @@ func listenHTTP() {
 		Proxy:           nil,
 	}
 	blankLogger := log.New()
-	log.SetOutput(ioutil.Discard)
+	blankLogger.SetOutput(ioutil.Discard)
 	srv.Logger = blankLogger
 	proxServ := &http.Server{
 		Addr:        httpAddr,
