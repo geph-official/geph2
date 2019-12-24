@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/ioutil"
 	"net"
 	"net/http"
 	"time"
@@ -42,7 +43,9 @@ func listenHTTP() {
 		IdleConnTimeout: time.Second * 60,
 		Proxy:           nil,
 	}
-	srv.Logger = nil
+	blankLogger := log.New()
+	log.SetOutput(ioutil.Discard)
+	srv.Logger = blankLogger
 	proxServ := &http.Server{
 		Addr:        httpAddr,
 		Handler:     srv,
