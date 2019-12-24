@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"runtime"
 	"sync"
 	"time"
 
@@ -71,4 +72,17 @@ func handleProxyPac(w http.ResponseWriter, r *http.Request) {
 		return "PROXY %v";
 	}
 	`, httpAddr)))
+}
+
+func handleStacktrace(w http.ResponseWriter, r *http.Request) {
+	buf := make([]byte, 8192)
+	for {
+		n := runtime.Stack(buf, true)
+		if n < len(buf) {
+			buf = buf[:n]
+			break
+		}
+		buf = append(buf, buf...)
+	}
+	w.Write(buf)
 }

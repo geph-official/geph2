@@ -25,6 +25,7 @@ func listenStats() {
 	statsMux.HandleFunc("/proxy.pac", handleProxyPac)
 	statsMux.HandleFunc("/", handleStats)
 	statsMux.HandleFunc("/logs", handleLogs)
+	statsMux.HandleFunc("/stacktrace", handleStacktrace)
 	err := statsServ.ListenAndServe()
 	if err != nil {
 		panic(err)

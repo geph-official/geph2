@@ -513,10 +513,13 @@ func (kcp *KCP) processAck(seg *segment) {
 		return
 	}
 	delete(kcp.DRE.ppAppLimited, seg.sn)
-	ackRate := dataAcked / ackElapsed.Seconds()
-	kcp.DRE.runSamples += len(seg.data)
-	kcp.DRE.runSampleSum += ackRate * float64(len(seg.data))
-	kcp.updateSample(appLimited)
+	if float64(ackElapsed.Milliseconds()) < kcp.DRE.minRtt {
+	} else {
+		ackRate := dataAcked / ackElapsed.Seconds()
+		kcp.DRE.runSamples = len(seg.data)
+		kcp.DRE.runSampleSum = ackRate * float64(len(seg.data))
+		kcp.updateSample(appLimited)
+	}
 }
 
 func (kcp *KCP) parse_ack(sn uint32) {

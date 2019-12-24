@@ -281,6 +281,7 @@ func (s *UDPSession) Read(b []byte) (n int, err error) {
 
 // Write implements net.Conn
 func (s *UDPSession) Write(b []byte) (n int, err error) {
+	s.kcp.paceOnce(n)
 	return s.WriteBuffers([][]byte{b})
 }
 
