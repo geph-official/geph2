@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/abh/geoip v0.0.0-20160510155516-07cea4480daa
+	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
 	github.com/bunsim/goproxy v0.0.0-20170228195103-3c809b25484a
 	github.com/cryptoballot/fdh v0.0.0-20170924224734-5eb31ce2010c // indirect
 	github.com/cryptoballot/rsablind v0.0.0-20170925165423-14f9913880b7
@@ -12,6 +13,7 @@ require (
 	github.com/elazarl/goproxy/ext v0.0.0-20190911111923-ecfe977594f1 // indirect
 	github.com/ethereum/go-ethereum v1.9.9
 	github.com/etsy/statsd v0.8.5
+	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/gorilla/mux v1.7.3
 	github.com/hashicorp/golang-lru v0.5.3
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d
@@ -26,6 +28,7 @@ require (
 	github.com/oschwald/maxminddb-golang v1.5.0 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pkg/errors v0.8.1
+	github.com/sirupsen/logrus v1.4.2
 	github.com/sparrc/go-ping v0.0.0-20190613174326-4e5b6552494c // indirect
 	github.com/templexxx/cpufeat v0.0.0-20180724012125-cef66df7f161 // indirect
 	github.com/templexxx/xor v0.0.0-20181023030647-4e92f724b73b

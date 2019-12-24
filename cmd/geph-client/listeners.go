@@ -1,11 +1,11 @@
 package main
 
 import (
-	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/bunsim/goproxy"
 	"github.com/geph-official/geph2/libs/cwl"
@@ -42,7 +42,7 @@ func listenHTTP() {
 		IdleConnTimeout: time.Second * 60,
 		Proxy:           nil,
 	}
-	srv.Logger = log.New(ioutil.Discard, "", 0)
+	srv.Logger = nil
 	proxServ := &http.Server{
 		Addr:        httpAddr,
 		Handler:     srv,
@@ -95,7 +95,7 @@ func listenSocks() {
 			}
 			defer remote.Close()
 			ping := time.Since(start)
-			log.Printf("[%v] opened %v in %v", len(semaphore), rmAddr, ping)
+			log.Debugf("[%v] opened %v in %v", len(semaphore), rmAddr, ping)
 			useStats(func(sc *stats) {
 				pmil := ping.Milliseconds()
 				if time.Since(sc.PingTime).Seconds() > 30 || uint64(pmil) < sc.MinPing {

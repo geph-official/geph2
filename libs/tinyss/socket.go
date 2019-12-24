@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"io"
-	"log"
 	"net"
 	"time"
 
@@ -190,7 +189,6 @@ func (sk *Socket) SharedSec() []byte {
 
 // Handshake upgrades a plaintext socket to a MiniSS socket, given our secret key.
 func Handshake(plain net.Conn, nextProtocol byte) (sok *Socket, err error) {
-	log.Println("handshake", nextProtocol)
 	// generate ephemeral key
 	myesk := c25519.GenSK()
 	// in another thread, send over hello
@@ -229,21 +227,18 @@ func Handshake(plain net.Conn, nextProtocol byte) (sok *Socket, err error) {
 	if nextProtocol != 0 {
 		go func() {
 			binary.Write(ns, binary.BigEndian, nextProtocol)
-			log.Println("written nextProtocol", nextProtocol)
 			close(wait)
 		}()
 	}
 	switch string(bts[:8]) {
 	case "TinySS-1":
 	case "TinySS-2":
-		log.Println("waiting for their protocol")
 		// then we wait for their next protocol
 		var theirNextProt byte
 		err = binary.Read(ns, binary.BigEndian, &theirNextProt)
 		if err != nil {
 			return
 		}
-		log.Println("got nextProtocol", theirNextProt)
 		ns.nextprot = theirNextProt
 	}
 	sok = ns

@@ -12,7 +12,6 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -147,7 +146,6 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn 
 
 	// cast to writebatch conn
 	if _, ok := conn.(*net.UDPConn); ok {
-		log.Print("IS UDP")
 		addr, err := net.ResolveUDPAddr("udp", conn.LocalAddr().String())
 		if err == nil {
 			if addr.IP.To4() != nil {
@@ -155,7 +153,6 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn 
 			} else {
 				sess.xconn = ipv6.NewPacketConn(conn)
 			}
-			log.Println("XCONN CREATED")
 		}
 	}
 
@@ -281,7 +278,6 @@ func (s *UDPSession) Read(b []byte) (n int, err error) {
 
 // Write implements net.Conn
 func (s *UDPSession) Write(b []byte) (n int, err error) {
-	s.kcp.paceOnce(n)
 	return s.WriteBuffers([][]byte{b})
 }
 
@@ -321,6 +317,9 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 			if waitsnd >= int(s.kcp.snd_wnd) || waitsnd >= int(s.kcp.rmt_wnd) || !s.writeDelay {
 				s.kcp.flush(false)
 				s.uncork()
+			}
+			if CongestionControl == "LOL" {
+				s.kcp.paceOnce(n)
 			}
 			s.mu.Unlock()
 			atomic.AddUint64(&DefaultSnmp.BytesSent, uint64(n))

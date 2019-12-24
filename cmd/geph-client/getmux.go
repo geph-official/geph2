@@ -7,12 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/kcp-go"
@@ -103,7 +104,7 @@ func newSmuxWrapper() *muxWrap {
 		// obtain a ticket
 		ubmsg, ubsig, details, err := bindClient.GetTicket(username, password)
 		if err != nil {
-			log.Println("error authenticating:", err)
+			log.Errorln("error authenticating:", err)
 			if errors.Is(err, io.EOF) {
 				os.Exit(11)
 			}
@@ -123,7 +124,7 @@ func newSmuxWrapper() *muxWrap {
 		if direct {
 			sm, err := getDirect([2][]byte{ubmsg, ubsig}, exitName, realExitKey)
 			if err != nil {
-				log.Println("direct conn retrying", err)
+				log.Warnln("direct conn retrying", err)
 				time.Sleep(time.Second)
 				goto retry
 			}
@@ -134,11 +135,11 @@ func newSmuxWrapper() *muxWrap {
 		}
 		bridges, err := bindClient.GetBridges(ubmsg, ubsig)
 		if err != nil {
-			log.Println("getting bridges failed, retrying", err)
+			log.Warnln("getting bridges failed, retrying", err)
 			time.Sleep(time.Second)
 			goto retry
 		}
-		log.Println("racing between", len(bridges), "bridges...")
+		log.Debugln("racing between", len(bridges), "bridges...")
 		bridgeRace := make(chan bool)
 		bridgeDeadWait := new(sync.WaitGroup)
 		bridgeDeadWait.Add(len(bridges))
@@ -149,19 +150,11 @@ func newSmuxWrapper() *muxWrap {
 			}
 			return us
 		})
-		cookie := make([]byte, 23)
+		cookie := make([]byte, 32)
 		rand.Read(cookie)
-		log.Printf("creating OBFS with COOKIE %x", cookie[:10])
 		osocket := niaucchi4.ObfsListen(cookie, usocket)
 		e2esid := niaucchi4.NewSessAddr()
 		e2e := niaucchi4.NewE2EConn(osocket)
-		go func() {
-			for !e2e.Closed {
-				time.Sleep(time.Second * 30)
-				log.Println("******* multipath info: *******")
-				e2e.DebugInfo()
-			}
-		}()
 		go func() {
 			bridgeDeadWait.Wait()
 			close(bridgeRace)
@@ -172,7 +165,7 @@ func newSmuxWrapper() *muxWrap {
 				defer bridgeDeadWait.Done()
 				kcpConn, err := niaucchi4.DialKCP(bi.Host, bi.Cookie)
 				if err != nil {
-					log.Println("dialing to", bi.Host, "failed!")
+					log.Debug("dialing to", bi.Host, "failed!")
 					return
 				}
 				defer kcpConn.Close()
@@ -183,7 +176,7 @@ func newSmuxWrapper() *muxWrap {
 				var port uint
 				e := rlp.Decode(kcpConn, &port)
 				if e != nil {
-					log.Println("conn/e2e to", bi.Host, "failed:", e)
+					log.Warnln("conn/e2e to", bi.Host, "failed:", e)
 					return
 				}
 				complete := fmt.Sprintf("%v:%v", strings.Split(bi.Host, ":")[0], port)
@@ -192,13 +185,11 @@ func newSmuxWrapper() *muxWrap {
 					log.Println("cannot resolve udp for", complete, err)
 					return
 				}
-				log.Println("adding", complete, "to our e2e")
+				log.Debugln("adding", complete, "to our e2e")
 				e2e.SetSessPath(e2esid, compudp)
 				select {
 				case bridgeRace <- true:
-					log.Println(bi.Host, "FIRST")
 				default:
-					log.Println(bi.Host, "SUBSEQ")
 				}
 			}()
 		}

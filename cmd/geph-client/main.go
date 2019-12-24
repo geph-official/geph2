@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"log"
 	mrand "math/rand"
 	"net"
 	"net/http"
@@ -12,17 +11,19 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/acarl005/stripansi"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/kcp-go"
 	"golang.org/x/net/proxy"
+
+	log "github.com/sirupsen/logrus"
 )
 
 var username string
@@ -58,7 +59,7 @@ var GitVersion string
 
 // find the fastest binder and stick to it
 func binderRace() {
-	log.Println("starting binder race...")
+	log.Debug("starting binder race...")
 restart:
 	fronts := strings.Split(binderFront, ",")
 	hosts := strings.Split(binderHost, ",")
@@ -72,7 +73,7 @@ restart:
 		go func() {
 			_, err := bdc.GetClientInfo()
 			if err != nil {
-				log.Printf("[%v %v] failed: %e", fronts[i], hosts[i], err)
+				log.Warnf("[%v %v] failed: %v", fronts[i], hosts[i], err)
 				return
 			}
 			winner <- i
@@ -80,7 +81,7 @@ restart:
 	}
 	select {
 	case i := <-winner:
-		log.Printf("[%v %v] won binder race", fronts[i], hosts[i])
+		log.Debugf("[%v %v] won binder race", fronts[i], hosts[i])
 		binderFront = fronts[i]
 		binderHost = hosts[i]
 	case <-time.After(time.Second * 20):
@@ -90,7 +91,11 @@ restart:
 
 func main() {
 	mrand.Seed(time.Now().UnixNano())
-	runtime.GOMAXPROCS(1)
+	log.SetFormatter(&log.TextFormatter{
+		FullTimestamp: false,
+		ForceColors:   true,
+	})
+	log.SetLevel(log.DebugLevel)
 	kcp.CongestionControl = "BIC"
 	// flags
 	flag.StringVar(&username, "username", "", "username")
@@ -107,7 +112,7 @@ func main() {
 	flag.StringVar(&dnsAddr, "dnsAddr", "localhost:9983", "local DNS listener")
 	flag.BoolVar(&loginCheck, "loginCheck", false, "do a login check and immediately exit with code 0")
 	flag.StringVar(&binderProxy, "binderProxy", "", "if set, proxy the binder at the given listening address and do nothing else")
-	flag.StringVar(&cachePath, "cachePath", os.TempDir()+"geph-cache.db", "location of state cache")
+	flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
 	flag.BoolVar(&useTCP, "useExperimentalTCP", false, "use TCP to connect to bridges")
 	flag.Parse()
 	if *cpuprofile != "" {
@@ -142,7 +147,8 @@ func main() {
 			}
 			fmt.Fprint(os.Stderr, line)
 			useStats(func(sc *stats) {
-				sc.LogLines = append(sc.LogLines, strings.TrimSpace(line))
+				sc.LogLines = append(sc.LogLines,
+					stripansi.Strip(strings.TrimSpace(line)))
 			})
 		}
 	}()

@@ -1,10 +1,11 @@
 package main
 
 import (
-	"log"
 	"net"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/xtaci/smux"
@@ -42,7 +43,7 @@ func (sw *muxWrap) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 		strm, err := sess.OpenStream()
 		if err != nil {
 			sess.Close()
-			log.Println(cmds, "can't open stream, trying again", err)
+			log.Warnln(cmds, "can't open stream, trying again", err)
 			markSessionNil()
 			goto start
 		}
@@ -55,13 +56,13 @@ func (sw *muxWrap) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 		if err != nil {
 			sess.Close()
 			markSessionNil()
-			log.Println(cmds, "can't read response, trying again:", err)
+			log.Warnln(cmds, "can't read response, trying again:", err)
 			goto start
 		}
 		select {
 		case retval <- strm:
 		default:
-			log.Println(cmds, "closing late stream. This is BAAAAAD")
+			log.Warnln(cmds, "closing late stream. This is BAAAAAD")
 			strm.Close()
 		}
 	}()

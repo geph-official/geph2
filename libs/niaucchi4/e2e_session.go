@@ -129,6 +129,7 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 // Send sends a packet. It returns instructions to where the packet should be sent etc
 func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr)) (err error) {
 	es.lock.Lock()
+	defer es.lock.Unlock()
 	send := func(remid int) {
 		// create pkt
 		toSend := e2ePacket{
@@ -145,7 +146,6 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 	now := time.Now()
 	// find the right destination
 	if es.dupRateLimit.Allow() {
-		es.lock.Unlock()
 		for remid := range es.remote {
 			send(remid)
 		}
@@ -171,7 +171,6 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 		}
 		es.lastRemid = remid
 		es.lastSend = now
-		es.lock.Unlock()
 		send(remid)
 	}
 	return
