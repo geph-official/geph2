@@ -14,14 +14,14 @@ import (
 )
 
 type e2eSession struct {
-	remote       []net.Addr
-	info         []e2eLinkInfo
-	sessid       SessionAddr
-	rdqueue      [][]byte
-	dupRateLimit *rate.Limiter
-	lastSend     time.Time
-	lastRemid    int
-	dedup        *lru.Cache
+	remote         []net.Addr
+	info           []e2eLinkInfo
+	sessid         SessionAddr
+	rdqueue        [][]byte
+	dupRateLimit   *rate.Limiter
+	lastPathChange time.Time
+	lastRemid      int
+	dedup          *lru.Cache
 
 	lock sync.Mutex
 }
@@ -29,7 +29,7 @@ type e2eSession struct {
 func newSession(sessid [16]byte) *e2eSession {
 	cache, _ := lru.New(128)
 	return &e2eSession{
-		dupRateLimit: rate.NewLimiter(10, 100),
+		dupRateLimit: rate.NewLimiter(10, 10),
 		dedup:        cache,
 		sessid:       sessid,
 	}
@@ -46,7 +46,9 @@ type e2eLinkInfo struct {
 }
 
 func (el e2eLinkInfo) getScore() float64 {
-	return math.Sqrt((float64(el.sendsn) - float64(el.acksn)) * math.Max(50, float64(el.lastPing)))
+	now := time.Now().UnixNano() / 1000000
+	since := now - el.lastRecv
+	return math.Sqrt((float64(since) * math.Max(50, float64(el.lastPing))))
 }
 
 type e2ePacket struct {
@@ -115,7 +117,7 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 		sentTime := es.info[remid].sendTimes[pkt.Ack%1024]
 		ping := now - sentTime
 		if ping < 1000 {
-			es.info[remid].lastPing = ping
+			es.info[remid].lastPing = (es.info[remid].lastPing*9 + ping*1) / 10
 		}
 	}
 	bodyHash := highwayhash.Sum128(pkt.Body, make([]byte, 32))
@@ -151,7 +153,7 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 		}
 	} else {
 		remid := -1
-		if now.Sub(es.lastSend).Milliseconds() > 500 {
+		if now.Sub(es.lastPathChange).Milliseconds() > 500 {
 			lowPoint := 1e20
 			for i, li := range es.info {
 				if score := li.getScore(); score < lowPoint {
@@ -163,14 +165,15 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 				err = errors.New("cannot find any path")
 				return
 			}
+			es.lastPathChange = now
 		} else {
 			remid = es.lastRemid
 		}
 		if es.lastRemid != remid && doLogging {
 			log.Println("N4: changing path to", es.remote[remid])
+			go es.DebugInfo()
 		}
 		es.lastRemid = remid
-		es.lastSend = now
 		send(remid)
 	}
 	return

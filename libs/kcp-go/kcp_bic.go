@@ -2,27 +2,16 @@ package kcp
 
 import (
 	"log"
-	"math"
 )
 
 func (kcp *KCP) bic_onloss(lost int) {
-	// if doLogging {
-	// 	log.Println("loss detected for BIC")
-	// }
-	kcp.shortLoss *= math.Pow(0.999, float64(lost))
-	kcp.longLoss *= math.Pow(0.9999, float64(lost))
-	if kcp.cwnd > 8 {
-		if kcp.shortLoss < kcp.longLoss/1.1 {
-			kcp.shortLoss = 1.0
-			beta := 0.25
-			if kcp.cwnd < kcp.wmax {
-				kcp.wmax = kcp.cwnd * (2.0 - beta) / 2.0
-			} else {
-				kcp.wmax = kcp.cwnd
-			}
-			kcp.cwnd = kcp.cwnd * (1.0 - beta)
-		}
+	beta := 0.25
+	if kcp.cwnd < kcp.wmax {
+		kcp.wmax = kcp.cwnd * (2.0 - beta) / 2.0
+	} else {
+		kcp.wmax = kcp.cwnd
 	}
+	kcp.cwnd = kcp.cwnd * (1.0 - beta)
 }
 
 func (kcp *KCP) aimd_multiplier() float64 {

@@ -190,8 +190,8 @@ type KCP struct {
 		minRtt       float64
 		minRttTime   time.Time
 
-		runSampleSum float64
-		runSamples   int
+		runDataAcked   float64
+		runElapsedTime float64
 	}
 
 	LOL struct {
@@ -508,17 +508,15 @@ func (kcp *KCP) processAck(seg *segment) {
 	}
 	ackElapsed := kcp.DRE.delTime.Sub(pDelTime)
 	delete(kcp.DRE.ppDelTime, seg.sn)
-	appLimited, ok := kcp.DRE.ppAppLimited[seg.sn]
+	_, ok = kcp.DRE.ppAppLimited[seg.sn]
 	if !ok {
 		return
 	}
 	delete(kcp.DRE.ppAppLimited, seg.sn)
 	if float64(ackElapsed.Milliseconds()) < kcp.DRE.minRtt {
 	} else {
-		ackRate := dataAcked / ackElapsed.Seconds()
-		kcp.DRE.runSamples = len(seg.data)
-		kcp.DRE.runSampleSum = ackRate * float64(len(seg.data))
-		kcp.updateSample(appLimited)
+		kcp.DRE.runElapsedTime += ackElapsed.Seconds()
+		kcp.DRE.runDataAcked += dataAcked
 	}
 }
 
@@ -650,6 +648,9 @@ func (kcp *KCP) parse_data(newseg segment) bool {
 //
 // 'ackNoDelay' will trigger immediate ACK, but surely it will not be efficient in bandwidth
 func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
+	// delivery tracking
+	defer kcp.updateSample(false)
+
 	kcp.quiescent = quiescentMax
 	snd_una := kcp.snd_una
 	if len(data) < IKCP_OVERHEAD {
@@ -756,13 +757,6 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 			case "LOL":
 				bdp := kcp.bdp() / float64(kcp.mss)
 				targetCwnd := bdp * 4
-				if targetCwnd > kcp.cwnd+float64(acks) {
-					kcp.cwnd = (kcp.cwnd + float64(acks))
-				} else if targetCwnd > kcp.cwnd {
-					kcp.cwnd = targetCwnd
-				} else {
-					kcp.cwnd = kcp.cwnd*0.9 + targetCwnd*0.1
-				}
 				kcp.cwnd = targetCwnd
 				if kcp.cwnd < 4 {
 					kcp.cwnd = 4
@@ -788,14 +782,15 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				}
 				if !kcp.LOL.filledPipe {
 					//log.Println("pipe not filled, pumping desired up")
-					kcp.LOL.gain *= 2.89
-				}
-				// vibrate the gain up and down every 50 rtts
-				period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
-				if period%6 == 0 {
-					kcp.LOL.gain *= 1.25
-				} else if period%6 == 1 {
-					kcp.LOL.gain /= 1.25
+					kcp.LOL.gain = 2.89
+				} else {
+					// vibrate the gain up and down every 50 rtts
+					period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
+					if period%6 == 0 {
+						kcp.LOL.gain = 1.5
+					} else if period%6 == 1 {
+						kcp.LOL.gain = 0.5
+					}
 				}
 
 				if doLogging {
@@ -830,25 +825,26 @@ func (kcp *KCP) wnd_unused() uint16 {
 var ackDebugCache = cache.New(time.Hour, time.Hour)
 
 func (kcp *KCP) updateSample(appLimited bool) {
-	if kcp.DRE.runSamples > 0 {
-		avgRate := kcp.DRE.runSampleSum / float64(kcp.DRE.runSamples)
+	if kcp.DRE.runElapsedTime > 0 {
+		avgRate := kcp.DRE.runDataAcked / kcp.DRE.runElapsedTime
 		kcp.DRE.avgAckRate = 0.99*kcp.DRE.avgAckRate + 0.01*avgRate
 		if kcp.DRE.maxAckRate < avgRate || (!appLimited && float64(time.Since(kcp.DRE.maxAckTime).Milliseconds()) > kcp.DRE.minRtt*10) {
-			if kcp.DRE.maxAckRate > avgRate {
-				kcp.DRE.maxAckRate = kcp.DRE.avgAckRate
-			} else {
-				kcp.DRE.maxAckRate = avgRate
-			}
-			if kcp.DRE.maxAckRate < 200*1000 {
-				kcp.LOL.filledPipe = false
-				kcp.DRE.maxAckRate = 200 * 1000 // HACK
-			}
+			kcp.DRE.maxAckRate = avgRate
+			// if kcp.DRE.maxAckRate > avgRate {
+			// 	kcp.DRE.maxAckRate = kcp.DRE.avgAckRate
+			// } else {
+			// 	kcp.DRE.maxAckRate = avgRate
+			// }
+			// if kcp.DRE.maxAckRate < 200*1000 {
+			// 	kcp.LOL.filledPipe = false
+			// 	kcp.DRE.maxAckRate = 200 * 1000 // HACK
+			// }
 			kcp.DRE.maxAckTime = kcp.DRE.delTime
 		}
 	}
-	if kcp.DRE.runSamples != 0 {
-		kcp.DRE.runSamples = 0
-		kcp.DRE.runSampleSum = 0
+	if kcp.DRE.runElapsedTime != 0 {
+		kcp.DRE.runElapsedTime = 0
+		kcp.DRE.runDataAcked = 0
 	}
 }
 
@@ -857,12 +853,12 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 	var busy bool
 	defer func() {
 		if !busy {
+			kcp.LOL.filledPipe = false
+			kcp.LOL.fullBwCount = 0
+			kcp.LOL.fullBw = 0
 			kcp.quiescent--
 			if kcp.quiescent <= 0 {
 				kcp.quiescent = 0
-				kcp.LOL.filledPipe = false
-				kcp.LOL.fullBwCount = 0
-				kcp.LOL.fullBw = 0
 				kcp.longLoss = 1
 				kcp.shortLoss = 1
 			}
