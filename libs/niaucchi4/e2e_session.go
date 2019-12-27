@@ -14,14 +14,14 @@ import (
 )
 
 type e2eSession struct {
-	remote         []net.Addr
-	info           []e2eLinkInfo
-	sessid         SessionAddr
-	rdqueue        [][]byte
-	dupRateLimit   *rate.Limiter
-	lastPathChange time.Time
-	lastRemid      int
-	dedup          *lru.Cache
+	remote       []net.Addr
+	info         []e2eLinkInfo
+	sessid       SessionAddr
+	rdqueue      [][]byte
+	dupRateLimit *rate.Limiter
+	lastSend     time.Time
+	lastRemid    int
+	dedup        *lru.Cache
 
 	lock sync.Mutex
 }
@@ -153,7 +153,7 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 		}
 	} else {
 		remid := -1
-		if now.Sub(es.lastPathChange).Milliseconds() > 500 {
+		if now.Sub(es.lastSend).Milliseconds() > 500 {
 			lowPoint := 1e20
 			for i, li := range es.info {
 				if score := li.getScore(); score < lowPoint {
@@ -165,7 +165,6 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 				err = errors.New("cannot find any path")
 				return
 			}
-			es.lastPathChange = now
 		} else {
 			remid = es.lastRemid
 		}
@@ -175,6 +174,7 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 		}
 		es.lastRemid = remid
 		send(remid)
+		es.lastSend = now
 	}
 	return
 }

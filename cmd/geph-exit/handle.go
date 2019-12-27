@@ -74,8 +74,8 @@ func handle(rawClient net.Conn) {
 	case 0:
 		// create smux context
 		muxSrv, err := smux.Server(tssClient, &smux.Config{
-			KeepAliveInterval: time.Minute * 30,
-			KeepAliveTimeout:  time.Minute * 32,
+			KeepAliveInterval: time.Minute * 9,
+			KeepAliveTimeout:  time.Minute * 10,
 			MaxFrameSize:      8192,
 			MaxReceiveBuffer:  10 * 1024 * 1024,
 		})
@@ -123,7 +123,7 @@ func handle(rawClient net.Conn) {
 		limiter = rate.NewLimiter(100*1000, 1*1000*1000)
 		limiter.WaitN(context.Background(), 1*1000*1000-500)
 	} else {
-		limiter = rate.NewLimiter(20*1024*1024, 1*1000*1000)
+		limiter = rate.NewLimiter(10*1024*1024, 1*1000*1000)
 	}
 	// IGNORE FOR NOW
 	rlp.Encode(tssClient, "OK")
@@ -135,6 +135,7 @@ func handle(rawClient net.Conn) {
 		}
 		go func() {
 			defer soxclient.Close()
+			soxclient.SetDeadline(time.Now().Add(time.Minute))
 			var command []string
 			err = rlp.Decode(&io.LimitedReader{R: soxclient, N: 1000}, &command)
 			if err != nil {
@@ -143,6 +144,7 @@ func handle(rawClient net.Conn) {
 			if len(command) == 0 {
 				return
 			}
+			soxclient.SetDeadline(time.Time{})
 			log.Printf("C<%p> cmd %v", rawClient, command)
 			// match command
 			switch command[0] {

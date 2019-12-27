@@ -47,18 +47,6 @@ var (
 	errTimeout          = errors.New("timeout")
 )
 
-var (
-	// a system-wide packet buffer shared among sending, receiving and FEC
-	// to mitigate high-frequency memory allocation for packets
-	xmitBuf sync.Pool
-)
-
-func init() {
-	xmitBuf.New = func() interface{} {
-		return make([]byte, mtuLimit)
-	}
-}
-
 type (
 	// UDPSession defines a KCP session implemented by UDP
 	UDPSession struct {
@@ -72,10 +60,6 @@ type (
 		// recvbuf turns packets into stream
 		recvbuf []byte
 		bufptr  []byte
-
-		// FEC codec
-		fecDecoder *fecDecoder
-		fecEncoder *fecEncoder
 
 		// settings
 		remote     net.Addr  // remote peer address
@@ -156,22 +140,10 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn 
 		}
 	}
 
-	// FEC codec initialization
-	sess.fecDecoder = newFECDecoder(rxFECMulti*(dataShards+parityShards), dataShards, parityShards)
-	if sess.block != nil {
-		sess.fecEncoder = newFECEncoder(dataShards, parityShards, cryptHeaderSize)
-	} else {
-		sess.fecEncoder = newFECEncoder(dataShards, parityShards, 0)
-	}
-
 	// calculate additional header size introduced by FEC and encryption
 	if sess.block != nil {
 		sess.headerSize += cryptHeaderSize
 	}
-	if sess.fecEncoder != nil {
-		sess.headerSize += fecHeaderSizePlus2
-	}
-
 	sess.kcp = NewKCP(conv, func(buf []byte, size int) {
 		if size >= IKCP_OVERHEAD+sess.headerSize {
 			sess.output(buf[:size])
@@ -359,7 +331,7 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 func (s *UDPSession) uncork() {
 	if len(s.txqueue) > 0 {
 		s.tx(s.txqueue)
-		s.txqueue = s.txqueue[:0]
+		s.txqueue = nil
 	}
 	return
 }
@@ -551,11 +523,6 @@ func (s *UDPSession) SetWriteBuffer(bytes int) error {
 func (s *UDPSession) output(buf []byte) {
 	var ecc [][]byte
 
-	// 1. FEC encoding
-	if s.fecEncoder != nil {
-		ecc = s.fecEncoder.encode(buf)
-	}
-
 	// 2&3. crc32 & encryption
 	if s.block != nil {
 		s.nonce.Fill(buf[:nonceSize])
@@ -574,7 +541,7 @@ func (s *UDPSession) output(buf []byte) {
 	// 4. TxQueue
 	var msg ipv4.Message
 	for i := 0; i < s.dup+1; i++ {
-		bts := xmitBuf.Get().([]byte)[:len(buf)]
+		bts := make([]byte, len(buf))
 		copy(bts, buf)
 		msg.Buffers = [][]byte{bts}
 		msg.Addr = s.remote
@@ -582,7 +549,7 @@ func (s *UDPSession) output(buf []byte) {
 	}
 
 	for k := range ecc {
-		bts := xmitBuf.Get().([]byte)[:len(ecc[k])]
+		bts := make([]byte, len(buf))
 		copy(bts, ecc[k])
 		msg.Buffers = [][]byte{bts}
 		msg.Addr = s.remote
@@ -667,73 +634,19 @@ func (s *UDPSession) packetInput(data []byte) {
 func (s *UDPSession) kcpInput(data []byte) {
 	defer updater.addSessionIfNotExists(s)
 	var kcpInErrors, fecErrs, fecRecovered, fecParityShards uint64
-	if s.fecDecoder != nil {
-		if len(data) > fecHeaderSize { // must be larger than fec header size
-			f := fecPacket(data)
-			if f.flag() == typeData || f.flag() == typeParity { // header check
-				if f.flag() == typeParity {
-					fecParityShards++
-				}
-				recovers := s.fecDecoder.decode(f)
-
-				s.mu.Lock()
-				waitsnd := s.kcp.WaitSnd()
-				if f.flag() == typeData {
-					if ret := s.kcp.Input(data[fecHeaderSizePlus2:], true, s.ackNoDelay); ret != 0 {
-						kcpInErrors++
-					}
-				}
-
-				for _, r := range recovers {
-					if len(r) >= 2 { // must be larger than 2bytes
-						sz := binary.LittleEndian.Uint16(r)
-						if int(sz) <= len(r) && sz >= 2 {
-							if ret := s.kcp.Input(r[2:sz], false, s.ackNoDelay); ret == 0 {
-								fecRecovered++
-							} else {
-								kcpInErrors++
-							}
-						} else {
-							fecErrs++
-						}
-					} else {
-						fecErrs++
-					}
-					// recycle the recovers
-					xmitBuf.Put(r)
-				}
-
-				// to notify the readers to receive the data
-				if n := s.kcp.PeekSize(); n > 0 {
-					s.notifyReadEvent()
-				}
-				// to notify the writers when queue is shorter(e.g. ACKed)
-				if s.kcp.WaitSnd() < waitsnd || true {
-					s.notifyWriteEvent()
-				}
-				s.uncork()
-				s.mu.Unlock()
-			} else {
-				atomic.AddUint64(&DefaultSnmp.InErrs, 1)
-			}
-		} else {
-			atomic.AddUint64(&DefaultSnmp.InErrs, 1)
-		}
-	} else {
-		s.mu.Lock()
-		waitsnd := s.kcp.WaitSnd()
-		if ret := s.kcp.Input(data, true, s.ackNoDelay); ret != 0 {
-			kcpInErrors++
-		}
-		if n := s.kcp.PeekSize(); n > 0 {
-			s.notifyReadEvent()
-		}
-		if s.kcp.WaitSnd() < waitsnd || true {
-			s.notifyWriteEvent()
-		}
-		s.uncork()
-		s.mu.Unlock()
+	s.mu.Lock()
+	waitsnd := s.kcp.WaitSnd()
+	if ret := s.kcp.Input(data, true, s.ackNoDelay); ret != 0 {
+		kcpInErrors++
 	}
+	if n := s.kcp.PeekSize(); n > 0 {
+		s.notifyReadEvent()
+	}
+	if s.kcp.WaitSnd() < waitsnd || true {
+		s.notifyWriteEvent()
+	}
+	s.uncork()
+	s.mu.Unlock()
 
 	atomic.AddUint64(&DefaultSnmp.InPkts, 1)
 	atomic.AddUint64(&DefaultSnmp.InBytes, uint64(len(data)))
@@ -758,7 +671,6 @@ type (
 		block        BlockCrypt     // block encryption
 		dataShards   int            // FEC data shard
 		parityShards int            // FEC parity shard
-		fecDecoder   *fecDecoder    // FEC mock initialization
 		conn         net.PacketConn // the underlying packet connection
 
 		sessions        map[string]*UDPSession // all sessions accepted by this Listener
@@ -805,16 +717,8 @@ func (l *Listener) packetInput(data []byte, addr net.Addr) {
 			if len(l.chAccepts) < cap(l.chAccepts) { // do not let the new sessions overwhelm accept queue
 				var conv uint32
 				convValid := false
-				if l.fecDecoder != nil {
-					isfec := binary.LittleEndian.Uint16(data[4:])
-					if isfec == typeData {
-						conv = binary.LittleEndian.Uint32(data[fecHeaderSizePlus2:])
-						convValid = true
-					}
-				} else {
-					conv = binary.LittleEndian.Uint32(data)
-					convValid = true
-				}
+				conv = binary.LittleEndian.Uint32(data)
+				convValid = true
 
 				if convValid { // creates a new session only if the 'conv' field in kcp is accessible
 					s := newUDPSession(conv, l.dataShards, l.parityShards, l, l.conn, addr, l.block)
@@ -990,15 +894,11 @@ func ServeConn(block BlockCrypt, dataShards, parityShards int, conn net.PacketCo
 	l.dataShards = dataShards
 	l.parityShards = parityShards
 	l.block = block
-	l.fecDecoder = newFECDecoder(rxFECMulti*(dataShards+parityShards), dataShards, parityShards)
 	l.chSocketReadError = make(chan struct{})
 
 	// calculate header size
 	if l.block != nil {
 		l.headerSize += cryptHeaderSize
-	}
-	if l.fecDecoder != nil {
-		l.headerSize += fecHeaderSizePlus2
 	}
 
 	go l.monitor()
