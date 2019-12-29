@@ -20,6 +20,7 @@ func (s *UDPSession) defaultTx(txqueue []ipv4.Message) {
 			s.notifyWriteError(errors.WithStack(err))
 			break
 		}
+
 	}
 	//log.Println("tx in", time.Since(start)/time.Duration(divider))
 	atomic.AddUint64(&DefaultSnmp.OutPkts, uint64(npkts))

@@ -10,11 +10,13 @@ import (
 	"os"
 	"time"
 
+	_ "net/http/pprof"
+
 	statsd "github.com/etsy/statsd/examples/go"
 	"github.com/geph-official/geph2/libs/bdclient"
+	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/patrickmn/go-cache"
-	_ "net/http/pprof"
 )
 
 var keyfile string
@@ -116,8 +118,9 @@ func e2elisten() {
 			log.Println("error while accepting E2E:", err)
 			continue
 		}
+		kcp.QuiescentMax = 1 << 30
 		rc.SetWindowSize(10000, 1000)
-		rc.SetNoDelay(0, 20, 3, 0)
+		rc.SetNoDelay(0, 50, 3, 0)
 		rc.SetStreamMode(true)
 		rc.SetMtu(1300)
 		go handle(rc)

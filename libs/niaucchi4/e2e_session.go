@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"math"
+	mrand "math/rand"
 	"net"
 	"sync"
 	"time"
@@ -36,9 +37,10 @@ func newSession(sessid [16]byte) *e2eSession {
 }
 
 type e2eLinkInfo struct {
-	sendsn uint64
-	acksn  uint64
-	recvsn uint64
+	sendsn  uint64
+	acksn   uint64
+	recvsn  uint64
+	recvcnt uint64
 
 	sendTimes [1024]int64
 	lastPing  int64
@@ -65,7 +67,8 @@ func (es *e2eSession) DebugInfo() {
 	defer es.lock.Unlock()
 	log.Printf("SESSID = %x", es.sessid[:8])
 	for i := range es.remote {
-		log.Printf("R %v :: %v / %vms %.2f", es.remote[i], es.info[i].recvsn, es.info[i].lastPing, es.info[i].getScore())
+		log.Printf("R %v :: %v / %vms / %.2f%% / %.2f", es.remote[i], es.info[i].recvsn,
+			es.info[i].lastPing, 100*(1-float64(es.info[i].recvcnt)/float64(es.info[i].recvsn)), es.info[i].getScore())
 	}
 	log.Println("")
 }
@@ -87,6 +90,9 @@ func (es *e2eSession) AddPath(host net.Addr) {
 
 // Input processes a packet through the e2e session state.
 func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
+	if mrand.Int()%1000 == 0 {
+		es.DebugInfo()
+	}
 	es.lock.Lock()
 	defer es.lock.Unlock()
 	if pkt.Session != es.sessid {
@@ -120,6 +126,7 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 			es.info[remid].lastPing = (es.info[remid].lastPing*9 + ping*1) / 10
 		}
 	}
+	es.info[remid].recvcnt++
 	bodyHash := highwayhash.Sum128(pkt.Body, make([]byte, 32))
 	if es.dedup.Contains(bodyHash) {
 	} else {
@@ -165,16 +172,15 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 				err = errors.New("cannot find any path")
 				return
 			}
+			es.lastSend = now
 		} else {
 			remid = es.lastRemid
 		}
 		if es.lastRemid != remid && doLogging {
-			log.Println("N4: changing path to", es.remote[remid])
-			go es.DebugInfo()
+			log.Printf("N4: %x changing path to %v", es.sessid[:8], es.remote[remid])
 		}
 		es.lastRemid = remid
 		send(remid)
-		es.lastSend = now
 	}
 	return
 }

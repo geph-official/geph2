@@ -22,6 +22,18 @@ import (
 	"golang.org/x/net/ipv6"
 )
 
+var (
+	// a system-wide packet buffer shared among sending, receiving and FEC
+	// to mitigate high-frequency memory allocation for packets
+	xmitBuf sync.Pool
+)
+
+func init() {
+	xmitBuf.New = func() interface{} {
+		return make([]byte, mtuLimit)
+	}
+}
+
 const (
 	// 16-bytes nonce for each packet
 	nonceSize = 16
@@ -266,6 +278,10 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 		}
 
 		s.mu.Lock()
+		if s.kcp.isDead {
+			s.mu.Unlock()
+			return 0, io.ErrClosedPipe
+		}
 
 		// make sure write do not overflow the max sliding window on both side
 		waitsnd := s.kcp.WaitSnd()
@@ -289,9 +305,6 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 			if waitsnd >= int(s.kcp.snd_wnd) || waitsnd >= int(s.kcp.rmt_wnd) || !s.writeDelay {
 				s.kcp.flush(false)
 				s.uncork()
-			}
-			if CongestionControl == "LOL" {
-				s.kcp.paceOnce(n)
 			}
 			s.mu.Unlock()
 			atomic.AddUint64(&DefaultSnmp.BytesSent, uint64(n))
@@ -331,7 +344,7 @@ func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
 func (s *UDPSession) uncork() {
 	if len(s.txqueue) > 0 {
 		s.tx(s.txqueue)
-		s.txqueue = nil
+		s.txqueue = s.txqueue[:0]
 	}
 	return
 }
@@ -356,7 +369,7 @@ func (s *UDPSession) Close() error {
 			return s.conn.Close()
 		}
 	} else {
-		return errors.WithStack(io.ErrClosedPipe)
+		return io.ErrClosedPipe
 	}
 }
 
@@ -541,7 +554,7 @@ func (s *UDPSession) output(buf []byte) {
 	// 4. TxQueue
 	var msg ipv4.Message
 	for i := 0; i < s.dup+1; i++ {
-		bts := make([]byte, len(buf))
+		bts := xmitBuf.Get().([]byte)[:len(buf)]
 		copy(bts, buf)
 		msg.Buffers = [][]byte{bts}
 		msg.Addr = s.remote
@@ -549,7 +562,7 @@ func (s *UDPSession) output(buf []byte) {
 	}
 
 	for k := range ecc {
-		bts := make([]byte, len(buf))
+		bts := xmitBuf.Get().([]byte)[:len(buf)]
 		copy(bts, ecc[k])
 		msg.Buffers = [][]byte{bts}
 		msg.Addr = s.remote
