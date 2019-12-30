@@ -115,6 +115,7 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 	}
 	// parse the stuff
 	if pkt.Sn < es.info[remid].recvsn {
+		return
 	} else {
 		es.info[remid].recvsn = pkt.Sn
 		es.info[remid].acksn = pkt.Ack

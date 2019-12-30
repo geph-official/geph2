@@ -860,6 +860,9 @@ func (kcp *KCP) updateSample(appLimited bool) {
 				kcp.DRE.maxAckRate = avgRate
 			}
 			kcp.DRE.maxAckTime = kcp.DRE.delTime
+			if kcp.DRE.maxAckRate < 500*1000 {
+				kcp.DRE.maxAckRate = 500 * 1000
+			}
 		}
 	}
 	if kcp.DRE.runElapsedTime != 0 {
@@ -1033,7 +1036,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.acked == 1 {
 			continue
 		}
-		const RTOSLACK = 1500
+		const RTOSLACK = 150
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto
@@ -1131,7 +1134,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.bic_onloss(int(sum))
 			}
 		case "LOL":
-			if sum > 0 {
+			if lostSegs > 0 {
 				kcp.cwnd = kcp.bdp() / float64(kcp.mss)
 			}
 		}

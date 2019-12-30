@@ -41,10 +41,13 @@ func main() {
 }
 
 func mainClient(dialto string) {
-	udpsock, err := net.ListenPacket("udp", "")
-	if err != nil {
-		panic(err)
-	}
+	udpsock := niaucchi4.Wrap(func() net.PacketConn {
+		udpsockR, err := net.ListenPacket("udp", "")
+		if err != nil {
+			panic(err)
+		}
+		return udpsockR
+	})
 	servAddr, err := net.ResolveUDPAddr("udp", dialto)
 	if err != nil {
 		panic(err)
