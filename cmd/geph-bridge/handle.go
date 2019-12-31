@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/rand"
 	"fmt"
-	"io"
 	"log"
 	mrand "math/rand"
 	"net"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/geph-official/geph2/libs/cwl"
 	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 	//"github.com/geph-official/geph2/libs/niaucchi4/backedtcp"
@@ -30,7 +30,10 @@ func handle(client net.Conn) {
 	dec := rlp.NewStream(client, 100000)
 	for {
 		var command string
-		dec.Decode(&command)
+		err = dec.Decode(&command)
+		if err != nil {
+			return
+		}
 		log.Println("Client", client.RemoteAddr(), "requested", command)
 		switch command {
 		case "conn/e2e":
@@ -141,10 +144,18 @@ func handle(client net.Conn) {
 			go func() {
 				defer remote.Close()
 				defer client.Close()
-				io.Copy(remote, client)
+				cwl.CopyWithLimit(remote, client, nil, func(n int) {
+					if statClient != nil && mrand.Int()%100000 < n {
+						statClient.Increment(allocGroup + ".e2eup")
+					}
+				})
 			}()
 			defer remote.Close()
-			io.Copy(client, remote)
+			cwl.CopyWithLimit(client, remote, nil, func(n int) {
+				if statClient != nil && mrand.Int()%100000 < n {
+					statClient.Increment(allocGroup + ".e2edown")
+				}
+			})
 			return
 		default:
 			return

@@ -18,7 +18,7 @@ import (
 )
 
 // cache of all bridge info. string => bridgeInfo
-var bridgeCache = cache.New(time.Hour, time.Hour)
+var bridgeCache = cache.New(time.Minute*2, time.Hour)
 
 type bridgeInfo struct {
 	Cookie   []byte

@@ -39,12 +39,13 @@ func (br *backedWriter) since(sn uint64) []byte {
 }
 
 type Socket struct {
-	bw     backedWriter
-	remsn  uint64
-	wire   net.Conn
-	wready chan bool
-	glock  sync.RWMutex
-	dead   bool
+	bw      backedWriter
+	remsn   uint64
+	wire    net.Conn
+	wready  chan bool
+	getWire func() (net.Conn, error)
+	glock   sync.RWMutex
+	dead    bool
 }
 
 func NewSocket(wire net.Conn) *Socket {
@@ -113,6 +114,7 @@ func (sock *Socket) Read(p []byte) (n int, err error) {
 			return
 		}
 		wire := sock.wire
+		wire.SetDeadline(time.Now().Add(time.Minute * 30))
 		// read lock to make sure stuff doesn't get replaced suddenly
 		n, err = wire.Read(p)
 		if err == nil {

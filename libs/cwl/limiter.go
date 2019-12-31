@@ -27,7 +27,9 @@ func CopyWithLimit(dst Writer, src Reader, limiter *rate.Limiter, callback func(
 			if callback != nil {
 				callback(nr)
 			}
-			limiter.WaitN(context.Background(), nr)
+			if limiter != nil {
+				limiter.WaitN(context.Background(), nr)
+			}
 			nw, ew := dst.Write(buf[0:nr])
 			if nw > 0 {
 				n += nw

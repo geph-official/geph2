@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"io"
@@ -14,6 +14,7 @@ import (
 
 	statsd "github.com/etsy/statsd/examples/go"
 	"github.com/geph-official/geph2/libs/bdclient"
+	"github.com/geph-official/geph2/libs/cshirt2"
 	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 )
@@ -27,13 +28,11 @@ var exitRegex string
 var binderKey string
 var statsdAddr string
 var allocGroup string
-
 var bclient *bdclient.Client
 
 var statClient *statsd.StatsdClient
 
 func main() {
-	flag.StringVar(&cookieSeed, "cookieSeed", "", "seed for generating a cookie")
 	flag.StringVar(&binderFront, "binderFront", "https://ajax.aspnetcdn.com/v2", "binder domain-fronting host")
 	flag.StringVar(&binderReal, "binderReal", "gephbinder.azureedge.net", "real hostname of the binder")
 	flag.StringVar(&exitRegex, "exitRegex", `\.exits\.geph\.io$`, "domain suffix for exit nodes")
@@ -41,9 +40,6 @@ func main() {
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
 	flag.Parse()
-	if cookieSeed == "" {
-		log.Fatal("must specify a good cookie seed")
-	}
 	if allocGroup == "" {
 		log.Fatal("must specify an allocation group")
 	}
@@ -74,9 +70,8 @@ func main() {
 }
 
 func generateCookie() {
-	z := sha256.Sum256([]byte(cookieSeed))
-	cookie = z[:]
-	log.Printf("Cookie generated: %x", cookie)
+	cookie = make([]byte, 32)
+	rand.Read(cookie)
 }
 
 func listenLoop() {
@@ -96,18 +91,43 @@ func listenLoop() {
 			time.Sleep(time.Minute)
 		}
 	}()
+	go func() {
+		listener, err := net.Listen("tcp", udpsock.LocalAddr().String())
+		if err != nil {
+			panic(err)
+		}
+		log.Println("N4/TCP listener spinned up")
+		for {
+			rawClient, err := listener.Accept()
+			if err != nil {
+				panic(err)
+			}
+			go func() {
+				defer rawClient.Close()
+				rawClient.SetDeadline(time.Now().Add(time.Second * 10))
+				client, err := cshirt2.Server(cookie, rawClient)
+				rawClient.SetDeadline(time.Now().Add(time.Hour * 24))
+				if err != nil {
+					log.Println("cshirt2 failed", err, rawClient.RemoteAddr())
+					return
+				}
+				log.Println("Accepted TCP from", rawClient.RemoteAddr())
+				handle(client)
+			}()
+		}
+	}()
 	e2e := niaucchi4.ObfsListen(cookie, udpsock)
 	if err != nil {
 		panic(err)
 	}
 	listener := niaucchi4.ListenKCP(e2e)
-	log.Println("KCP listener spinned up")
+	log.Println("N4/UDP listener spinned up")
 	for {
 		client, err := listener.Accept()
 		if err != nil {
 			panic(err)
 		}
-		log.Println("Accepted client", client.RemoteAddr())
+		log.Println("Accepted UDP client", client.RemoteAddr())
 		go handle(client)
 	}
 }

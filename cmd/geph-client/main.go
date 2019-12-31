@@ -113,7 +113,7 @@ func main() {
 	flag.BoolVar(&loginCheck, "loginCheck", false, "do a login check and immediately exit with code 0")
 	flag.StringVar(&binderProxy, "binderProxy", "", "if set, proxy the binder at the given listening address and do nothing else")
 	flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
-	flag.BoolVar(&useTCP, "useExperimentalTCP", false, "use TCP to connect to bridges")
+	flag.BoolVar(&useTCP, "useTCP", false, "use TCP to connect to bridges")
 	flag.Parse()
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)

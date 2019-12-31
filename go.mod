@@ -22,6 +22,7 @@ require (
 	github.com/klauspost/reedsolomon v1.9.2
 	github.com/lib/pq v1.2.0
 	github.com/lucas-clemente/quic-go v0.12.0
+	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1
 	github.com/minio/highwayhash v1.0.0
 	github.com/nullchinchilla/natrium v1.1.1
 	github.com/oschwald/geoip2-golang v1.3.0
@@ -36,7 +37,7 @@ require (
 	github.com/tjfoc/gmsm v1.0.1
 	github.com/xtaci/lossyconn v0.0.0-20190602105132-8df528c0c9ae
 	github.com/xtaci/smux v1.4.6
-	golang.org/x/crypto v0.0.0-20191205180655-e7c4368fe9dd
+	golang.org/x/crypto v0.0.0-20191227163750-53104e6ec876
 	golang.org/x/net v0.0.0-20190628185345-da137c7871d7
 	golang.org/x/sys v0.0.0-20191220220014-0732a990476f // indirect
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0
