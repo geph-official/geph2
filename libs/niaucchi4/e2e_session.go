@@ -6,6 +6,7 @@ import (
 	"math"
 	mrand "math/rand"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -61,16 +62,27 @@ type e2ePacket struct {
 	Padding []byte
 }
 
-// DebugInfo prints out a bunch of debug info.
-func (es *e2eSession) DebugInfo() {
+// LinkInfo describes info for a link.
+type LinkInfo struct {
+	RemoteIP string
+	RecvCnt  int
+	Ping     int
+	LossPct  float64
+}
+
+// DebugInfo dumps out info about all the links.
+func (es *e2eSession) DebugInfo() (lii []LinkInfo) {
 	es.lock.Lock()
 	defer es.lock.Unlock()
-	log.Printf("SESSID = %x", es.sessid[:8])
-	for i := range es.remote {
-		log.Printf("R %v :: %v / %vms / %.2f%% / %.2f", es.remote[i], es.info[i].recvsn,
-			es.info[i].lastPing, 100*(1-float64(es.info[i].recvcnt)/float64(es.info[i].recvsn)), es.info[i].getScore())
+	for i, nfo := range es.info {
+		lii = append(lii, LinkInfo{
+			RemoteIP: strings.Split(es.remote[i].String(), ":")[0],
+			RecvCnt:  int(nfo.recvcnt),
+			Ping:     int(nfo.lastPing),
+			LossPct:  math.Max(0, 1.0-float64(nfo.recvcnt)/(1+float64(nfo.recvsn))),
+		})
 	}
-	log.Println("")
+	return
 }
 
 func (es *e2eSession) AddPath(host net.Addr) {
@@ -124,7 +136,11 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 		sentTime := es.info[remid].sendTimes[pkt.Ack%1024]
 		ping := now - sentTime
 		if ping < 1000 {
-			es.info[remid].lastPing = (es.info[remid].lastPing*9 + ping*1) / 10
+			if ping < es.info[remid].lastPing {
+				es.info[remid].lastPing = ping
+			} else {
+				es.info[remid].lastPing = (es.info[remid].lastPing*9 + ping*1) / 10
+			}
 		}
 	}
 	es.info[remid].recvcnt++

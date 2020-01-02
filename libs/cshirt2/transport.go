@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"log"
 	mrand "math/rand"
 	"net"
 	"time"
@@ -39,7 +38,6 @@ func (tp *transport) Read(b []byte) (n int, err error) {
 		macBts := make([]byte, 16)
 		_, err = io.ReadFull(tp.wire, macBts)
 		if err != nil {
-			log.Println("failed reading mac")
 			return
 		}
 		// read the *encrypted* payload length

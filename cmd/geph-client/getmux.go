@@ -84,6 +84,7 @@ func newSmuxWrapper() *muxWrap {
 	return &muxWrap{getSession: func() *smux.Session {
 		useStats(func(sc *stats) {
 			sc.Connected = false
+			sc.bridgeThunk = nil
 		})
 	retry:
 		// obtain a ticket

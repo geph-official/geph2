@@ -9,20 +9,23 @@ import (
 	"time"
 
 	"github.com/geph-official/geph2/libs/bdclient"
+	"github.com/geph-official/geph2/libs/niaucchi4"
 )
 
 type stats struct {
-	Connected bool
-	PublicIP  string
-	UpBytes   uint64
-	DownBytes uint64
-	MinPing   uint64
-	PingTime  time.Time
-	Username  string
-	Tier      string
-	PayTxes   []bdclient.PaymentTx
-	Expiry    time.Time
-	LogLines  []string
+	Connected   bool
+	PublicIP    string
+	UpBytes     uint64
+	DownBytes   uint64
+	MinPing     uint64
+	PingTime    time.Time
+	Username    string
+	Tier        string
+	PayTxes     []bdclient.PaymentTx
+	Expiry      time.Time
+	LogLines    []string
+	Bridges     []niaucchi4.LinkInfo
+	bridgeThunk func() []niaucchi4.LinkInfo
 
 	lock sync.Mutex
 }
@@ -45,6 +48,9 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 		bts, err = json.Marshal(sc)
 		if err != nil {
 			panic(err)
+		}
+		if sc.bridgeThunk != nil {
+			sc.Bridges = sc.bridgeThunk()
 		}
 		sc.LogLines = ll
 	})

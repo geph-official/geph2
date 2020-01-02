@@ -54,8 +54,14 @@ func getSinglepath(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 				return
 			}
 			bridgeConn.SetDeadline(time.Now().Add(time.Second * 30))
-			rlp.Encode(bridgeConn, "conn")
+			rlp.Encode(bridgeConn, "conn/feedback")
 			rlp.Encode(bridgeConn, exitName)
+			_, err = bridgeConn.Read(make([]byte, 1))
+			if err != nil {
+				bridgeConn.Close()
+				log.Debugln("conn in", bi.Host, "failed!", err)
+				return
+			}
 			select {
 			case bridgeRace <- bridgeConn:
 				log.Infoln("Selected bridge", bridgeConn.RemoteAddr())
@@ -69,6 +75,14 @@ func getSinglepath(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 		err = errors.New("singlepath timed out")
 		return
 	}
+	useStats(func(sc *stats) {
+		sc.bridgeThunk = func() []niaucchi4.LinkInfo {
+			sessions := make([]niaucchi4.LinkInfo, 1)
+			sessions[0].RemoteIP = strings.Split(zz.RemoteAddr().String(), ":")[0]
+			sessions[0].RecvCnt = -1
+			return sessions
+		}
+	})
 	conn = zz
 	return
 }
@@ -93,6 +107,15 @@ func getMultipath(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 		bridgeDeadWait.Wait()
 		close(bridgeRace)
 	}()
+	useStats(func(sc *stats) {
+		sc.bridgeThunk = func() []niaucchi4.LinkInfo {
+			sessions := e2e.DebugInfo()
+			if len(sessions) < 1 {
+				return nil
+			}
+			return sessions[0]
+		}
+	})
 	for _, bi := range bridges {
 		bi := bi
 		go func() {

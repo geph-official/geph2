@@ -55,12 +55,14 @@ func NewE2EConn(wire net.PacketConn) *E2EConn {
 	}
 }
 
-func (e2e *E2EConn) DebugInfo() {
+func (e2e *E2EConn) DebugInfo() [][]LinkInfo {
+	var tr [][]LinkInfo
 	for _, v := range e2e.sidToSess.Items() {
 		if !v.Expired() {
-			v.Object.(*e2eSession).DebugInfo()
+			tr = append(tr, v.Object.(*e2eSession).DebugInfo())
 		}
 	}
+	return tr
 }
 
 // SetSessPath is used by clients to have certain sessions go along certain paths.
