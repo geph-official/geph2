@@ -48,6 +48,8 @@ var cachePath string
 
 var useTCP bool
 
+var singleHop string
+
 var bindClient *bdclient.Client
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
@@ -113,6 +115,7 @@ func main() {
 	flag.BoolVar(&loginCheck, "loginCheck", false, "do a login check and immediately exit with code 0")
 	flag.StringVar(&binderProxy, "binderProxy", "", "if set, proxy the binder at the given listening address and do nothing else")
 	flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
+	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
 	flag.BoolVar(&useTCP, "useTCP", false, "use TCP to connect to bridges")
 	flag.Parse()
 	if *cpuprofile != "" {
@@ -162,55 +165,56 @@ func main() {
 			os.Exit(10)
 		}()
 	}
-	binderRace()
-	if binderProxy != "" {
-		log.Println("binderProxy mode on", binderProxy)
-		binderURL, err := url.Parse(binderFront)
-		if err != nil {
-			panic(err)
-		}
-		revProx := &httputil.ReverseProxy{
-			Director: func(req *http.Request) {
-				log.Println("reverse proxying", req.Method, req.URL)
-				req.Host = binderHost
-				req.URL.Scheme = binderURL.Scheme
-				req.URL.Host = binderURL.Host
-				req.URL.Path = binderURL.Path + "/" + req.URL.Path
-			},
-			ModifyResponse: func(resp *http.Response) error {
-				resp.Header.Add("Access-Control-Allow-Origin", "*")
-				resp.Header.Add("Access-Control-Expose-Headers", "*")
-				resp.Header.Add("Access-Control-Allow-Methods", "*")
-				resp.Header.Add("Access-Control-Allow-Headers", "*")
-				return nil
-			},
-		}
-		if http.ListenAndServe(binderProxy, revProx) != nil {
-			panic(err)
-		}
-	}
-
-	// connect to bridge
-	bindClient = bdclient.NewClient(binderFront, binderHost)
-	sWrap = newSmuxWrapper()
-
-	// automatically pick mode
-	if !forceBridges {
-		country, err := bindClient.GetClientInfo()
-		if err != nil {
-			log.Println("cannot get country, conservatively using bridges", err)
-		} else {
-			log.Println("country is", country.Country)
-			if country.Country == "CN" || country.Country == "" {
-				log.Println("in CHINA, must use bridges")
-			} else {
-				log.Println("disabling bridges")
-				direct = true
+	if singleHop == "" {
+		binderRace()
+		if binderProxy != "" {
+			log.Println("binderProxy mode on", binderProxy)
+			binderURL, err := url.Parse(binderFront)
+			if err != nil {
+				panic(err)
+			}
+			revProx := &httputil.ReverseProxy{
+				Director: func(req *http.Request) {
+					log.Println("reverse proxying", req.Method, req.URL)
+					req.Host = binderHost
+					req.URL.Scheme = binderURL.Scheme
+					req.URL.Host = binderURL.Host
+					req.URL.Path = binderURL.Path + "/" + req.URL.Path
+				},
+				ModifyResponse: func(resp *http.Response) error {
+					resp.Header.Add("Access-Control-Allow-Origin", "*")
+					resp.Header.Add("Access-Control-Expose-Headers", "*")
+					resp.Header.Add("Access-Control-Allow-Methods", "*")
+					resp.Header.Add("Access-Control-Allow-Headers", "*")
+					return nil
+				},
+			}
+			if http.ListenAndServe(binderProxy, revProx) != nil {
+				panic(err)
 			}
 		}
-	} else {
-		direct = false
+
+		// connect to bridge
+		bindClient = bdclient.NewClient(binderFront, binderHost)
+		// automatically pick mode
+		if !forceBridges {
+			country, err := bindClient.GetClientInfo()
+			if err != nil {
+				log.Println("cannot get country, conservatively using bridges", err)
+			} else {
+				log.Println("country is", country.Country)
+				if country.Country == "CN" || country.Country == "" {
+					log.Println("in CHINA, must use bridges")
+				} else {
+					log.Println("disabling bridges")
+					direct = true
+				}
+			}
+		} else {
+			direct = false
+		}
 	}
+	sWrap = newSmuxWrapper()
 
 	if dnsAddr != "" {
 		go doDNSProxy()

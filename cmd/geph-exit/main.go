@@ -4,7 +4,6 @@ import (
 	"crypto/ed25519"
 	"flag"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -17,12 +16,15 @@ import (
 	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/patrickmn/go-cache"
+	log "github.com/sirupsen/logrus"
 )
 
 var keyfile string
 var pubkey ed25519.PublicKey
 var seckey ed25519.PrivateKey
 var onlyPaid bool
+
+var singleHop string
 
 var binderFront string
 var binderReal string
@@ -35,23 +37,33 @@ var statClient *statsd.StatsdClient
 var ipcache = cache.New(time.Hour, time.Hour)
 
 func main() {
+	log.SetFormatter(&log.TextFormatter{
+		FullTimestamp: false,
+	})
+	log.SetLevel(log.DebugLevel)
 	flag.StringVar(&keyfile, "keyfile", "keyfile.bin", "location of key file")
 	flag.StringVar(&binderFront, "binderFront", "http://binder.geph.io:9080", "binder domain-fronting host")
 	flag.StringVar(&binderReal, "binderReal", "binder.geph.io", "real hostname of the binder")
 	flag.StringVar(&statsdAddr, "statsdAddr", "c2.geph.io:8125", "address of StatsD for gathering statistics")
 	flag.BoolVar(&onlyPaid, "onlyPaid", false, "only allow paying users")
+	flag.StringVar(&singleHop, "singleHop", "", "if supplied, runs in single-hop mode. (for example, -singleHop :5000 would listen on port 5000)")
 	flag.Parse()
-
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
+
+	// load the key
+	loadKey()
+	if singleHop != "" {
+		mainSingleHop()
+	}
+	log.Infof("Loaded PK = %x", pubkey)
 
 	var err error
 	hostname, err = os.Hostname()
 	if err != nil {
 		statsdAddr = ""
 	} else {
-		log.Println(hostname)
 	}
 	if statsdAddr != "" {
 		z, e := net.ResolveUDPAddr("udp", statsdAddr)
@@ -59,24 +71,19 @@ func main() {
 			panic(e)
 		}
 		statClient = statsd.New(z.IP.String(), z.Port)
-		log.Println("created statClient!")
 	}
 	bclient = bdclient.NewClient(binderFront, binderReal)
 
-	// load the key
-	loadKey()
-	log.Printf("Loaded PK = %x", pubkey)
 	// listen
 	go func() {
 		tcpListener, err := net.Listen("tcp", ":2389")
 		if err != nil {
 			panic(err)
 		}
-		log.Println("Started MUX on TinySS on port 2389")
+		log.Infof("Listen on TCP 2389")
 		for {
 			rawClient, err := tcpListener.Accept()
 			if err != nil {
-				log.Println("error while accepting TCP:", err)
 				continue
 			}
 			go handle(rawClient)
@@ -93,10 +100,10 @@ func main() {
 		panic(err)
 	}
 	kcpListener := niaucchi4.ListenKCP(obfs)
+	log.Infoln("Listen on UDP 2389")
 	for {
 		rc, err := kcpListener.Accept()
 		if err != nil {
-			log.Println("error while accepting TCP:", err)
 			continue
 		}
 		go handle(rc)
@@ -108,7 +115,7 @@ func e2elisten() {
 	if err != nil {
 		panic(err)
 	}
-	log.Println("e2elisten on 2399")
+	log.Infoln("e2elisten on UDP 2399")
 	udpsock.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
 	e2e := niaucchi4.NewE2EConn(udpsock)
 	kcpListener := niaucchi4.ListenKCP(e2e)

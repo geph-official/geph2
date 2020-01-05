@@ -5,11 +5,12 @@ import (
 	"crypto/ed25519"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"sync/atomic"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/cwl"
@@ -44,8 +45,8 @@ func isBlack(addr *net.TCPAddr) bool {
 }
 
 func handle(rawClient net.Conn) {
-	log.Printf("C<%p> accept", rawClient)
-	defer log.Printf("C<%p> close", rawClient)
+	log.Debugf("[%v] accept", rawClient.RemoteAddr())
+	defer log.Debugf("[%v] close", rawClient.RemoteAddr())
 	defer rawClient.Close()
 	rawClient.SetDeadline(time.Now().Add(time.Second * 30))
 	tssClient, err := tinyss.Handshake(rawClient, 0)
@@ -61,13 +62,8 @@ func handle(rawClient net.Conn) {
 	// sign the shared secret
 	ssSignature := ed25519.Sign(seckey, tssClient.SharedSec())
 	rlp.Encode(tssClient, &ssSignature)
-	// authenticate the client
-	var greeting [2][]byte
-	err = rlp.Decode(tssClient, &greeting)
-	if err != nil {
-		log.Println("Error decoding greeting from", rawClient.RemoteAddr(), err)
-		return
-	}
+	var limiter *rate.Limiter
+	limiter = rate.NewLimiter(10*1024*1024, 1*1000*1000)
 	// "generic" stuff
 	var acceptStream func() (net.Conn, error)
 	switch tssClient.NextProt() {
@@ -106,27 +102,33 @@ func handle(rawClient net.Conn) {
 			return
 		}
 	}
-	var limiter *rate.Limiter
-	err = bclient.RedeemTicket("paid", greeting[0], greeting[1])
-	if err != nil {
-		if onlyPaid {
-			log.Printf("%v isn't paid and we only accept paid. Failing!", rawClient.RemoteAddr())
-			rlp.Encode(tssClient, "FAIL")
-			return
-		}
-		err = bclient.RedeemTicket("free", greeting[0], greeting[1])
+	if singleHop == "" {
+		// authenticate the client
+		var greeting [2][]byte
+		err = rlp.Decode(tssClient, &greeting)
 		if err != nil {
-			log.Printf("%v isn't free either. fail", rawClient.RemoteAddr())
-			rlp.Encode(tssClient, "FAIL")
+			log.Println("Error decoding greeting from", rawClient.RemoteAddr(), err)
 			return
 		}
-		limiter = rate.NewLimiter(100*1000, 1*1000*1000)
-		limiter.WaitN(context.Background(), 1*1000*1000-500)
-	} else {
-		limiter = rate.NewLimiter(10*1024*1024, 1*1000*1000)
+		err = bclient.RedeemTicket("paid", greeting[0], greeting[1])
+		if err != nil {
+			if onlyPaid {
+				log.Printf("%v isn't paid and we only accept paid. Failing!", rawClient.RemoteAddr())
+				rlp.Encode(tssClient, "FAIL")
+				return
+			}
+			err = bclient.RedeemTicket("free", greeting[0], greeting[1])
+			if err != nil {
+				log.Printf("%v isn't free either. fail", rawClient.RemoteAddr())
+				rlp.Encode(tssClient, "FAIL")
+				return
+			}
+			limiter = rate.NewLimiter(100*1000, 1*1000*1000)
+			limiter.WaitN(context.Background(), 1*1000*1000-500)
+		}
+		// IGNORE FOR NOW
+		rlp.Encode(tssClient, "OK")
 	}
-	// IGNORE FOR NOW
-	rlp.Encode(tssClient, "OK")
 	rawClient.SetDeadline(time.Now().Add(time.Hour * 24))
 	for {
 		soxclient, err := acceptStream()
@@ -145,7 +147,7 @@ func handle(rawClient net.Conn) {
 				return
 			}
 			soxclient.SetDeadline(time.Time{})
-			log.Printf("C<%p> cmd %v", rawClient, command)
+			log.Debugf("[%v] cmd %v", rawClient.RemoteAddr(), command)
 			// match command
 			switch command[0] {
 			case "proxy":
@@ -165,7 +167,7 @@ func handle(rawClient net.Conn) {
 				}
 				// measure dial latency
 				dialLatency := time.Since(dialStart)
-				if statClient != nil {
+				if statClient != nil && singleHop == "" {
 					statClient.Timing(hostname+".dialLatency", dialLatency.Milliseconds())
 					statClient.Increment(hostname + ".totalConns")
 					defer func() {
@@ -176,7 +178,7 @@ func handle(rawClient net.Conn) {
 				remote.SetDeadline(time.Now().Add(time.Hour))
 				defer remote.Close()
 				onPacket := func(l int) {
-					if statClient != nil {
+					if statClient != nil && singleHop == "" {
 						before := atomic.LoadUint64(&counter)
 						atomic.AddUint64(&counter, uint64(l))
 						after := atomic.LoadUint64(&counter)

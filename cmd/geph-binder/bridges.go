@@ -47,7 +47,7 @@ func getBridges(id string) []string {
 		for k := range itms {
 			h := sha256.Sum256([]byte(k + seed))
 			num := binary.BigEndian.Uint32(h[:4])
-			if float64(num) < probability*float64(4294967295) {
+			if float64(num) < probability*float64(4294967295) || true {
 				candidates[i] = append(candidates[i], k)
 			}
 			//TODO diversity

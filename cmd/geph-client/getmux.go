@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -18,7 +19,7 @@ import (
 	"github.com/xtaci/smux"
 )
 
-func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Session, err error) {
+func negotiateSmux(greeting *[2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Session, err error) {
 	rawConn.SetDeadline(time.Now().Add(time.Second * 20))
 	cryptConn, err := tinyss.Handshake(rawConn, 0)
 	if err != nil {
@@ -39,21 +40,23 @@ func negotiateSmux(greeting [2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Se
 		rawConn.Close()
 		return
 	}
-	// send the greeting
-	rlp.Encode(cryptConn, greeting)
-	// wait for the reply
-	var reply string
-	err = rlp.Decode(cryptConn, &reply)
-	if err != nil {
-		err = fmt.Errorf("cannot decode reply: %w", err)
-		rawConn.Close()
-		return
-	}
-	if reply != "OK" {
-		err = errors.New("authentication failed")
-		rawConn.Close()
-		log.Println("authentication failed", reply)
-		os.Exit(11)
+	if greeting != nil {
+		// send the greeting
+		rlp.Encode(cryptConn, greeting)
+		// wait for the reply
+		var reply string
+		err = rlp.Decode(cryptConn, &reply)
+		if err != nil {
+			err = fmt.Errorf("cannot decode reply: %w", err)
+			rawConn.Close()
+			return
+		}
+		if reply != "OK" {
+			err = errors.New("authentication failed")
+			rawConn.Close()
+			log.Println("authentication failed", reply)
+			os.Exit(11)
+		}
 	}
 	smuxConf := &smux.Config{
 		KeepAliveInterval: time.Minute * 20,
@@ -86,73 +89,86 @@ func newSmuxWrapper() *muxWrap {
 			sc.Connected = false
 			sc.bridgeThunk = nil
 		})
-	retry:
-		// obtain a ticket
-		ubmsg, ubsig, details, err := bindClient.GetTicket(username, password)
-		if err != nil {
-			log.Errorln("error authenticating:", err)
-			if errors.Is(err, io.EOF) {
-				os.Exit(11)
-			}
-			time.Sleep(time.Second)
-			goto retry
-		}
-		useStats(func(sc *stats) {
-			sc.Username = username
-			sc.Expiry = details.PaidExpiry
-			sc.Tier = details.Tier
-			sc.PayTxes = details.Transactions
+		defer useStats(func(sc *stats) {
+			sc.Connected = true
 		})
-		realExitKey, err := hex.DecodeString(exitKey)
-		if err != nil {
-			panic(err)
-		}
-		if direct {
-			sm, err := getDirect([2][]byte{ubmsg, ubsig}, exitName, realExitKey)
+	retry:
+		if singleHop == "" {
+			// obtain a ticket
+			ubmsg, ubsig, details, err := bindClient.GetTicket(username, password)
 			if err != nil {
-				log.Warnln("direct conn retrying", err)
+				log.Errorln("error authenticating:", err)
+				if errors.Is(err, io.EOF) {
+					os.Exit(11)
+				}
 				time.Sleep(time.Second)
 				goto retry
 			}
 			useStats(func(sc *stats) {
-				sc.Connected = true
+				sc.Username = username
+				sc.Expiry = details.PaidExpiry
+				sc.Tier = details.Tier
+				sc.PayTxes = details.Transactions
 			})
+			realExitKey, err := hex.DecodeString(exitKey)
+			if err != nil {
+				panic(err)
+			}
+			if direct {
+				sm, err := getDirect([2][]byte{ubmsg, ubsig}, exitName, realExitKey)
+				if err != nil {
+					log.Warnln("direct conn retrying", err)
+					time.Sleep(time.Second)
+					goto retry
+				}
+				useStats(func(sc *stats) {
+					sc.Connected = true
+				})
+				return sm
+			}
+			bridges, err := bindClient.GetBridges(ubmsg, ubsig)
+			if err != nil {
+				log.Warnln("getting bridges failed, retrying", err)
+				time.Sleep(time.Second)
+				goto retry
+			}
+			log.Infoln("Obtained", len(bridges), "bridges")
+			for _, b := range bridges {
+				log.Infof(".... %v %x", b.Host, b.Cookie)
+			}
+			var conn net.Conn
+			if useTCP {
+				conn, err = getSinglepath(bridges)
+				if err != nil {
+					log.Println("Singlepath failed!")
+					goto retry
+				}
+			} else {
+				conn, err = getMultipath(bridges)
+				if err != nil {
+					log.Println("Singlepath failed!")
+					goto retry
+				}
+			}
+			sm, err := negotiateSmux(&[2][]byte{ubmsg, ubsig}, conn, realExitKey)
+			if err != nil {
+				log.Println("Failed negotiating smux:", err)
+				conn.Close()
+				goto retry
+			}
+			conn.SetDeadline(time.Now().Add(time.Hour * 6))
 			return sm
-		}
-		bridges, err := bindClient.GetBridges(ubmsg, ubsig)
-		if err != nil {
-			log.Warnln("getting bridges failed, retrying", err)
-			time.Sleep(time.Second)
-			goto retry
-		}
-		log.Infoln("Obtained", len(bridges), "bridges")
-		for _, b := range bridges {
-			log.Infof(".... %v %x", b.Host, b.Cookie)
-		}
-		var conn net.Conn
-		if useTCP {
-			conn, err = getSinglepath(bridges)
-			if err != nil {
-				log.Println("Singlepath failed!")
-				goto retry
-			}
 		} else {
-			conn, err = getMultipath(bridges)
+			splitted := strings.Split(singleHop, "@")
+			lel, err := hex.DecodeString(splitted[0])
 			if err != nil {
-				log.Println("Singlepath failed!")
+				panic(err)
+			}
+			lol, err := getSingleHop(splitted[1], lel)
+			if err != nil {
 				goto retry
 			}
+			return lol
 		}
-		sm, err := negotiateSmux([2][]byte{ubmsg, ubsig}, conn, realExitKey)
-		if err != nil {
-			log.Println("Failed negotiating smux:", err)
-			conn.Close()
-			goto retry
-		}
-		conn.SetDeadline(time.Now().Add(time.Hour * 6))
-		useStats(func(sc *stats) {
-			sc.Connected = true
-		})
-		return sm
 	}}
 }

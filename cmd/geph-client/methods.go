@@ -11,11 +11,36 @@ import (
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/bdclient"
+	"github.com/geph-official/geph2/libs/cshirt2"
 	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 	log "github.com/sirupsen/logrus"
 	"github.com/xtaci/smux"
 )
+
+func getSingleHop(host string, pk []byte) (ss *smux.Session, err error) {
+	var conn net.Conn
+	if useTCP {
+		conn, err = net.Dial("tcp", host)
+		if err != nil {
+			return
+		}
+		conn, err = cshirt2.Client(pk, conn)
+		if err != nil {
+			log.Warnln("cshirt2 failed:", err)
+			return
+		}
+		ss, err = negotiateSmux(nil, conn, pk)
+		return
+	}
+	conn, err = niaucchi4.DialKCP(host, pk)
+	if err != nil {
+		err = fmt.Errorf("plain TCP failed: %w", err)
+		return
+	}
+	ss, err = negotiateSmux(nil, conn, pk)
+	return
+}
 
 func getDirect(greeting [2][]byte, host string, pk []byte) (ss *smux.Session, err error) {
 	var conn net.Conn
@@ -24,7 +49,7 @@ func getDirect(greeting [2][]byte, host string, pk []byte) (ss *smux.Session, er
 		if err != nil {
 			return
 		}
-		ss, err = negotiateSmux(greeting, conn, pk)
+		ss, err = negotiateSmux(&greeting, conn, pk)
 		return
 	}
 	conn, err = niaucchi4.DialKCP(host+":2389", make([]byte, 32))
@@ -32,7 +57,7 @@ func getDirect(greeting [2][]byte, host string, pk []byte) (ss *smux.Session, er
 		err = fmt.Errorf("plain TCP failed: %w", err)
 		return
 	}
-	ss, err = negotiateSmux(greeting, conn, pk)
+	ss, err = negotiateSmux(&greeting, conn, pk)
 	return
 }
 
