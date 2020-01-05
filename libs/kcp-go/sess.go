@@ -581,7 +581,7 @@ func (s *UDPSession) update() (interval time.Duration) {
 	s.notifyReadEvent()
 	//}
 	s.uncork()
-	if s.kcp.quiescent <= 0 {
+	if s.kcp.quiescent <= 0 || s.kcp.isDead {
 		interval = 0
 	}
 	if s.kcp.isDead {
