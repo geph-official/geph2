@@ -43,15 +43,16 @@ type e2eLinkInfo struct {
 	recvsn  uint64
 	recvcnt uint64
 
-	sendTimes [1024]int64
-	lastPing  int64
-	lastRecv  int64
+	lastSendTime time.Time
+	lastSendSn   uint64
+	lastPing     int64
 }
 
 func (el e2eLinkInfo) getScore() float64 {
-	now := time.Now().UnixNano() / 1000000
-	since := now - el.lastRecv
-	return math.Sqrt((float64(since) * math.Max(50, float64(el.lastPing))))
+	// now := time.Now().UnixNano() / 1000000
+	// since := now - el.lastRecv
+	// return math.Sqrt((float64(since) * math.Max(50, float64(el.lastPing))))
+	return math.Max(float64(el.lastPing), float64(time.Since(el.lastSendTime).Milliseconds()))
 }
 
 type e2ePacket struct {
@@ -78,7 +79,7 @@ func (es *e2eSession) DebugInfo() (lii []LinkInfo) {
 		lii = append(lii, LinkInfo{
 			RemoteIP: strings.Split(es.remote[i].String(), ":")[0],
 			RecvCnt:  int(nfo.recvcnt),
-			Ping:     int(nfo.lastPing),
+			Ping:     int(nfo.getScore()),
 			LossPct:  math.Max(0, 1.0-float64(nfo.recvcnt)/(1+float64(nfo.recvsn))),
 		})
 	}
@@ -127,21 +128,10 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 	}
 	// parse the stuff
 	if pkt.Sn < es.info[remid].recvsn {
-		return
+
 	} else {
 		es.info[remid].recvsn = pkt.Sn
 		es.info[remid].acksn = pkt.Ack
-		es.info[remid].lastRecv = time.Now().UnixNano() / 1000000
-		now := time.Now().UnixNano() / 1000000
-		sentTime := es.info[remid].sendTimes[pkt.Ack%1024]
-		ping := now - sentTime
-		if ping < 1000 {
-			if ping < es.info[remid].lastPing {
-				es.info[remid].lastPing = ping
-			} else {
-				es.info[remid].lastPing = (es.info[remid].lastPing*9 + ping*1) / 10
-			}
-		}
 	}
 	es.info[remid].recvcnt++
 	bodyHash := highwayhash.Sum128(pkt.Body, make([]byte, 32))
@@ -149,6 +139,13 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 	} else {
 		es.dedup.Add(bodyHash, true)
 		es.rdqueue = append(es.rdqueue, pkt.Body)
+	}
+	nfo := &es.info[remid]
+	if nfo.acksn > nfo.lastSendSn {
+		now := time.Now()
+		nfo.lastPing = now.Sub(nfo.lastSendTime).Milliseconds()
+		nfo.lastSendSn = nfo.sendsn
+		nfo.lastSendTime = now
 	}
 }
 
@@ -164,7 +161,6 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 			Ack:     es.info[remid].recvsn + 1,
 			Body:    payload,
 		}
-		es.info[remid].sendTimes[(toSend.Sn+1)%1024] = time.Now().UnixNano() / 1000000
 		es.info[remid].sendsn++
 		dest := es.remote[remid]
 		sendCallback(toSend, dest)
@@ -192,9 +188,6 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 			es.lastSend = now
 		} else {
 			remid = es.lastRemid
-		}
-		if es.lastRemid != remid && doLogging {
-			log.Printf("N4: %x changing path to %v", es.sessid[:8], es.remote[remid])
 		}
 		es.lastRemid = remid
 		send(remid)

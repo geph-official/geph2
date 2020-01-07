@@ -12,8 +12,11 @@ import (
 	"github.com/patrickmn/go-cache"
 )
 
-// ErrAttackDetected denotes an error that can only happen when active probing attempts are made. The remote IP should probably be blocked!
+// ErrAttackDetected denotes an error that can only happen when active probing attempts are made.
 var ErrAttackDetected = errors.New("active probing attack detected")
+
+// ErrBadHandshakeMAC denotes a bad handshake mac.
+var ErrBadHandshakeMAC = errors.New("bad MAC in handshake")
 
 func mac256(m, k []byte) []byte {
 	mac := blake2b.NewMAC(32, k)
@@ -58,7 +61,7 @@ func readPK(secret []byte, transport net.Conn) (dhPK, error) {
 		}
 	}
 	if !macOK {
-		return nil, ErrAttackDetected
+		return nil, ErrBadHandshakeMAC
 	}
 	return theirPublic, nil
 }

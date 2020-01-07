@@ -40,7 +40,7 @@ const (
 
 var QuiescentMax = 10
 
-var CongestionControl = "LOL"
+var CongestionControl = "VGS"
 
 var doLogging = false
 
@@ -227,6 +227,9 @@ type KCP struct {
 		devi float64
 	}
 
+	VGS struct {
+	}
+
 	fastresend     int32
 	nocwnd, stream int32
 
@@ -276,6 +279,7 @@ func NewKCP(conv uint32, output output_callback) *KCP {
 	kcp.DRE.ppDelTime = make(map[uint32]time.Time)
 	kcp.DRE.ppDelivered = make(map[uint32]float64)
 	kcp.DRE.ppAppLimited = make(map[uint32]bool)
+	kcp.LOL.gain = 1
 	kcp.shortLoss = 1
 	kcp.longLoss = 1
 	kcp.quiescent = QuiescentMax
@@ -529,14 +533,17 @@ func (kcp *KCP) processAck(seg *segment) {
 	}
 	ackElapsed := kcp.DRE.delTime.Sub(pDelTime)
 	delete(kcp.DRE.ppDelTime, seg.sn)
-	_, ok = kcp.DRE.ppAppLimited[seg.sn]
+	al, ok := kcp.DRE.ppAppLimited[seg.sn]
 	if !ok {
 		return
 	}
 	delete(kcp.DRE.ppAppLimited, seg.sn)
-	kcp.DRE.runElapsedTime += ackElapsed.Seconds()
-	kcp.DRE.runDataAcked += dataAcked
-	kcp.DRE.delivered += float64(len(seg.data))
+	if seg.xmit < 2 {
+		kcp.DRE.runElapsedTime += ackElapsed.Seconds()
+		kcp.DRE.runDataAcked += dataAcked
+		kcp.DRE.delivered += float64(len(seg.data))
+		kcp.updateSample(al)
+	}
 }
 
 func (kcp *KCP) parse_ack(sn uint32) {
@@ -672,7 +679,6 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 	if len(data) < IKCP_OVERHEAD {
 		return -1
 	}
-	defer kcp.updateSample(false)
 
 	var latest uint32 // the latest ack packet
 	var flag int
@@ -771,9 +777,11 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 			switch CongestionControl {
 			case "BIC":
 				kcp.bic_onack(acks)
+			case "VGS":
+				kcp.vgs_onack(acks)
 			case "LOL":
 				bdp := kcp.bdp() / float64(kcp.mss)
-				targetCwnd := bdp * 4
+				targetCwnd := bdp * 2
 				if targetCwnd > kcp.cwnd+float64(acks) {
 					kcp.cwnd = kcp.cwnd + float64(acks)
 				} else {
@@ -803,11 +811,11 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					}
 				} else {
 					// vibrate the gain up and down every 50 rtts
-					period := int(float64(time.Now().UnixNano()) / 2e6 / kcp.DRE.minRtt)
+					period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
 					if period%2 == 0 {
-						kcp.LOL.gain = 1.25
+						kcp.LOL.gain = 1.5
 					} else if period%2 == 1 {
-						kcp.LOL.gain = 0.75
+						kcp.LOL.gain = 0.5
 					}
 				}
 
@@ -844,15 +852,14 @@ func (kcp *KCP) wnd_unused() uint16 {
 var ackDebugCache = cache.New(time.Hour, time.Hour)
 
 func (kcp *KCP) rttProp() float64 {
-	return kcp.DRE.minRtt + 10*math.Sqrt(float64(kcp.rx_rttvar))
+	return kcp.DRE.minRtt
 }
 
 func (kcp *KCP) updateSample(appLimited bool) {
 	if kcp.DRE.runElapsedTime > 0 {
 		avgRate := kcp.DRE.runDataAcked / kcp.DRE.runElapsedTime
-		beta := 1000 / math.Max(1000, kcp.DRE.avgAckRate/300)
+		beta := 10 / math.Max(1000, kcp.DRE.avgAckRate/300)
 		kcp.DRE.avgAckRate = (1-beta)*kcp.DRE.avgAckRate + beta*avgRate
-		avgRate = kcp.DRE.avgAckRate
 		if kcp.DRE.maxAckRate < avgRate || (!appLimited && float64(time.Since(kcp.DRE.maxAckTime).Milliseconds()) > kcp.rttProp()*10) {
 			if kcp.DRE.maxAckRate > avgRate {
 				kcp.DRE.maxAckRate = kcp.DRE.avgAckRate
@@ -860,9 +867,6 @@ func (kcp *KCP) updateSample(appLimited bool) {
 				kcp.DRE.maxAckRate = avgRate
 			}
 			kcp.DRE.maxAckTime = kcp.DRE.delTime
-			if kcp.DRE.maxAckRate < 500*1000 {
-				kcp.DRE.maxAckRate = 500 * 1000
-			}
 		}
 	}
 	if kcp.DRE.runElapsedTime != 0 {
@@ -995,12 +999,13 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			break
 		}
 		newseg := kcp.snd_queue[k]
-		if CongestionControl == "LOL" {
+		if CongestionControl == "LOL" || CongestionControl == "VGS" {
 			if !kcp.pacer.Allow(math.Max(500*1000, kcp.DRE.maxAckRate),
 				int(float64(len(newseg.data))/math.Max(0.5, kcp.LOL.gain))) {
 				break
 			}
 		}
+
 		newseg.conv = kcp.conv
 		newseg.cmd = IKCP_CMD_PUSH
 		newseg.sn = kcp.snd_nxt
@@ -1134,9 +1139,6 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.bic_onloss(int(sum))
 			}
 		case "LOL":
-			if lostSegs > 0 {
-				kcp.cwnd = kcp.bdp() / float64(kcp.mss)
-			}
 		}
 		if kcp.cwnd < 4 {
 			kcp.cwnd = 4

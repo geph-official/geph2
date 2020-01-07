@@ -146,7 +146,7 @@ func newSmuxWrapper() *muxWrap {
 			} else {
 				conn, err = getMultipath(bridges)
 				if err != nil {
-					log.Println("Singlepath failed!")
+					log.Println("Multipath failed!")
 					goto retry
 				}
 			}

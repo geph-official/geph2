@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	mrand "math/rand"
 	"net"
 	"net/http"
 	"time"
@@ -18,7 +19,7 @@ import (
 )
 
 // cache of all bridge info. string => bridgeInfo
-var bridgeCache = cache.New(time.Minute*2, time.Hour)
+var bridgeCache = cache.New(time.Minute*10, time.Hour)
 
 type bridgeInfo struct {
 	Cookie   []byte
@@ -68,7 +69,7 @@ func getBridges(id string) []string {
 
 func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 	// TODO validate the ticket
-	bridges := getBridges(r.RemoteAddr)
+	bridges := getBridges(fmt.Sprintf("%v", mrand.Int()))
 	w.Header().Set("content-type", "application/json")
 	var laboo []bridgeInfo
 	for _, str := range bridges {

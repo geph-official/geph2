@@ -5,17 +5,13 @@ import (
 )
 
 func (kcp *KCP) bic_onloss(lost int) {
-	beta := 0.25
+	beta := 0.001
 	if kcp.cwnd < kcp.wmax {
 		kcp.wmax = kcp.cwnd * (2.0 - beta) / 2.0
 	} else {
 		kcp.wmax = kcp.cwnd
 	}
 	kcp.cwnd = kcp.cwnd * (1.0 - beta)
-}
-
-func (kcp *KCP) aimd_multiplier() float64 {
-	return kcp.DRE.minRtt / 50.0
 }
 
 func (kcp *KCP) bic_onack(acks int32) {
@@ -38,7 +34,6 @@ func (kcp *KCP) bic_onack(acks int32) {
 		if uint32(kcp.cwnd) > kcp.rmt_wnd {
 			kcp.cwnd = float64(kcp.rmt_wnd)
 		}
-		bicinc *= kcp.aimd_multiplier()
 	}
 	// if doLogging {
 	// 	log.Printf("BIC cwnd %.2f => %.2f [%.2f %%]", kcp.cwnd, kcp.wmax, float64(kcp.retrans)/float64(kcp.trans)*100)

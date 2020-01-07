@@ -63,9 +63,36 @@ func handle(rawClient net.Conn) {
 	ssSignature := ed25519.Sign(seckey, tssClient.SharedSec())
 	rlp.Encode(tssClient, &ssSignature)
 	var limiter *rate.Limiter
-	limiter = rate.NewLimiter(10*1024*1024, 1*1000*1000)
+	limiter = rate.NewLimiter(rate.Inf, 10*1000*1000)
 	// "generic" stuff
 	var acceptStream func() (net.Conn, error)
+	if singleHop == "" {
+		// authenticate the client
+		var greeting [2][]byte
+		err = rlp.Decode(tssClient, &greeting)
+		if err != nil {
+			log.Println("Error decoding greeting from", rawClient.RemoteAddr(), err)
+			return
+		}
+		err = bclient.RedeemTicket("paid", greeting[0], greeting[1])
+		if err != nil {
+			if onlyPaid {
+				log.Printf("%v isn't paid and we only accept paid. Failing!", rawClient.RemoteAddr())
+				rlp.Encode(tssClient, "FAIL")
+				return
+			}
+			err = bclient.RedeemTicket("free", greeting[0], greeting[1])
+			if err != nil {
+				log.Printf("%v isn't free either. fail", rawClient.RemoteAddr())
+				rlp.Encode(tssClient, "FAIL")
+				return
+			}
+			limiter = rate.NewLimiter(100*1000, 1*1000*1000)
+			limiter.WaitN(context.Background(), 1*1000*1000-500)
+		}
+		// IGNORE FOR NOW
+		rlp.Encode(tssClient, "OK")
+	}
 	switch tssClient.NextProt() {
 	case 0:
 		// create smux context
@@ -101,33 +128,6 @@ func handle(rawClient net.Conn) {
 			n, e = muxSrv.AcceptStream()
 			return
 		}
-	}
-	if singleHop == "" {
-		// authenticate the client
-		var greeting [2][]byte
-		err = rlp.Decode(tssClient, &greeting)
-		if err != nil {
-			log.Println("Error decoding greeting from", rawClient.RemoteAddr(), err)
-			return
-		}
-		err = bclient.RedeemTicket("paid", greeting[0], greeting[1])
-		if err != nil {
-			if onlyPaid {
-				log.Printf("%v isn't paid and we only accept paid. Failing!", rawClient.RemoteAddr())
-				rlp.Encode(tssClient, "FAIL")
-				return
-			}
-			err = bclient.RedeemTicket("free", greeting[0], greeting[1])
-			if err != nil {
-				log.Printf("%v isn't free either. fail", rawClient.RemoteAddr())
-				rlp.Encode(tssClient, "FAIL")
-				return
-			}
-			limiter = rate.NewLimiter(100*1000, 1*1000*1000)
-			limiter.WaitN(context.Background(), 1*1000*1000-500)
-		}
-		// IGNORE FOR NOW
-		rlp.Encode(tssClient, "OK")
 	}
 	rawClient.SetDeadline(time.Now().Add(time.Hour * 24))
 	for {
