@@ -40,7 +40,7 @@ const (
 
 var QuiescentMax = 10
 
-var CongestionControl = "VGS"
+var CongestionControl = "LOL"
 
 var doLogging = false
 
@@ -508,6 +508,9 @@ func (kcp *KCP) update_ack(rtt int32) {
 	}
 	rto = uint32(kcp.rx_srtt) + _imax_(kcp.interval, uint32(kcp.rx_rttvar)<<2)
 	kcp.rx_rto = _ibound_(kcp.rx_minrto, rto, IKCP_RTO_MAX)
+	if kcp.rx_rto < 1000 {
+		kcp.rx_rto = 1000
+	}
 }
 
 func (kcp *KCP) shrink_buf() {
@@ -781,17 +784,16 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				kcp.vgs_onack(acks)
 			case "LOL":
 				bdp := kcp.bdp() / float64(kcp.mss)
-				targetCwnd := bdp * 2
+				targetCwnd := bdp * 3
 				if targetCwnd > kcp.cwnd+float64(acks) {
 					kcp.cwnd = kcp.cwnd + float64(acks)
 				} else {
 					kcp.cwnd = targetCwnd
 				}
-				if kcp.cwnd < 4 {
-					kcp.cwnd = 4
+				if kcp.cwnd < 16 {
+					kcp.cwnd = 16
 				}
 
-				kcp.LOL.gain = 1
 				if !kcp.LOL.filledPipe {
 					// check for filled pipe
 					if kcp.DRE.avgAckRate > kcp.LOL.fullBw {
@@ -865,6 +867,9 @@ func (kcp *KCP) updateSample(appLimited bool) {
 				kcp.DRE.maxAckRate = kcp.DRE.avgAckRate
 			} else {
 				kcp.DRE.maxAckRate = avgRate
+			}
+			if kcp.DRE.maxAckRate < 400*1000 {
+				kcp.DRE.maxAckRate = 400 * 1000
 			}
 			kcp.DRE.maxAckTime = kcp.DRE.delTime
 		}
@@ -999,7 +1004,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			break
 		}
 		newseg := kcp.snd_queue[k]
-		if CongestionControl == "LOL" || CongestionControl == "VGS" {
+		if CongestionControl == "LOL" {
 			if !kcp.pacer.Allow(math.Max(500*1000, kcp.DRE.maxAckRate),
 				int(float64(len(newseg.data))/math.Max(0.5, kcp.LOL.gain))) {
 				break
@@ -1041,11 +1046,10 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.acked == 1 {
 			continue
 		}
-		const RTOSLACK = 150
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto
-			segment.resendts = current + segment.rto + RTOSLACK
+			segment.resendts = current + segment.rto
 			kcp.trans++
 			kcp.shortLoss = kcp.shortLoss*0.999 + 0.001
 			kcp.longLoss = kcp.longLoss*0.9999 + 0.0001
@@ -1053,7 +1057,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			needsend = true
 			segment.fastack = 0
 			segment.rto = kcp.rx_rto
-			segment.resendts = current + segment.rto + RTOSLACK
+			segment.resendts = current + segment.rto
 			change++
 			fastRetransSegs++
 			kcp.longLoss = kcp.shortLoss * 0.9999
@@ -1062,7 +1066,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			needsend = true
 			segment.fastack = 0
 			segment.rto = kcp.rx_rto
-			segment.resendts = current + segment.rto + RTOSLACK
+			segment.resendts = current + segment.rto
 			change++
 			earlyRetransSegs++
 			kcp.longLoss = kcp.shortLoss * 0.9999
@@ -1074,7 +1078,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			// } else {
 			// 	segment.rto += kcp.rx_rto / 2
 			// }
-			segment.rto += segment.rto/2 + RTOSLACK
+			segment.rto += segment.rto / 2
 			segment.fastack = 0
 			segment.resendts = current + segment.rto
 			if segment.rto > IKCP_RTO_MAX {
@@ -1139,6 +1143,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.bic_onloss(int(sum))
 			}
 		case "LOL":
+		case "VGS":
 		}
 		if kcp.cwnd < 4 {
 			kcp.cwnd = 4
