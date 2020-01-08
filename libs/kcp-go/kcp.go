@@ -536,7 +536,7 @@ func (kcp *KCP) processAck(seg *segment) {
 	}
 	ackElapsed := kcp.DRE.delTime.Sub(pDelTime)
 	delete(kcp.DRE.ppDelTime, seg.sn)
-	al, ok := kcp.DRE.ppAppLimited[seg.sn]
+	_, ok = kcp.DRE.ppAppLimited[seg.sn]
 	if !ok {
 		return
 	}
@@ -545,7 +545,6 @@ func (kcp *KCP) processAck(seg *segment) {
 		kcp.DRE.runElapsedTime += ackElapsed.Seconds()
 		kcp.DRE.runDataAcked += dataAcked
 		kcp.DRE.delivered += float64(len(seg.data))
-		kcp.updateSample(al)
 	}
 }
 
@@ -682,6 +681,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 	if len(data) < IKCP_OVERHEAD {
 		return -1
 	}
+	defer kcp.updateSample(false)
 
 	var latest uint32 // the latest ack packet
 	var flag int
@@ -834,7 +834,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 		}
 	}
 
-	if ackNoDelay && len(kcp.acklist) > 0 { // ack immediately
+	if ackNoDelay && len(kcp.acklist) > 4 { // ack immediately
 		kcp.flush(true)
 	}
 	return 0
