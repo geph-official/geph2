@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
@@ -44,6 +45,21 @@ func isBlack(addr *net.TCPAddr) bool {
 	return false
 }
 
+var sessCount uint64
+
+func init() {
+	go func() {
+		for {
+			time.Sleep(time.Second * 10)
+			if statClient != nil {
+				statClient.Send(map[string]string{
+					hostname + ".sessionCount": fmt.Sprintf("%v|g", atomic.LoadUint64(&sessCount)),
+				}, 1)
+			}
+		}
+	}()
+}
+
 func handle(rawClient net.Conn) {
 	log.Debugf("[%v] accept", rawClient.RemoteAddr())
 	defer log.Debugf("[%v] close", rawClient.RemoteAddr())
@@ -55,6 +71,8 @@ func handle(rawClient net.Conn) {
 		return
 	}
 	defer tssClient.Close()
+	atomic.AddUint64(&sessCount, 1)
+	defer atomic.AddUint64(&sessCount, ^uint64(0))
 	// copy the streams while
 	var counter uint64
 	// HACK: it's bridged if the remote address has a dot in it
@@ -100,7 +118,7 @@ func handle(rawClient net.Conn) {
 			KeepAliveInterval: time.Minute * 9,
 			KeepAliveTimeout:  time.Minute * 10,
 			MaxFrameSize:      8192,
-			MaxReceiveBuffer:  10 * 1024 * 1024,
+			MaxReceiveBuffer:  1 * 1024 * 1024,
 		})
 		if err != nil {
 			log.Println("Error negotiating smux from", rawClient.RemoteAddr(), err)
