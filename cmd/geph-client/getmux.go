@@ -57,6 +57,9 @@ func negotiateSmux(greeting *[2][]byte, rawConn net.Conn, pk []byte) (ss *smux.S
 			log.Println("authentication failed", reply)
 			os.Exit(11)
 		}
+		if loginCheck {
+			os.Exit(0)
+		}
 	}
 	smuxConf := &smux.Config{
 		KeepAliveInterval: time.Minute * 20,

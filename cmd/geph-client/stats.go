@@ -42,15 +42,15 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Access-Control-Allow-Origin", "*")
 	var bts []byte
 	useStats(func(sc *stats) {
+		if sc.bridgeThunk != nil {
+			sc.Bridges = sc.bridgeThunk()
+		}
 		ll := sc.LogLines
 		sc.LogLines = nil
 		var err error
 		bts, err = json.Marshal(sc)
 		if err != nil {
 			panic(err)
-		}
-		if sc.bridgeThunk != nil {
-			sc.Bridges = sc.bridgeThunk()
 		}
 		sc.LogLines = ll
 	})

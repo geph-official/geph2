@@ -238,9 +238,6 @@ func main() {
 				sc.Connected = true
 				sc.PublicIP = ip
 			})
-			if loginCheck {
-				os.Exit(0)
-			}
 			return
 		}
 	}()
