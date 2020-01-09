@@ -477,7 +477,7 @@ func (kcp *KCP) Send(buffer []byte) int {
 }
 
 func (kcp *KCP) bdp() float64 {
-	return (kcp.rttProp() + 100) * 0.001 * kcp.DRE.maxAckRate
+	return (kcp.rttProp()) * 0.001 * kcp.DRE.maxAckRate
 }
 
 func (kcp *KCP) update_ack(rtt int32) {
@@ -536,7 +536,7 @@ func (kcp *KCP) processAck(seg *segment) {
 	}
 	ackElapsed := kcp.DRE.delTime.Sub(pDelTime)
 	delete(kcp.DRE.ppDelTime, seg.sn)
-	al, ok := kcp.DRE.ppAppLimited[seg.sn]
+	_, ok = kcp.DRE.ppAppLimited[seg.sn]
 	if !ok {
 		return
 	}
@@ -545,7 +545,6 @@ func (kcp *KCP) processAck(seg *segment) {
 		kcp.DRE.runElapsedTime += ackElapsed.Seconds()
 		kcp.DRE.runDataAcked += dataAcked
 		kcp.DRE.delivered += float64(len(seg.data))
-		kcp.updateSample(al)
 	}
 }
 
@@ -677,6 +676,7 @@ func (kcp *KCP) parse_data(newseg segment) bool {
 //
 // 'ackNoDelay' will trigger immediate ACK, but surely it will not be efficient in bandwidth
 func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
+	defer kcp.updateSample(false)
 	kcp.quiescent = QuiescentMax
 	snd_una := kcp.snd_una
 	if len(data) < IKCP_OVERHEAD {
@@ -793,6 +793,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				if kcp.cwnd < 16 {
 					kcp.cwnd = 16
 				}
+				//windowUsage := float64(len(kcp.snd_buf)) / kcp.cwnd
 
 				if !kcp.LOL.filledPipe {
 					// check for filled pipe
@@ -815,16 +816,16 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					// vibrate the gain up and down every 50 rtts
 					period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
 					if period%2 == 0 {
-						kcp.LOL.gain = 1.5
-					} else if period%2 == 1 {
-						kcp.LOL.gain = 0.5
+						kcp.LOL.gain = 1.25
+					} else {
+						kcp.LOL.gain = 0.75
 					}
 				}
-
 				if doLogging {
-					log.Printf("[%p] %vK | %vK | cwnd %v | gain %.2f | %v [%v] ms | %.2f%%", kcp,
+					log.Printf("[%p] %vK | %vK | cwnd %v/%v | gain %.2f | %v [%v] ms | %.2f%%", kcp,
 						int(kcp.DRE.maxAckRate/1000),
 						int(kcp.DRE.avgAckRate/1000),
+						len(kcp.snd_buf),
 						int(kcp.cwnd), kcp.LOL.gain,
 						int(kcp.DRE.minRtt),
 						kcp.rx_rttvar,
@@ -834,8 +835,8 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 		}
 	}
 
-	if ackNoDelay && len(kcp.acklist) > 0 { // ack immediately
-		kcp.flush(true)
+	if len(kcp.acklist) > 8 || (ackNoDelay && len(kcp.acklist) > 0) { // ack immediately
+		kcp.flush(false)
 	}
 	return 0
 }

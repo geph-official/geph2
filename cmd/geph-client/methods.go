@@ -189,6 +189,7 @@ func getMultipath(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 	toret.SetNoDelay(0, 50, 3, 0)
 	toret.SetStreamMode(true)
 	toret.SetMtu(1300)
+	toret.SetACKNoDelay(true)
 	conn = toret
 	return
 }

@@ -45,6 +45,7 @@ retry:
 		w.lock.Unlock()
 		goto retry
 	}
+	w.lastActivity = time.Now()
 	return
 }
 

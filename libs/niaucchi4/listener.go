@@ -58,7 +58,6 @@ func (l *KCPListener) Accept() (c *kcp.UDPSession, err error) {
 	}
 	kc.SetWindowSize(10000, 1000)
 	kc.SetNoDelay(0, 50, 2, 0)
-	kc.SetStreamMode(true)
 	kc.SetMtu(1300)
 	c = kc
 	return
