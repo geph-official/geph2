@@ -835,7 +835,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 		}
 	}
 
-	if len(kcp.acklist) > 8 || (ackNoDelay && len(kcp.acklist) > 0) { // ack immediately
+	if len(kcp.acklist) >= 8 || (ackNoDelay && len(kcp.acklist) > 0) { // ack immediately
 		kcp.flush(false)
 	}
 	return 0

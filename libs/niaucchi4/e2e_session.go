@@ -31,7 +31,7 @@ type e2eSession struct {
 func newSession(sessid [16]byte) *e2eSession {
 	cache, _ := lru.New(128)
 	return &e2eSession{
-		dupRateLimit: rate.NewLimiter(10, 10),
+		dupRateLimit: rate.NewLimiter(10, 100),
 		dedup:        cache,
 		sessid:       sessid,
 	}
@@ -167,7 +167,7 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 	}
 	now := time.Now()
 	// find the right destination
-	if es.dupRateLimit.Allow() {
+	if es.dupRateLimit.AllowN(time.Now(), len(es.remote)) {
 		for remid := range es.remote {
 			send(remid)
 		}

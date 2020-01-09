@@ -34,6 +34,7 @@ func (sw *muxWrap) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 		sess := sw.fixSess()
 		// markSessionNil marks the session nil only if it hasn't already been changed
 		markSessionNil := func() {
+			time.Sleep(time.Second)
 			sw.lock.Lock()
 			if sw.session == sess {
 				sw.session = nil
