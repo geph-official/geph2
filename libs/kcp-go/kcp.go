@@ -815,9 +815,9 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					// vibrate the gain up and down every 50 rtts
 					period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
 					if period%2 == 0 {
-						kcp.LOL.gain = 1.25
+						kcp.LOL.gain = 1.5
 					} else {
-						kcp.LOL.gain = 0.75
+						kcp.LOL.gain = 0.5
 					}
 				}
 

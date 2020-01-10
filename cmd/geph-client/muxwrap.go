@@ -46,6 +46,7 @@ func (sw *muxWrap) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 			sess.Close()
 			log.Warnln(cmds, "can't open stream, trying again", err)
 			markSessionNil()
+			time.Sleep(time.Second)
 			goto start
 		}
 		// dial command
@@ -58,6 +59,7 @@ func (sw *muxWrap) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 			sess.Close()
 			markSessionNil()
 			log.Warnln(cmds, "can't read response, trying again:", err)
+			time.Sleep(time.Second)
 			goto start
 		}
 		select {
