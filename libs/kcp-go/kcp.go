@@ -38,7 +38,7 @@ const (
 	IKCP_PROBE_LIMIT = 120000 // up to 120 secs to probe window
 )
 
-var QuiescentMax = 10
+var QuiescentMax = 100
 
 var CongestionControl = "LOL"
 
@@ -213,6 +213,15 @@ type KCP struct {
 
 		runDataAcked   float64
 		runElapsedTime float64
+
+		lastLossTime    time.Time
+		lastLossDel     float64
+		lastLossTrans   uint64
+		lastLossRetrans uint64
+		lastLossRate    float64
+		lastLoss        float64
+		policeRate      float64
+		policeTime      time.Time
 	}
 
 	LOL struct {
@@ -508,8 +517,8 @@ func (kcp *KCP) update_ack(rtt int32) {
 	}
 	rto = uint32(kcp.rx_srtt) + _imax_(kcp.interval, uint32(kcp.rx_rttvar)<<2)
 	kcp.rx_rto = _ibound_(kcp.rx_minrto, rto, IKCP_RTO_MAX)
-	if kcp.rx_rto < 1000 {
-		kcp.rx_rto = 1000
+	if kcp.rx_rto < 500 {
+		kcp.rx_rto = 500
 	}
 }
 
@@ -541,12 +550,10 @@ func (kcp *KCP) processAck(seg *segment) {
 		return
 	}
 	delete(kcp.DRE.ppAppLimited, seg.sn)
-	if seg.xmit < 2 {
-		kcp.DRE.runElapsedTime += ackElapsed.Seconds()
-		kcp.DRE.runDataAcked += dataAcked
-		kcp.DRE.delivered += float64(len(seg.data))
-		kcp.updateSample(al)
-	}
+	kcp.DRE.runElapsedTime += ackElapsed.Seconds()
+	kcp.DRE.runDataAcked += dataAcked
+	kcp.DRE.delivered += float64(len(seg.data))
+	kcp.updateSample(al)
 }
 
 func (kcp *KCP) parse_ack(sn uint32) {
@@ -784,7 +791,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				kcp.vgs_onack(acks)
 			case "LOL":
 				bdp := kcp.bdp() / float64(kcp.mss)
-				targetCwnd := bdp * 3
+				targetCwnd := bdp * 5
 				if targetCwnd > kcp.cwnd+float64(acks) {
 					kcp.cwnd = kcp.cwnd + float64(acks)
 				} else {
@@ -821,16 +828,16 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					}
 				}
 
-				if doLogging {
-					log.Printf("[%p] %vK | %vK | cwnd %v/%v | gain %.2f | %v [%v] ms | %.2f%%", kcp,
-						int(kcp.DRE.maxAckRate/1000),
-						int(kcp.DRE.avgAckRate/1000),
-						len(kcp.snd_buf),
-						int(kcp.cwnd), kcp.LOL.gain,
-						int(kcp.DRE.minRtt),
-						kcp.rx_rttvar,
-						100*float64(kcp.retrans)/float64(kcp.trans))
-				}
+				// if doLogging {
+				// 	log.Printf("[%p] %vK | %vK | cwnd %v/%v | gain %.2f | %v [%v] ms | %.2f%%", kcp,
+				// 		int(kcp.DRE.maxAckRate/1000),
+				// 		int(kcp.DRE.avgAckRate/1000),
+				// 		len(kcp.snd_buf),
+				// 		int(kcp.cwnd), kcp.LOL.gain,
+				// 		int(kcp.DRE.minRtt),
+				// 		kcp.rx_rttvar,
+				// 		100*float64(kcp.retrans)/float64(kcp.trans))
+				// }
 			}
 		}
 	}
@@ -864,15 +871,14 @@ func (kcp *KCP) updateSample(appLimited bool) {
 		beta := 10 / math.Max(1000, kcp.DRE.avgAckRate/300)
 		kcp.DRE.avgAckRate = (1-beta)*kcp.DRE.avgAckRate + beta*avgRate
 		if kcp.DRE.maxAckRate < avgRate || (!appLimited && float64(time.Since(kcp.DRE.maxAckTime).Milliseconds()) > kcp.rttProp()*10) {
-			if kcp.DRE.maxAckRate > avgRate {
-				kcp.DRE.maxAckRate = kcp.DRE.avgAckRate
-			} else {
-				kcp.DRE.maxAckRate = avgRate
-			}
+			kcp.DRE.maxAckRate = avgRate
 			if kcp.DRE.maxAckRate < 400*1000 {
 				kcp.DRE.maxAckRate = 400 * 1000
 			}
 			kcp.DRE.maxAckTime = kcp.DRE.delTime
+			if time.Since(kcp.DRE.policeTime).Seconds() < 20 && kcp.DRE.maxAckRate > kcp.DRE.policeRate {
+				kcp.DRE.maxAckRate = kcp.DRE.policeRate
+			}
 		}
 	}
 	if kcp.DRE.runElapsedTime != 0 {
@@ -1029,7 +1035,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 	}
 
 	// calculate resent
-	resent := uint32(kcp.fastresend)
+	resent := uint32(1)
 	if kcp.fastresend <= 0 {
 		resent = 0xffffffff
 	}
@@ -1090,6 +1096,9 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			}
 			lost++
 			lostSegs++
+			// if doLogging {
+			// 	log.Printf("[%p] RTO on %v %v", kcp, segment.sn, segment.rto)
+			// }
 			kcp.shortLoss = kcp.shortLoss * 0.999
 			kcp.longLoss = kcp.longLoss * 0.9999
 		}
@@ -1144,7 +1153,37 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.bic_onloss(int(sum))
 			}
 		case "LOL":
+			// if sum > 0 {
+			// 	kcp.DRE.maxAckRate = kcp.DRE.avgAckRate
+			// }
 		case "VGS":
+		}
+		if sum > 0 {
+			now := time.Now()
+			if now.Sub(kcp.DRE.lastLossTime).Milliseconds() > int64(kcp.rttProp()*16) {
+				deltaR := kcp.retrans - kcp.DRE.lastLossRetrans
+				deltaT := kcp.trans - kcp.DRE.lastLossTrans
+				loss := float64(deltaR) / (float64(deltaR) + float64(deltaT))
+				rate := (kcp.DRE.delivered - kcp.DRE.lastLossDel) /
+					now.Sub(kcp.DRE.lastLossTime).Seconds()
+				if doLogging {
+					log.Printf("[%p] Loss-to-loss delivery rate: %vK @ %.2f%%", kcp, int(rate/1000), loss*100)
+				}
+				now := time.Now()
+				if rate > 200*1000 && loss+kcp.DRE.lastLoss > 0.5 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 && now.Sub(kcp.DRE.policeTime).Seconds() > 5 {
+					if doLogging {
+						log.Printf("[%p] ****** POLICE ******", kcp)
+					}
+					kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
+					kcp.DRE.policeTime = now
+				}
+				kcp.DRE.lastLossTime = now
+				kcp.DRE.lastLossDel = kcp.DRE.delivered
+				kcp.DRE.lastLossTrans = kcp.trans
+				kcp.DRE.lastLossRetrans = kcp.retrans
+				kcp.DRE.lastLossRate = rate
+				kcp.DRE.lastLoss = loss
+			}
 		}
 		if kcp.cwnd < 4 {
 			kcp.cwnd = 4

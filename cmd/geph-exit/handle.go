@@ -115,10 +115,30 @@ func handle(rawClient net.Conn) {
 	case 0:
 		// create smux context
 		muxSrv, err := smux.Server(tssClient, &smux.Config{
-			KeepAliveInterval: time.Minute * 9,
-			KeepAliveTimeout:  time.Minute * 10,
+			Version:           1,
+			KeepAliveInterval: time.Minute * 10,
+			KeepAliveTimeout:  time.Minute * 40,
 			MaxFrameSize:      8192,
-			MaxReceiveBuffer:  1 * 1024 * 1024,
+			MaxReceiveBuffer:  100 * 1024 * 1024,
+			MaxStreamBuffer:   10 * 1024 * 1024,
+		})
+		if err != nil {
+			log.Println("Error negotiating smux from", rawClient.RemoteAddr(), err)
+			return
+		}
+		acceptStream = func() (n net.Conn, e error) {
+			n, e = muxSrv.AcceptStream()
+			return
+		}
+	case 2:
+		// create smux context
+		muxSrv, err := smux.Server(tssClient, &smux.Config{
+			Version:           2,
+			KeepAliveInterval: time.Minute * 10,
+			KeepAliveTimeout:  time.Minute * 40,
+			MaxFrameSize:      32768,
+			MaxReceiveBuffer:  100 * 1024 * 1024,
+			MaxStreamBuffer:   100 * 1024 * 1024,
 		})
 		if err != nil {
 			log.Println("Error negotiating smux from", rawClient.RemoteAddr(), err)

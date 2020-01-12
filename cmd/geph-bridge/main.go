@@ -17,6 +17,7 @@ import (
 	"github.com/geph-official/geph2/libs/cshirt2"
 	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
+	"golang.org/x/time/rate"
 )
 
 var cookieSeed string
@@ -28,7 +29,10 @@ var exitRegex string
 var binderKey string
 var statsdAddr string
 var allocGroup string
+var speedLimit int
 var bclient *bdclient.Client
+
+var limiter *rate.Limiter
 
 var statClient *statsd.StatsdClient
 
@@ -39,7 +43,9 @@ func main() {
 	flag.StringVar(&statsdAddr, "statsdAddr", "c2.geph.io:8125", "address of StatsD for gathering statistics")
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
+	flag.IntVar(&speedLimit, "speedLimit", 20000, "speed limit in KB/s")
 	flag.Parse()
+	limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 10*1000*1000)
 	if allocGroup == "" {
 		log.Fatal("must specify an allocation group")
 	}
@@ -80,10 +86,10 @@ func listenLoop() {
 		panic(err)
 	}
 	udpsock.(*net.UDPConn).SetWriteBuffer(1000 * 1000 * 10)
-	myAddr := fmt.Sprintf("%v:%v", guessIP(), udpsock.LocalAddr().(*net.UDPAddr).Port)
-	log.Println("server started UDP on", myAddr)
 	go func() {
 		for {
+			myAddr := fmt.Sprintf("%v:%v", guessIP(), udpsock.LocalAddr().(*net.UDPAddr).Port)
+			log.Println("server started UDP on", myAddr)
 			e := bclient.AddBridge(binderKey, cookie, myAddr)
 			if e != nil {
 				log.Println("error adding bridge:", e)

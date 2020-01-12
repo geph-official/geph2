@@ -5,7 +5,7 @@ import (
 )
 
 func (kcp *KCP) bic_onloss(lost int) {
-	beta := 0.001
+	beta := 0.01
 	if kcp.cwnd < kcp.wmax {
 		kcp.wmax = kcp.cwnd * (2.0 - beta) / 2.0
 	} else {

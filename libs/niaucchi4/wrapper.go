@@ -3,6 +3,7 @@ package niaucchi4
 import (
 	"errors"
 	"log"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -10,10 +11,10 @@ import (
 
 // Wrapper is a PacketConn that can be hot-replaced by other PacketConns on I/O failure or manually. It squelches any errors bubbling up.
 type Wrapper struct {
-	wire         net.PacketConn
-	getConn      func() net.PacketConn
-	lastActivity time.Time
-	lock         sync.Mutex
+	wire       net.PacketConn
+	getConn    func() net.PacketConn
+	nextExpire time.Time
+	lock       sync.Mutex
 }
 
 // Wrap creates a new Wrapper instance.
@@ -45,7 +46,6 @@ retry:
 		w.lock.Unlock()
 		goto retry
 	}
-	w.lastActivity = time.Now()
 	return
 }
 
@@ -53,14 +53,14 @@ func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 	w.lock.Lock()
 	defer w.lock.Unlock()
 	if w.wire != nil {
-		if time.Since(w.lastActivity) > time.Second*4 {
+		if time.Since(w.nextExpire) > 0 {
 			w.wire.Close()
 			w.wire = nil
 			w.wire = w.getConn()
+			w.nextExpire = time.Now().Add(time.Millisecond * time.Duration(rand.ExpFloat64()*120000))
 			if doLogging {
 				log.Println("N4: reallocating to", w.wire.LocalAddr())
 			}
-			w.lastActivity = time.Now()
 		}
 		w.wire.WriteTo(b, addr)
 	}

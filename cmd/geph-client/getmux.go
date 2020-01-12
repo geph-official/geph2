@@ -21,7 +21,7 @@ import (
 
 func negotiateSmux(greeting *[2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Session, err error) {
 	rawConn.SetDeadline(time.Now().Add(time.Second * 20))
-	cryptConn, err := tinyss.Handshake(rawConn, 0)
+	cryptConn, err := tinyss.Handshake(rawConn, 2)
 	if err != nil {
 		err = fmt.Errorf("tinyss handshake failed: %w", err)
 		rawConn.Close()
@@ -59,10 +59,12 @@ func negotiateSmux(greeting *[2][]byte, rawConn net.Conn, pk []byte) (ss *smux.S
 		}
 	}
 	smuxConf := &smux.Config{
-		KeepAliveInterval: time.Minute * 20,
+		Version:           2,
+		KeepAliveInterval: time.Minute * 5,
 		KeepAliveTimeout:  time.Minute * 22,
-		MaxFrameSize:      4096,
+		MaxFrameSize:      32768,
 		MaxReceiveBuffer:  100 * 1024 * 1024,
+		MaxStreamBuffer:   100 * 1024 * 1024,
 	}
 	ss, err = smux.Client(cryptConn, smuxConf)
 	if err != nil {
@@ -70,7 +72,7 @@ func negotiateSmux(greeting *[2][]byte, rawConn net.Conn, pk []byte) (ss *smux.S
 		err = fmt.Errorf("smux error: %w", err)
 		return
 	}
-	rawConn.SetDeadline(time.Now().Add(time.Hour * 12))
+	rawConn.SetDeadline(time.Now().Add(time.Hour * 24))
 	return
 }
 
@@ -159,7 +161,7 @@ func newSmuxWrapper() *muxWrap {
 				conn.Close()
 				goto retry
 			}
-			conn.SetDeadline(time.Now().Add(time.Hour * 6))
+			conn.SetDeadline(time.Now().Add(time.Hour * 24))
 			return sm
 		} else {
 			splitted := strings.Split(singleHop, "@")

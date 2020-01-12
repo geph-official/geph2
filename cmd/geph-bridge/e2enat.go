@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"math/rand"
 	"net"
@@ -40,6 +41,7 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 				return
 			}
 			laddr = addr
+			limiter.WaitN(context.Background(), n)
 			rightSock.SetWriteDeadline(dl)
 			_, err = rightSock.WriteTo(bts[:n], destReal)
 			if err != nil {
@@ -61,6 +63,7 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 			if e != nil {
 				return
 			}
+			limiter.WaitN(context.Background(), n)
 			leftSock.SetWriteDeadline(dl)
 			if laddr != nil {
 				_, e = leftSock.WriteTo(bts[:n], laddr)

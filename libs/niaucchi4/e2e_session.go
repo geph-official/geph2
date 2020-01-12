@@ -128,7 +128,10 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 	}
 	// parse the stuff
 	if pkt.Sn < es.info[remid].recvsn {
-
+		if doLogging {
+			log.Println("N4: discarding out-of-order packet")
+		}
+		return
 	} else {
 		es.info[remid].recvsn = pkt.Sn
 		es.info[remid].acksn = pkt.Ack
