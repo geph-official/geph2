@@ -79,7 +79,7 @@ func (es *e2eSession) DebugInfo() (lii []LinkInfo) {
 		lii = append(lii, LinkInfo{
 			RemoteIP: strings.Split(es.remote[i].String(), ":")[0],
 			RecvCnt:  int(nfo.recvcnt),
-			Ping:     int(nfo.getScore()),
+			Ping:     int(nfo.lastPing),
 			LossPct:  math.Max(0, 1.0-float64(nfo.recvcnt)/(1+float64(nfo.recvsn))),
 		})
 	}
@@ -146,7 +146,12 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 	nfo := &es.info[remid]
 	if nfo.acksn > nfo.lastSendSn {
 		now := time.Now()
-		nfo.lastPing = now.Sub(nfo.lastSendTime).Milliseconds()
+		pingSample := now.Sub(nfo.lastSendTime).Milliseconds()
+		if pingSample < nfo.lastPing {
+			nfo.lastPing = pingSample
+		} else {
+			nfo.lastPing = 15*nfo.lastPing/16 + pingSample/16
+		}
 		nfo.lastSendSn = nfo.sendsn
 		nfo.lastSendTime = now
 	}
