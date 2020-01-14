@@ -45,7 +45,7 @@ func main() {
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
 	flag.IntVar(&speedLimit, "speedLimit", 20000, "speed limit in KB/s")
 	flag.Parse()
-	limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 100*1000)
+	limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 10*1000)
 	if allocGroup == "" {
 		log.Fatal("must specify an allocation group")
 	}

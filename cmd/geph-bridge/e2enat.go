@@ -20,10 +20,10 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 	if err != nil {
 		return
 	}
-	leftRaw.(*net.UDPConn).SetWriteBuffer(1 * 1024 * 1024)
-	leftRaw.(*net.UDPConn).SetWriteBuffer(1 * 1024 * 1024)
-	rightSock.(*net.UDPConn).SetWriteBuffer(1 * 1024 * 1024)
-	rightSock.(*net.UDPConn).SetReadBuffer(1 * 1024 * 1024)
+	leftRaw.(*net.UDPConn).SetReadBuffer(10 * 1024 * 1024)
+	leftRaw.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
+	rightSock.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
+	rightSock.(*net.UDPConn).SetReadBuffer(10 * 1024 * 1024)
 	destReal, err := net.ResolveUDPAddr("udp", dest)
 	if err != nil {
 		return
@@ -41,7 +41,6 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 				return
 			}
 			laddr = addr
-			limiter.WaitN(context.Background(), n)
 			rightSock.SetWriteDeadline(dl)
 			_, err = rightSock.WriteTo(bts[:n], destReal)
 			if err != nil {
@@ -63,9 +62,9 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 			if e != nil {
 				return
 			}
-			limiter.WaitN(context.Background(), n)
 			leftSock.SetWriteDeadline(dl)
 			if laddr != nil {
+				limiter.WaitN(context.Background(), n)
 				_, e = leftSock.WriteTo(bts[:n], laddr)
 				if err != nil {
 					log.Println("cannot write:", err)

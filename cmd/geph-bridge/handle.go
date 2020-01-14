@@ -87,6 +87,7 @@ func handle(client net.Conn) {
 			return
 		case "ping":
 			rlp.Encode(client, "ping")
+			time.Sleep(time.Second)
 			return
 		case "ping/repeat":
 			rlp.Encode(client, "ping")

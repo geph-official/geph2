@@ -517,9 +517,10 @@ func (kcp *KCP) update_ack(rtt int32) {
 	}
 	rto = uint32(kcp.rx_srtt) + _imax_(kcp.interval, uint32(kcp.rx_rttvar)<<2)
 	kcp.rx_rto = _ibound_(kcp.rx_minrto, rto, IKCP_RTO_MAX)
-	if kcp.rx_rto < 500 {
-		kcp.rx_rto = 500
-	}
+	// if kcp.rx_rto < 500 {
+	// 	kcp.rx_rto = 500
+	// }
+	kcp.rx_rto += 500
 }
 
 func (kcp *KCP) shrink_buf() {
@@ -828,16 +829,16 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					}
 				}
 
-				// if doLogging {
-				// 	log.Printf("[%p] %vK | %vK | cwnd %v/%v | gain %.2f | %v [%v] ms | %.2f%%", kcp,
-				// 		int(kcp.DRE.maxAckRate/1000),
-				// 		int(kcp.DRE.avgAckRate/1000),
-				// 		len(kcp.snd_buf),
-				// 		int(kcp.cwnd), kcp.LOL.gain,
-				// 		int(kcp.DRE.minRtt),
-				// 		kcp.rx_rttvar,
-				// 		100*float64(kcp.retrans)/float64(kcp.trans))
-				// }
+				if doLogging {
+					log.Printf("[%p] %vK | %vK | cwnd %v/%v | gain %.2f | %v [%v] ms | %.2f%%", kcp,
+						int(kcp.DRE.maxAckRate/1000),
+						int(kcp.DRE.avgAckRate/1000),
+						len(kcp.snd_buf),
+						int(kcp.cwnd), kcp.LOL.gain,
+						int(kcp.DRE.minRtt),
+						kcp.rx_rttvar,
+						100*float64(kcp.retrans)/float64(kcp.trans))
+				}
 			}
 		}
 	}
