@@ -158,7 +158,7 @@ type rateLimiter struct {
 
 func (rl *rateLimiter) fixLimiter(speed float64) {
 	if rl.limiter == nil {
-		rl.limiter = rate.NewLimiter(maxSpeed, 1000*1000*100)
+		rl.limiter = rate.NewLimiter(maxSpeed, 1000*1000*10)
 	}
 }
 
@@ -486,7 +486,7 @@ func (kcp *KCP) Send(buffer []byte) int {
 }
 
 func (kcp *KCP) bdp() float64 {
-	return (kcp.rttProp()) * 0.001 * kcp.DRE.maxAckRate
+	return (kcp.rttProp()) * 0.001 * math.Max(500*1000, kcp.DRE.maxAckRate)
 }
 
 func (kcp *KCP) update_ack(rtt int32) {
@@ -792,7 +792,9 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				kcp.vgs_onack(acks)
 			case "LOL":
 				bdp := kcp.bdp() / float64(kcp.mss)
-				targetCwnd := bdp * 5
+				targetCwnd := bdp*2 +
+					0.001*float64(kcp.interval)*(kcp.DRE.maxAckRate/float64(kcp.mss))*2 + // processing delay
+					16 // ack batching
 				if targetCwnd > kcp.cwnd+float64(acks) {
 					kcp.cwnd = kcp.cwnd + float64(acks)
 				} else {
@@ -827,14 +829,25 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					} else {
 						kcp.LOL.gain = 0.5
 					}
+					// if period%3 == 0 {
+					// 	kcp.LOL.gain = 1.5
+					// } else if period%3 == 1 {
+					// 	if float64(len(kcp.snd_buf)) > bdp {
+					// 		kcp.LOL.gain = 0.25
+					// 	} else {
+					// 		kcp.LOL.gain = 0.5
+					// 	}
+					// } else {
+					// 	kcp.LOL.gain = 1
+					// }
 				}
 
 				if doLogging {
-					log.Printf("[%p] %vK | %vK | cwnd %v/%v | gain %.2f | %v [%v] ms | %.2f%%", kcp,
+					log.Printf("[%p] %vK | %vK | cwnd %v/%v | bdp %v | gain %.2f | %v [%v] ms | %.2f%%", kcp,
 						int(kcp.DRE.maxAckRate/1000),
 						int(kcp.DRE.avgAckRate/1000),
 						len(kcp.snd_buf),
-						int(kcp.cwnd), kcp.LOL.gain,
+						int(kcp.cwnd), int(bdp), kcp.LOL.gain,
 						int(kcp.DRE.minRtt),
 						kcp.rx_rttvar,
 						100*float64(kcp.retrans)/float64(kcp.trans))
