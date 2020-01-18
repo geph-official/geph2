@@ -54,7 +54,7 @@ func main() {
 	} else {
 		speed := 1000 * 1000 * 1000 * float64(monthlyGigs) / (30 * 24 * 60 * 60)
 		log.Println("Long-term speed limit is", int(speed/1000), "KB/s")
-		bigLimiter = rate.NewLimiter(rate.Limit(speed), 1000*1000*1000)
+		bigLimiter = rate.NewLimiter(rate.Limit(speed), 10*1000*1000*1000)
 	}
 	if allocGroup == "" {
 		log.Fatal("must specify an allocation group")

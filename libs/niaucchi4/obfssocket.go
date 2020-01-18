@@ -50,6 +50,7 @@ func ObfsListen(cookie []byte, wire net.PacketConn) *ObfsSocket {
 }
 
 func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
+	var isHidden bool
 	switch addr.(type) {
 	case oAddr:
 		v, ok := os.sscache.Get(string(addr.(oAddr)))
@@ -57,6 +58,7 @@ func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 			return 0, nil
 		}
 		addr = v.(net.Addr)
+		isHidden = true
 	}
 	if tuni, ok := os.tunnels.Get(addr.String()); ok {
 		tun := tuni.(*tunstate)
@@ -66,6 +68,9 @@ func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 			return 0, nil
 		}
 		return len(b), nil
+	}
+	if isHidden {
+		return 0, nil
 	}
 	// if we are pending, just ignore
 	if zz, ok := os.pending.Get(addr.String()); ok {
@@ -146,6 +151,7 @@ RESTART:
 			n = copy(p, plain)
 			if _, ok := os.sscache.Get(string(tun.ss)); ok {
 				os.sscache.SetDefault(string(tun.ss), addr)
+				log.Println("setting", oAddr(tun.ss), addr)
 				addr = oAddr(tun.ss)
 			}
 			return

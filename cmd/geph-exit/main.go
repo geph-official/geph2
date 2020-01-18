@@ -127,7 +127,7 @@ func e2elisten() {
 		}
 		kcp.QuiescentMax = 1 << 30
 		rc.SetWindowSize(10000, 1000)
-		rc.SetNoDelay(0, 50, 3, 0)
+		rc.SetNoDelay(0, 20, 3, 0)
 		rc.SetStreamMode(true)
 		rc.SetMtu(1300)
 		go handle(rc)

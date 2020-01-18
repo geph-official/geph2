@@ -46,6 +46,7 @@ func readPK(secret []byte, transport net.Conn) (dhPK, int64, error) {
 	if _, ok := globCache.Get(string(theirPublic)); ok {
 		return nil, 0, ErrAttackDetected
 	}
+	globCache.SetDefault(string(theirPublic), true)
 	// Read their public key MAC
 	theirPublicMAC := make([]byte, 32)
 	_, err = io.ReadFull(transport, theirPublicMAC)

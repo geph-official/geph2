@@ -158,7 +158,7 @@ type rateLimiter struct {
 
 func (rl *rateLimiter) fixLimiter(speed float64) {
 	if rl.limiter == nil {
-		rl.limiter = rate.NewLimiter(maxSpeed, 1000*1000*10)
+		rl.limiter = rate.NewLimiter(maxSpeed, 1000*1000*100)
 	}
 }
 
@@ -795,6 +795,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				targetCwnd := bdp*2 +
 					0.001*float64(kcp.interval)*(kcp.DRE.maxAckRate/float64(kcp.mss))*2 + // processing delay
 					16 // ack batching
+				// targetCwnd := bdp * 5
 				if targetCwnd > kcp.cwnd+float64(acks) {
 					kcp.cwnd = kcp.cwnd + float64(acks)
 				} else {
@@ -848,7 +849,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 						int(kcp.DRE.avgAckRate/1000),
 						len(kcp.snd_buf),
 						int(kcp.cwnd), int(bdp), kcp.LOL.gain,
-						int(kcp.DRE.minRtt),
+						kcp.rx_srtt,
 						kcp.rx_rttvar,
 						100*float64(kcp.retrans)/float64(kcp.trans))
 				}
@@ -876,7 +877,7 @@ func (kcp *KCP) wnd_unused() uint16 {
 var ackDebugCache = cache.New(time.Hour, time.Hour)
 
 func (kcp *KCP) rttProp() float64 {
-	return kcp.DRE.minRtt
+	return float64(kcp.rx_srtt)
 }
 
 func (kcp *KCP) updateSample(appLimited bool) {
@@ -886,8 +887,8 @@ func (kcp *KCP) updateSample(appLimited bool) {
 		kcp.DRE.avgAckRate = (1-beta)*kcp.DRE.avgAckRate + beta*avgRate
 		if kcp.DRE.maxAckRate < avgRate || (!appLimited && float64(time.Since(kcp.DRE.maxAckTime).Milliseconds()) > kcp.rttProp()*10) {
 			kcp.DRE.maxAckRate = avgRate
-			if kcp.DRE.maxAckRate < 400*1000 {
-				kcp.DRE.maxAckRate = 400 * 1000
+			if kcp.DRE.maxAckRate < 200*1000 {
+				kcp.DRE.maxAckRate = 200 * 1000
 			}
 			kcp.DRE.maxAckTime = kcp.DRE.delTime
 			if time.Since(kcp.DRE.policeTime).Seconds() < 20 && kcp.DRE.maxAckRate > kcp.DRE.policeRate {
@@ -953,6 +954,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if ack.sn >= kcp.rcv_nxt || len(kcp.acklist)-1 == i {
 			seg.sn, seg.ts = ack.sn, ack.ts
 			ptr = seg.encode(ptr)
+		} else {
 		}
 	}
 	kcp.acklist = kcp.acklist[0:0]
@@ -1027,7 +1029,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		newseg := kcp.snd_queue[k]
 		if CongestionControl == "LOL" {
 			if !kcp.pacer.Allow(math.Max(500*1000, kcp.DRE.maxAckRate),
-				int(float64(len(newseg.data))/math.Max(0.5, kcp.LOL.gain))) {
+				int(float64(len(newseg.data))/math.Max(0.5, kcp.LOL.gain))) && kcp.DRE.maxAckRate > 500*1000 {
 				break
 			}
 		}
@@ -1184,7 +1186,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 					log.Printf("[%p] Loss-to-loss delivery rate: %vK @ %.2f%%", kcp, int(rate/1000), loss*100)
 				}
 				now := time.Now()
-				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.5 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 && now.Sub(kcp.DRE.policeTime).Seconds() > 5 {
+				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.5 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 && now.Sub(kcp.DRE.policeTime).Seconds() > 10 {
 					if doLogging {
 						log.Printf("[%p] ****** POLICE ******", kcp)
 					}

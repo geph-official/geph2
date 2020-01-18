@@ -2,7 +2,6 @@ package niaucchi4
 
 import (
 	"errors"
-	"log"
 	"math/rand"
 	"net"
 	"sync"
@@ -12,6 +11,7 @@ import (
 // Wrapper is a PacketConn that can be hot-replaced by other PacketConns on I/O failure or manually. It squelches any errors bubbling up.
 type Wrapper struct {
 	wire       net.PacketConn
+	nextWire   net.PacketConn
 	getConn    func() net.PacketConn
 	nextExpire time.Time
 	lock       sync.Mutex
@@ -52,17 +52,27 @@ retry:
 func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 	w.lock.Lock()
 	defer w.lock.Unlock()
-	if w.wire != nil {
-		if time.Since(w.nextExpire) > 0 {
-			w.wire.Close()
-			w.wire = nil
-			w.wire = w.getConn()
-			w.nextExpire = time.Now().Add(time.Millisecond * time.Duration(rand.ExpFloat64()*120000))
-			if doLogging {
-				log.Println("N4: reallocating to", w.wire.LocalAddr())
-			}
+	wire := w.wire
+	if w.nextWire != nil {
+		wire = w.nextWire
+	}
+	if wire != nil {
+		if time.Since(w.nextExpire) > 0 && w.nextWire == nil {
+			newWire := w.getConn()
+			w.nextWire = newWire
+			wire = newWire
+			go func() {
+				zz := make([]byte, 4000)
+				newWire.ReadFrom(zz)
+				w.lock.Lock()
+				defer w.lock.Unlock()
+				w.wire.Close()
+				w.wire = newWire
+				w.nextWire = nil
+				w.nextExpire = time.Now().Add(time.Millisecond * time.Duration(1000*rand.ExpFloat64()))
+			}()
 		}
-		w.wire.WriteTo(b, addr)
+		wire.WriteTo(b, addr)
 	}
 	return len(b), nil
 }

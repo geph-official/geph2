@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log"
 	"math"
-	mrand "math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -23,16 +22,19 @@ type e2eSession struct {
 	dupRateLimit *rate.Limiter
 	lastSend     time.Time
 	lastRemid    int
-	dedup        *lru.Cache
+	recvDedup    *lru.Cache
+	sendDedup    *lru.Cache
 
 	lock sync.Mutex
 }
 
 func newSession(sessid [16]byte) *e2eSession {
 	cache, _ := lru.New(128)
+	zcache, _ := lru.New(1024)
 	return &e2eSession{
-		dupRateLimit: rate.NewLimiter(10, 100),
-		dedup:        cache,
+		dupRateLimit: rate.NewLimiter(10*1000, 10*1000),
+		recvDedup:    cache,
+		sendDedup:    zcache,
 		sessid:       sessid,
 	}
 }
@@ -43,16 +45,19 @@ type e2eLinkInfo struct {
 	recvsn  uint64
 	recvcnt uint64
 
+	longLoss float64
+
 	lastSendTime time.Time
 	lastSendSn   uint64
 	lastPing     int64
 }
 
 func (el e2eLinkInfo) getScore() float64 {
-	// now := time.Now().UnixNano() / 1000000
-	// since := now - el.lastRecv
-	// return math.Sqrt((float64(since) * math.Max(50, float64(el.lastPing))))
-	return math.Max(float64(el.lastPing), float64(time.Since(el.lastSendTime).Milliseconds()))
+	// TODO send loss is what we actually need!
+	// recvLoss := math.Max(0, 1.0-float64(el.recvcnt)/(1+float64(el.recvsn)))
+	// return math.Max(float64(el.lastPing), float64(time.Since(el.lastSendTime).Milliseconds())) + recvLoss*100
+	factor := math.Max(float64(el.lastPing), float64(time.Since(el.lastSendTime).Milliseconds()))
+	return factor + el.longLoss*2000
 }
 
 type e2ePacket struct {
@@ -103,9 +108,6 @@ func (es *e2eSession) AddPath(host net.Addr) {
 
 // Input processes a packet through the e2e session state.
 func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
-	if mrand.Int()%1000 == 0 {
-		es.DebugInfo()
-	}
 	es.lock.Lock()
 	defer es.lock.Unlock()
 	if pkt.Session != es.sessid {
@@ -128,19 +130,22 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 	}
 	// parse the stuff
 	if pkt.Sn < es.info[remid].recvsn {
-		if doLogging {
-			log.Println("N4: discarding out-of-order packet")
+		if pkt.Sn+16 < es.info[remid].recvsn {
+			if doLogging {
+				log.Println("N4: discarding", pkt.Sn, "<", es.info[remid].recvsn)
+			}
+			return
 		}
-		return
 	} else {
 		es.info[remid].recvsn = pkt.Sn
 		es.info[remid].acksn = pkt.Ack
 	}
+
 	es.info[remid].recvcnt++
 	bodyHash := highwayhash.Sum128(pkt.Body, make([]byte, 32))
-	if es.dedup.Contains(bodyHash) {
+	if es.recvDedup.Contains(bodyHash) {
 	} else {
-		es.dedup.Add(bodyHash, true)
+		es.recvDedup.Add(bodyHash, true)
 		es.rdqueue = append(es.rdqueue, pkt.Body)
 	}
 	nfo := &es.info[remid]
@@ -161,7 +166,18 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr)) (err error) {
 	es.lock.Lock()
 	defer es.lock.Unlock()
-	send := func(remid int) {
+	send := func(rtd bool, remid int) {
+		if rtd && len(payload) > 256 {
+			bodyHash := highwayhash.Sum128(payload[256:], make([]byte, 32))
+			val, ok := es.sendDedup.Get(bodyHash)
+			if ok {
+				es.info[val.(int)].longLoss =
+					es.info[val.(int)].longLoss*0.999 + 0.001
+			} else {
+				es.sendDedup.Add(bodyHash, remid)
+				es.info[remid].longLoss = es.info[remid].longLoss * 0.999
+			}
+		}
 		// create pkt
 		toSend := e2ePacket{
 			Session: es.sessid,
@@ -175,13 +191,13 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 	}
 	now := time.Now()
 	// find the right destination
-	if es.dupRateLimit.AllowN(time.Now(), len(es.remote)) {
+	if es.dupRateLimit.AllowN(time.Now(), len(es.remote)*(len(payload)+50)) {
 		for remid := range es.remote {
-			send(remid)
+			send(false, remid)
 		}
 	} else {
 		remid := -1
-		if now.Sub(es.lastSend).Milliseconds() > 500 || true {
+		if true {
 			lowPoint := 1e20
 			for i, li := range es.info {
 				if score := li.getScore(); score < lowPoint {
@@ -198,7 +214,7 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 			remid = es.lastRemid
 		}
 		es.lastRemid = remid
-		send(remid)
+		send(true, remid)
 	}
 	return
 }
