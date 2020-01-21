@@ -65,7 +65,7 @@ func listenSocks() {
 	}
 	semaphore := make(chan bool, 512)
 	downLimit := rate.NewLimiter(rate.Inf, 10000000)
-	upLimit := rate.NewLimiter(rate.Inf, 10000000)
+	upLimit := rate.NewLimiter(1000*1000, 1000*1000)
 	useStats(func(sc *stats) {
 		if sc.Tier == "free" {
 			upLimit = rate.NewLimiter(100*1000, 1000*1000)
@@ -114,14 +114,14 @@ func listenSocks() {
 			go func() {
 				defer remote.Close()
 				defer cl.Close()
-				cwl.CopyWithLimit(remote, cl, downLimit, func(n int) {
+				cwl.CopyWithLimit(remote, cl, upLimit, func(n int) {
 					useStats(func(sc *stats) {
 						sc.UpBytes += uint64(n)
 					})
 				})
 			}()
 			cwl.CopyWithLimit(cl, remote,
-				upLimit, func(n int) {
+				downLimit, func(n int) {
 					useStats(func(sc *stats) {
 						sc.DownBytes += uint64(n)
 					})

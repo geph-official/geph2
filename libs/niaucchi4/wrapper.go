@@ -66,10 +66,12 @@ func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 				newWire.ReadFrom(zz)
 				w.lock.Lock()
 				defer w.lock.Unlock()
-				w.wire.Close()
+				if w.wire != nil {
+					w.wire.Close()
+				}
 				w.wire = newWire
 				w.nextWire = nil
-				w.nextExpire = time.Now().Add(time.Millisecond * time.Duration(1000*rand.ExpFloat64()))
+				w.nextExpire = time.Now().Add(time.Millisecond * time.Duration(60000*10+60000*rand.ExpFloat64()))
 			}()
 		}
 		wire.WriteTo(b, addr)

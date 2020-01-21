@@ -20,7 +20,6 @@ import (
 	"github.com/acarl005/stripansi"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/bdclient"
-	"github.com/geph-official/geph2/libs/kcp-go"
 	"golang.org/x/net/proxy"
 
 	log "github.com/sirupsen/logrus"
@@ -98,7 +97,6 @@ func main() {
 		ForceColors:   true,
 	})
 	log.SetLevel(log.DebugLevel)
-	kcp.CongestionControl = "BIC"
 	// flags
 	flag.StringVar(&username, "username", "", "username")
 	flag.StringVar(&password, "password", "", "password")

@@ -69,6 +69,11 @@ func getSinglepath(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 		bridgeDeadWait.Wait()
 		close(bridgeRace)
 	}()
+	syncer := make(chan bool)
+	go func() {
+		time.Sleep(time.Second)
+		close(syncer)
+	}()
 	for _, bi := range bridges {
 		bi := bi
 		go func() {

@@ -792,12 +792,12 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				kcp.vgs_onack(acks)
 			case "LOL":
 				bdp := kcp.bdp() / float64(kcp.mss)
-				targetCwnd := bdp*2 +
-					0.001*float64(kcp.interval)*(kcp.DRE.maxAckRate/float64(kcp.mss))*2 + // processing delay
-					16 // ack batching
-				// targetCwnd := bdp * 5
+				// targetCwnd := bdp*3 +
+				// 	0.001*float64(kcp.interval)*(kcp.DRE.maxAckRate/float64(kcp.mss))*2 + // processing delay
+				// 	16 // ack batching
+				targetCwnd := bdp * 5
 				if targetCwnd > kcp.cwnd+float64(acks) {
-					kcp.cwnd = kcp.cwnd + float64(acks)
+					kcp.cwnd += float64(acks)
 				} else {
 					kcp.cwnd = targetCwnd
 				}
@@ -849,7 +849,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 						int(kcp.DRE.avgAckRate/1000),
 						len(kcp.snd_buf),
 						int(kcp.cwnd), int(bdp), kcp.LOL.gain,
-						kcp.rx_srtt,
+						kcp.rttProp(),
 						kcp.rx_rttvar,
 						100*float64(kcp.retrans)/float64(kcp.trans))
 				}
@@ -877,7 +877,7 @@ func (kcp *KCP) wnd_unused() uint16 {
 var ackDebugCache = cache.New(time.Hour, time.Hour)
 
 func (kcp *KCP) rttProp() float64 {
-	return float64(kcp.rx_srtt)
+	return kcp.DRE.minRtt
 }
 
 func (kcp *KCP) updateSample(appLimited bool) {
@@ -1072,6 +1072,13 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if segment.xmit == 0 { // initial transmit
 			needsend = true
 			segment.rto = kcp.rx_rto
+			// if len(segment.data) < 1024 {
+			// 	segment.rto = uint32(kcp.rx_srtt)
+			// 	if segment.rto > 400 {
+			// 		segment.rto = 400
+			// 	}
+			// 	log.Println("small segment, retransmit without rttvar", segment.rto, kcp.rx_srtt, kcp.rx_rttvar, kcp.DRE.minRtt)
+			// }
 			segment.resendts = current + segment.rto
 			kcp.trans++
 			kcp.shortLoss = kcp.shortLoss*0.999 + 0.001
@@ -1085,7 +1092,8 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			fastRetransSegs++
 			kcp.longLoss = kcp.shortLoss * 0.9999
 			kcp.shortLoss = kcp.shortLoss * 0.999
-		} else if segment.fastack > 0 && newSegsCount == 0 { // early retransmit
+		} else if (segment.fastack > 0 && newSegsCount == 0) ||
+			(segment.xmit < 2 && len(kcp.snd_buf) == 1) { // early retransmit
 			needsend = true
 			segment.fastack = 0
 			segment.rto = kcp.rx_rto
@@ -1169,9 +1177,6 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.bic_onloss(int(sum))
 			}
 		case "LOL":
-			// if sum > 0 {
-			// 	kcp.DRE.maxAckRate = kcp.DRE.avgAckRate
-			// }
 		case "VGS":
 		}
 		if sum > 0 {
