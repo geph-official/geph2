@@ -35,9 +35,9 @@ func addBridge(nfo bridgeInfo) {
 var bridgeMapCache = cache.New(time.Hour*48, time.Hour)
 
 func getBridges(id string) []string {
-	if mapping, ok := bridgeMapCache.Get(id); ok {
-		return mapping.([]string)
-	}
+	// if mapping, ok := bridgeMapCache.Get(id); ok {
+	// 	return mapping.([]string)
+	// }
 	itms := bridgeCache.Items()
 	seed := fmt.Sprintf("%v-%v", id, time.Now())
 	probability := 10.0 / float64(len(itms))
@@ -63,7 +63,7 @@ func getBridges(id string) []string {
 			toret = candidates[i]
 		}
 	}
-	bridgeMapCache.SetDefault(id, toret)
+	//bridgeMapCache.SetDefault(id, toret)
 	return toret
 }
 

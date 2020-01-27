@@ -82,7 +82,7 @@ func handle(rawClient net.Conn) {
 	rlp.Encode(tssClient, &ssSignature)
 	var limiter *rate.Limiter
 	limiter = rate.NewLimiter(3*1000*1000, 100*1000*1000)
-	limiter.WaitN(context.Background(), 1000*1000*1000-500)
+	limiter.WaitN(context.Background(), 100*1000*1000-500)
 	// "generic" stuff
 	var acceptStream func() (net.Conn, error)
 	if singleHop == "" {

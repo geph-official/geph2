@@ -14,6 +14,35 @@ import (
 	"golang.org/x/time/rate"
 )
 
+type rtTracker struct {
+	tab   map[uint64]int
+	queue []uint64
+}
+
+func newRtTracker() *rtTracker {
+	return &rtTracker{
+		tab: make(map[uint64]int),
+	}
+}
+
+func (rtt *rtTracker) add(k uint64, v int) {
+	rtt.tab[k] = v
+	rtt.queue = append(rtt.queue, k)
+	if len(rtt.queue) > 10000 {
+		oldest := rtt.queue[0]
+		rtt.queue = rtt.queue[1:]
+		delete(rtt.tab, oldest)
+	}
+}
+
+func (rtt *rtTracker) get(k uint64) int {
+	z, ok := rtt.tab[k]
+	if !ok {
+		return -1
+	}
+	return z
+}
+
 type e2eSession struct {
 	remote       []net.Addr
 	info         []e2eLinkInfo
@@ -23,18 +52,17 @@ type e2eSession struct {
 	lastSend     time.Time
 	lastRemid    int
 	recvDedup    *lru.Cache
-	sendDedup    *lru.Cache
+	sendDedup    *rtTracker
 
 	lock sync.Mutex
 }
 
 func newSession(sessid [16]byte) *e2eSession {
 	cache, _ := lru.New(128)
-	zcache, _ := lru.New(10000)
 	return &e2eSession{
 		dupRateLimit: rate.NewLimiter(10*1000, 10*1000),
 		recvDedup:    cache,
-		sendDedup:    zcache,
+		sendDedup:    newRtTracker(),
 		sessid:       sessid,
 	}
 }
@@ -170,16 +198,16 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 	now := time.Now()
 	send := func(rtd bool, remid int) {
 		if len(payload) > 256 {
-			bodyHash := highwayhash.Sum128(payload[256:], make([]byte, 32))
-			val, ok := es.sendDedup.Get(bodyHash)
-			if ok && rtd {
-				devalFactor := math.Pow(0.9, now.Sub(es.info[val.(int)].lastSendTime).Seconds())
-				es.info[val.(int)].longLoss =
-					es.info[val.(int)].longLoss*devalFactor + (1 - devalFactor)
-				es.info[val.(int)].lastSendTime = now
+			bodyHash := highwayhash.Sum64(payload[256:], make([]byte, 32))
+			val := es.sendDedup.get(bodyHash)
+			if val >= 0 {
+				devalFactor := math.Pow(0.9, now.Sub(es.info[val].lastSendTime).Seconds())
+				es.info[val].longLoss =
+					es.info[val].longLoss*devalFactor + (1 - devalFactor)
+				es.info[val].lastSendTime = now
 			} else {
 				devalFactor := math.Pow(0.9, now.Sub(es.info[remid].lastSendTime).Seconds())
-				es.sendDedup.Add(bodyHash, remid)
+				es.sendDedup.add(bodyHash, remid)
 				es.info[remid].longLoss = es.info[remid].longLoss * devalFactor
 				es.info[remid].lastSendTime = now
 			}
@@ -209,6 +237,9 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 					lowPoint = score
 					remid = i
 				}
+			}
+			if doLogging {
+				log.Println("N4: selected", es.remote[remid], "with loss", es.info[remid].longLoss)
 			}
 			if remid == -1 {
 				err = errors.New("cannot find any path")

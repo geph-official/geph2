@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"time"
 
@@ -58,7 +57,6 @@ func readPK(secret []byte, transport net.Conn) (dhPK, int64, error) {
 	for e := epoch - 10; e < epoch+10; e++ {
 		macKey := mac256(secret, []byte(fmt.Sprintf("%v", e)))
 		if subtle.ConstantTimeCompare(theirPublicMAC, mac256(theirPublic, macKey)) == 1 {
-			log.Println("deltaE =", e-epoch)
 			macOK = true
 			epoch = e
 			break
