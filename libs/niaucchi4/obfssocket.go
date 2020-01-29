@@ -151,7 +151,6 @@ RESTART:
 			n = copy(p, plain)
 			if _, ok := os.sscache.Get(string(tun.ss)); ok {
 				os.sscache.SetDefault(string(tun.ss), addr)
-				log.Println("setting", oAddr(tun.ss), addr)
 				addr = oAddr(tun.ss)
 			}
 			return

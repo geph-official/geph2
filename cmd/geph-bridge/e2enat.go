@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/geph-official/geph2/libs/fastudp"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 )
 
@@ -15,15 +16,15 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 	if err != nil {
 		return
 	}
-	leftSock := niaucchi4.ObfsListen(cookie, leftRaw)
+	leftSock := niaucchi4.ObfsListen(cookie, fastudp.NewConn(leftRaw.(*net.UDPConn)))
 	rightSock, err := net.ListenPacket("udp", "")
 	if err != nil {
 		return
 	}
-	leftRaw.(*net.UDPConn).SetReadBuffer(100 * 1024)
-	leftRaw.(*net.UDPConn).SetWriteBuffer(100 * 1024)
-	rightSock.(*net.UDPConn).SetWriteBuffer(100 * 1024)
-	rightSock.(*net.UDPConn).SetReadBuffer(100 * 1024)
+	leftRaw.(*net.UDPConn).SetReadBuffer(1000 * 1024)
+	leftRaw.(*net.UDPConn).SetWriteBuffer(1000 * 1024)
+	rightSock.(*net.UDPConn).SetWriteBuffer(1000 * 1024)
+	rightSock.(*net.UDPConn).SetReadBuffer(1000 * 1024)
 	destReal, err := net.ResolveUDPAddr("udp", dest)
 	if err != nil {
 		return

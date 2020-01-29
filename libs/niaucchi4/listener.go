@@ -4,6 +4,7 @@ import (
 	"log"
 	"net"
 
+	"github.com/geph-official/geph2/libs/fastudp"
 	"github.com/geph-official/geph2/libs/kcp-go"
 )
 
@@ -17,7 +18,9 @@ func DialKCP(addr string, cookie []byte) (conn net.Conn, err error) {
 		if doLogging {
 			log.Println("N4: recreating source socket", udpsock.LocalAddr())
 		}
-		return udpsock
+		udpsock.(*net.UDPConn).SetReadBuffer(10 * 1024 * 1024)
+		udpsock.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
+		return fastudp.NewConn(udpsock.(*net.UDPConn))
 	})
 	kcpConn, err := kcp.NewConn(addr, nil, 0, 0, ObfsListen(cookie, socket))
 	if err != nil {
