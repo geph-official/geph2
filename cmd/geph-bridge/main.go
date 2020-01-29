@@ -17,6 +17,7 @@ import (
 	"github.com/geph-official/geph2/libs/cshirt2"
 	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
+	"github.com/google/gops/agent"
 	"golang.org/x/time/rate"
 )
 
@@ -45,10 +46,19 @@ func main() {
 	flag.StringVar(&statsdAddr, "statsdAddr", "c2.geph.io:8125", "address of StatsD for gathering statistics")
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
-	flag.IntVar(&speedLimit, "speedLimit", 20000, "speed limit in KB/s")
+	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")
 	flag.IntVar(&monthlyGigs, "monthlyGigs", -1, "monthly gigs")
 	flag.Parse()
-	limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 10*1000)
+	if speedLimit > 0 {
+		limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 10*1000)
+	} else {
+		limiter = rate.NewLimiter(rate.Inf, 1000*1000)
+	}
+	go func() {
+		if err := agent.Listen(agent.Options{}); err != nil {
+			log.Fatal(err)
+		}
+	}()
 	if monthlyGigs < 0 {
 		bigLimiter = rate.NewLimiter(rate.Inf, 10*1000)
 	} else {

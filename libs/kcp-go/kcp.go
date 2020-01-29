@@ -844,20 +844,20 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				}
 
 				if doLogging {
-					log.Printf("[%p] %vK | %vK | cwnd %v/%v | bdp %v | gain %.2f | %v [%v] ms | %.2f%%", kcp,
-						int(kcp.DRE.maxAckRate/1000),
-						int(kcp.DRE.avgAckRate/1000),
-						len(kcp.snd_buf),
-						int(kcp.cwnd), int(bdp), kcp.LOL.gain,
-						kcp.rttProp(),
-						kcp.rx_rttvar,
-						100*float64(kcp.retrans)/float64(kcp.trans))
+					// log.Printf("[%p] %vK | %vK | cwnd %v/%v | bdp %v | gain %.2f | %v [%v] ms | %.2f%%", kcp,
+					// 	int(kcp.DRE.maxAckRate/1000),
+					// 	int(kcp.DRE.avgAckRate/1000),
+					// 	len(kcp.snd_buf),
+					// 	int(kcp.cwnd), int(bdp), kcp.LOL.gain,
+					// 	kcp.rttProp(),
+					// 	kcp.rx_rttvar,
+					// 	100*float64(kcp.retrans)/float64(kcp.trans))
 				}
 			}
 		}
 	}
 
-	if len(kcp.acklist) >= 8 || (ackNoDelay && len(kcp.acklist) > 0) { // ack immediately
+	if len(kcp.acklist) >= 16 || (ackNoDelay && len(kcp.acklist) > 0) { // ack immediately
 		kcp.flush(false)
 	}
 	return 0
@@ -1191,12 +1191,12 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 					log.Printf("[%p] Loss-to-loss delivery rate: %vK @ %.2f%%", kcp, int(rate/1000), loss*100)
 				}
 				now := time.Now()
-				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.5 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 && now.Sub(kcp.DRE.policeTime).Seconds() > 10 {
-					if doLogging {
-						log.Printf("[%p] ****** POLICE ******", kcp)
-					}
-					kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
-					kcp.DRE.policeTime = now
+				if rate > 400*1000 && loss+kcp.DRE.lastLoss > 0.5 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 && now.Sub(kcp.DRE.policeTime).Seconds() > 10 {
+					// if doLogging {
+					// 	log.Printf("[%p] ****** POLICE ******", kcp)
+					// }
+					// kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
+					// kcp.DRE.policeTime = now
 				}
 				kcp.DRE.lastLossTime = now
 				kcp.DRE.lastLossDel = kcp.DRE.delivered

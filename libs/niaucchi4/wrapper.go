@@ -71,7 +71,7 @@ func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 				}
 				w.wire = newWire
 				w.nextWire = nil
-				w.nextExpire = time.Now().Add(time.Millisecond * time.Duration(1000+10000*rand.ExpFloat64()))
+				w.nextExpire = time.Now().Add(time.Millisecond * time.Duration(10000+10000*rand.ExpFloat64()))
 			}()
 		}
 		wire.WriteTo(b, addr)
