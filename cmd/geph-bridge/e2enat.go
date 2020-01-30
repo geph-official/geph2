@@ -29,6 +29,7 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 	if err != nil {
 		return
 	}
+	rightSock = fastudp.NewConn(rightSock.(*net.UDPConn))
 	var laddr net.Addr
 	go func() {
 		defer leftSock.Close()

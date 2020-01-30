@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"golang.org/x/net/ipv4"
+	"golang.org/x/time/rate"
 	"gopkg.in/tomb.v1"
 )
 
@@ -17,6 +18,7 @@ type Conn struct {
 
 	writeBuf chan ipv4.Message
 	readBuf  []ipv4.Message
+	readPtr  int
 }
 
 // NewConn creates a new Conn.
@@ -24,18 +26,30 @@ func NewConn(conn *net.UDPConn) *Conn {
 	c := &Conn{
 		sock:     conn,
 		pconn:    ipv4.NewPacketConn(conn),
-		writeBuf: make(chan ipv4.Message, 256),
+		writeBuf: make(chan ipv4.Message, 1024),
 		death:    new(tomb.Tomb),
+		readPtr:  -1,
+	}
+	for i := 0; i < 128; i++ {
+		c.readBuf = append(c.readBuf, ipv4.Message{
+			Buffers: [][]byte{malloc(2048)},
+		})
 	}
 	go c.bkgWrite()
 	return c
 }
 
+var limiter = rate.NewLimiter(100, 100)
+
+var spamLimiter = rate.NewLimiter(1, 10)
+
 func (conn *Conn) bkgWrite() {
 	defer conn.pconn.Close()
 	defer conn.sock.Close()
+	//
 	var towrite []ipv4.Message
 	for {
+		//limiter.Wait(context.Background())
 		select {
 		case first := <-conn.writeBuf:
 			towrite = append(towrite, first)
@@ -70,11 +84,33 @@ func (conn *Conn) bkgWrite() {
 
 // ReadFrom reads a packet from the connection.
 func (conn *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	// TODO batch this too
-	n, addr, err = conn.sock.ReadFrom(p)
-	if err != nil {
-		conn.death.Kill(err)
+	// if OOB, reset
+	if conn.readPtr >= len(conn.readBuf) {
+		conn.readPtr = -1
 	}
+	// read more data if needed
+	for conn.readPtr < 0 {
+		// first, extend readBuf to its full size.
+		conn.readBuf = conn.readBuf[:128]
+		// then, we fill readBuf as much as we can.
+		fillCnt, e := conn.pconn.ReadBatch(conn.readBuf, 0)
+		if e != nil {
+			conn.death.Kill(e)
+			err = e
+			return
+		}
+		if fillCnt > 0 {
+			// finally, we resize readBuf to its proper size.
+			conn.readBuf = conn.readBuf[:fillCnt]
+			conn.readPtr = 0
+		}
+	}
+	// get the data
+	gogo := conn.readBuf[conn.readPtr]
+	conn.readPtr++
+	copy(p, gogo.Buffers[0])
+	n = gogo.N
+	addr = gogo.Addr
 	return
 }
 
