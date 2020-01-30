@@ -830,6 +830,9 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					} else {
 						kcp.LOL.gain = 0.5
 					}
+					if period%20 == 0 {
+						kcp.LOL.gain = 0.1
+					}
 					// if period%3 == 0 {
 					// 	kcp.LOL.gain = 1.5
 					// } else if period%3 == 1 {
@@ -1191,7 +1194,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 					log.Printf("[%p] Loss-to-loss delivery rate: %vK @ %.2f%%", kcp, int(rate/1000), loss*100)
 				}
 				now := time.Now()
-				if rate > 400*1000 && loss+kcp.DRE.lastLoss > 0.5 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 && now.Sub(kcp.DRE.policeTime).Seconds() > 10 {
+				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.6 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 && now.Sub(kcp.DRE.policeTime).Seconds() > 10 {
 					if doLogging {
 						log.Printf("[%p] ****** POLICE ******", kcp)
 					}

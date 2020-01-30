@@ -73,7 +73,10 @@ type e2eLinkInfo struct {
 	recvsn  uint64
 	recvcnt uint64
 
-	longLoss      float64
+	txCount   uint64
+	rtxCount  uint64
+	checkTime time.Time
+
 	lastSendTime  time.Time
 	lastProbeTime time.Time
 	lastProbeSn   uint64
@@ -84,8 +87,15 @@ func (el e2eLinkInfo) getScore() float64 {
 	// TODO send loss is what we actually need!
 	// recvLoss := math.Max(0, 1.0-float64(el.recvcnt)/(1+float64(el.recvsn)))
 	// return math.Max(float64(el.lastPing), float64(time.Since(el.lastSendTime).Milliseconds())) + recvLoss*100
+	now := time.Now()
+	if now.Sub(el.checkTime).Seconds() > 5 {
+		el.rtxCount /= 2
+		el.txCount /= 2
+		el.checkTime = now
+	}
 	factor := math.Max(float64(el.lastPing), float64(time.Since(el.lastProbeTime).Milliseconds()))
-	return factor + el.longLoss*1000
+	loss := float64(el.rtxCount) / float64(el.txCount+1)
+	return factor + loss*1000
 	// return el.longLoss
 }
 
@@ -184,7 +194,7 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 		if pingSample < nfo.lastPing {
 			nfo.lastPing = pingSample
 		} else {
-			nfo.lastPing = 15*nfo.lastPing/16 + pingSample/16
+			nfo.lastPing = 31*nfo.lastPing/32 + pingSample/32
 		}
 		nfo.lastProbeSn = nfo.sendsn
 		nfo.lastProbeTime = now
@@ -197,18 +207,17 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 	defer es.lock.Unlock()
 	now := time.Now()
 	send := func(rtd bool, remid int) {
-		if len(payload) > 256 {
+		if len(payload) > 1000 {
 			bodyHash := highwayhash.Sum64(payload[256:], make([]byte, 32))
 			val := es.sendDedup.get(bodyHash)
 			if val >= 0 {
-				devalFactor := math.Pow(0.9, now.Sub(es.info[val].lastSendTime).Seconds())
-				es.info[val].longLoss =
-					es.info[val].longLoss*devalFactor + (1 - devalFactor)
+				//devalFactor := math.Pow(0.9, now.Sub(es.info[val].lastSendTime).Seconds())
+				es.info[val].rtxCount++
 				es.info[val].lastSendTime = now
 			} else {
-				devalFactor := math.Pow(0.9, now.Sub(es.info[remid].lastSendTime).Seconds())
+				//devalFactor := math.Pow(0.9, now.Sub(es.info[remid].lastSendTime).Seconds())
 				es.sendDedup.add(bodyHash, remid)
-				es.info[remid].longLoss = es.info[remid].longLoss * devalFactor
+				es.info[remid].txCount++
 				es.info[remid].lastSendTime = now
 			}
 		}
@@ -230,7 +239,7 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 		}
 	} else {
 		remid := -1
-		if time.Since(es.lastSend).Seconds() > 1 {
+		if time.Since(es.lastSend).Seconds() > 0.1 {
 			lowPoint := 1e20
 			for i, li := range es.info {
 				if score := li.getScore(); score < lowPoint {
@@ -239,7 +248,13 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 				}
 			}
 			if doLogging {
-				log.Println("N4: selected", es.remote[remid], "with loss", es.info[remid].longLoss)
+				log.Println("N4: selected", es.remote[remid], "with score", es.info[remid].getScore())
+				go func() {
+					for remid, v := range es.DebugInfo() {
+						log.Printf("%v %v %.2f%%", v.RemoteIP, v.Ping,
+							100*float64(es.info[remid].rtxCount)/float64(es.info[remid].txCount+1))
+					}
+				}()
 			}
 			if remid == -1 {
 				err = errors.New("cannot find any path")

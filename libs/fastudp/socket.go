@@ -3,6 +3,7 @@ package fastudp
 import (
 	"io"
 	"net"
+	"runtime"
 	"time"
 
 	"golang.org/x/net/ipv4"
@@ -22,7 +23,10 @@ type Conn struct {
 }
 
 // NewConn creates a new Conn.
-func NewConn(conn *net.UDPConn) *Conn {
+func NewConn(conn *net.UDPConn) net.PacketConn {
+	if runtime.GOOS != "linux" {
+		return conn
+	}
 	c := &Conn{
 		sock:     conn,
 		pconn:    ipv4.NewPacketConn(conn),

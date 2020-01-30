@@ -1,125 +1,151 @@
 package niaucchi4
 
 import (
-	"errors"
+	"io"
+	"log"
 	"math/rand"
 	"net"
 	"sync"
 	"time"
+
+	"gopkg.in/tomb.v1"
 )
+
+type wrapperRead struct {
+	bts    []byte
+	rmAddr net.Addr
+}
 
 // Wrapper is a PacketConn that can be hot-replaced by other PacketConns on I/O failure or manually. It squelches any errors bubbling up.
 type Wrapper struct {
-	wire       net.PacketConn
-	nextWire   net.PacketConn
+	wireMap    map[net.Addr]net.PacketConn
 	getConn    func() net.PacketConn
 	nextExpire time.Time
-	lock       sync.Mutex
+	wmlock     sync.Mutex
+	incoming   chan wrapperRead
+	death      tomb.Tomb
 }
 
 // Wrap creates a new Wrapper instance.
 func Wrap(getConn func() net.PacketConn) *Wrapper {
 	return &Wrapper{
-		getConn: getConn,
+		wireMap:  make(map[net.Addr]net.PacketConn),
+		getConn:  getConn,
+		incoming: make(chan wrapperRead, 128),
 	}
 }
 
-func (w *Wrapper) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+func (w *Wrapper) getWire(addr net.Addr) net.PacketConn {
+	w.wmlock.Lock()
+	defer w.wmlock.Unlock()
 retry:
-	w.lock.Lock()
-	wire := w.wire
-	w.lock.Unlock()
-	if w.wire == nil {
-		err = errors.New("nil")
-	} else {
-		wire.SetReadDeadline(time.Now().Add(time.Minute * 30))
-		n, addr, err = wire.ReadFrom(p)
-	}
-	if err != nil {
-		w.lock.Lock()
-		if w.wire == wire {
-			if w.wire != nil {
-				w.wire.Close()
+	wire, ok := w.wireMap[addr]
+	if !ok {
+		newWire := w.getConn()
+		w.wireMap[addr] = newWire
+		go func() {
+			// delete on exit
+			defer func() {
+				w.wmlock.Lock()
+				if w.wireMap[addr] != newWire {
+					panic("WHAT")
+				}
+				delete(w.wireMap, addr)
+				w.wmlock.Unlock()
+			}()
+			buf := malloc(2048)
+			for {
+				n, a, err := newWire.ReadFrom(buf)
+				if err != nil {
+					return
+				}
+				newbuf := malloc(n)
+				copy(newbuf, buf)
+				select {
+				case w.incoming <- wrapperRead{newbuf, a}:
+				case <-w.death.Dying():
+					return
+				}
 			}
-			w.wire = w.getConn()
-		}
-		w.lock.Unlock()
+		}()
 		goto retry
+	}
+	return wire
+}
+
+func (w *Wrapper) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+	select {
+	case wrapped := <-w.incoming:
+		n = copy(p, wrapped.bts)
+		addr = wrapped.rmAddr
+		free(wrapped.bts)
+	case <-w.death.Dying():
+		err = w.death.Err()
 	}
 	return
 }
 
 func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
-	w.lock.Lock()
-	defer w.lock.Unlock()
-	wire := w.wire
-	if w.nextWire != nil {
-		wire = w.nextWire
-	}
-	if wire != nil {
-		if time.Since(w.nextExpire) > 0 && w.nextWire == nil {
-			newWire := w.getConn()
-			w.nextWire = newWire
-			wire = newWire
-			go func() {
-				zz := make([]byte, 4000)
-				newWire.ReadFrom(zz)
-				w.lock.Lock()
-				defer w.lock.Unlock()
-				if w.wire != nil {
-					w.wire.Close()
-				}
-				w.wire = newWire
-				w.nextWire = nil
-				w.nextExpire = time.Now().Add(time.Millisecond * time.Duration(10000+10000*rand.ExpFloat64()))
-			}()
+	wire := w.getWire(addr)
+	wire.WriteTo(b, addr)
+	now := time.Now()
+	if now.After(w.nextExpire) {
+		oldNextExpire := w.nextExpire
+		w.nextExpire = now.Add(time.Second*10 + time.Millisecond*time.Duration(rand.ExpFloat64()*10000))
+		zeroTime := time.Time{}
+		if oldNextExpire != zeroTime {
+			wire.Close()
+			if doLogging {
+				log.Println("N4: wrapper killing", wire.LocalAddr())
+			}
 		}
-		wire.WriteTo(b, addr)
 	}
 	return len(b), nil
 }
 
 func (w *Wrapper) Close() error {
-	w.lock.Lock()
-	defer w.lock.Unlock()
-	if w.wire != nil {
-		w.wire.Close()
+	w.wmlock.Lock()
+	defer w.wmlock.Unlock()
+	w.death.Kill(io.ErrClosedPipe)
+	for _, conn := range w.wireMap {
+		conn.Close()
 	}
-	w.wire = nil
 	return nil
 }
 
 func (w *Wrapper) LocalAddr() net.Addr {
-	w.lock.Lock()
-	defer w.lock.Unlock()
-	if w.wire != nil {
-		return w.wire.LocalAddr()
-	}
+	w.wmlock.Lock()
+	defer w.wmlock.Unlock()
 	return nil
 }
 
 func (w *Wrapper) SetDeadline(t time.Time) error {
-	w.lock.Lock()
-	defer w.lock.Unlock()
-	if w.wire != nil {
-		w.wire.SetDeadline(t)
-	}
+	w.wmlock.Lock()
+	defer w.wmlock.Unlock()
 	return nil
 }
 
 func (w *Wrapper) SetReadDeadline(t time.Time) error {
-	w.lock.Lock()
-	defer w.lock.Unlock()
-	if w.wire != nil {
-		w.wire.SetReadDeadline(t)
-	}
+	w.wmlock.Lock()
+	defer w.wmlock.Unlock()
 	return nil
 }
 func (w *Wrapper) SetWriteDeadline(t time.Time) error {
-	w.lock.Lock()
-	defer w.lock.Unlock()
-	if w.wire != nil {
-		w.wire.SetWriteDeadline(t)
-	}
+	w.wmlock.Lock()
+	defer w.wmlock.Unlock()
 	return nil
+}
+
+var bufPool = &sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 2048)
+	},
+}
+
+func malloc(n int) []byte {
+	return bufPool.Get().([]byte)[:n]
+}
+
+func free(bts []byte) {
+	bufPool.Put(bts[:2048])
 }
