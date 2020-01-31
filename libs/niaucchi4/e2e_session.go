@@ -45,7 +45,7 @@ func (rtt *rtTracker) get(k uint64) int {
 
 type e2eSession struct {
 	remote       []net.Addr
-	info         []e2eLinkInfo
+	info         []*e2eLinkInfo
 	sessid       SessionAddr
 	rdqueue      [][]byte
 	dupRateLimit *rate.Limiter
@@ -83,7 +83,7 @@ type e2eLinkInfo struct {
 	lastPing      int64
 }
 
-func (el e2eLinkInfo) getScore() float64 {
+func (el *e2eLinkInfo) getScore() float64 {
 	// TODO send loss is what we actually need!
 	// recvLoss := math.Max(0, 1.0-float64(el.recvcnt)/(1+float64(el.recvsn)))
 	// return math.Max(float64(el.lastPing), float64(time.Since(el.lastSendTime).Milliseconds())) + recvLoss*100
@@ -113,6 +113,7 @@ type LinkInfo struct {
 	RecvCnt  int
 	Ping     int
 	LossPct  float64
+	Score    float64
 }
 
 // DebugInfo dumps out info about all the links.
@@ -125,6 +126,7 @@ func (es *e2eSession) DebugInfo() (lii []LinkInfo) {
 			RecvCnt:  int(nfo.recvcnt),
 			Ping:     int(nfo.lastPing),
 			LossPct:  math.Max(0, 1.0-float64(nfo.recvcnt)/(1+float64(nfo.recvsn))),
+			Score:    nfo.getScore(),
 		})
 	}
 	return
@@ -142,7 +144,7 @@ func (es *e2eSession) AddPath(host net.Addr) {
 		log.Println("N4: adding new path", host)
 	}
 	es.remote = append(es.remote, host)
-	es.info = append(es.info, e2eLinkInfo{lastPing: 10000000})
+	es.info = append(es.info, &e2eLinkInfo{lastPing: 10000000})
 }
 
 // Input processes a packet through the e2e session state.
@@ -187,7 +189,7 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 		es.recvDedup.Add(bodyHash, true)
 		es.rdqueue = append(es.rdqueue, pkt.Body)
 	}
-	nfo := &es.info[remid]
+	nfo := es.info[remid]
 	if nfo.acksn > nfo.lastProbeSn {
 		now := time.Now()
 		pingSample := now.Sub(nfo.lastProbeTime).Milliseconds()
@@ -251,8 +253,8 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 				log.Println("N4: selected", es.remote[remid], "with score", es.info[remid].getScore())
 				go func() {
 					for remid, v := range es.DebugInfo() {
-						log.Printf("%v %v %.2f%%", v.RemoteIP, v.Ping,
-							100*float64(es.info[remid].rtxCount)/float64(es.info[remid].txCount+1))
+						log.Printf("%v %v %v/%v", v.RemoteIP, v.Ping,
+							es.info[remid].rtxCount, es.info[remid].txCount)
 					}
 				}()
 			}
