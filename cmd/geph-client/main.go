@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"github.com/vharitonsky/iniflags"
 	"fmt"
 	mrand "math/rand"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"os/user"
 	"os/signal"
 	"runtime/debug"
 	"runtime/pprof"
@@ -97,6 +99,18 @@ func main() {
 		ForceColors:   true,
 	})
 	log.SetLevel(log.DebugLevel)
+
+	// configfile path
+	usr, err := user.Current()
+	if err != nil {
+		log.Println("cannot read current user info, consider using -config=/path/to/cfgfile")
+	} else {
+		// default config file: $HOME/.config/client.conf, make sure chmod 600!
+		// use -config=/path/to/cfgfile to override
+		iniflags.SetConfigFile(usr.HomeDir + "/.config/client.conf")
+		iniflags.SetAllowMissingConfigFile(true)
+	}
+
 	// flags
 	flag.StringVar(&username, "username", "", "username")
 	flag.StringVar(&password, "password", "", "password")
@@ -115,7 +129,7 @@ func main() {
 	flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
 	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
 	flag.BoolVar(&useTCP, "useTCP", false, "use TCP to connect to bridges")
-	flag.Parse()
+	iniflags.Parse()
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
