@@ -36,7 +36,7 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 		defer rightSock.Close()
 		bts := make([]byte, 2048)
 		for {
-			dl := time.Now().Add(time.Hour)
+			dl := time.Now().Add(time.Minute * 20)
 			leftSock.SetReadDeadline(dl)
 			n, addr, err := leftSock.ReadFrom(bts)
 			if err != nil {
@@ -58,7 +58,7 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 		defer rightSock.Close()
 		bts := make([]byte, 2048)
 		for {
-			dl := time.Now().Add(time.Hour)
+			dl := time.Now().Add(time.Minute * 20)
 			rightSock.SetReadDeadline(dl)
 			n, _, e := rightSock.ReadFrom(bts)
 			if e != nil {

@@ -61,7 +61,7 @@ func negotiateSmux(greeting *[2][]byte, rawConn net.Conn, pk []byte) (ss *smux.S
 	smuxConf := &smux.Config{
 		Version:           2,
 		KeepAliveInterval: time.Minute * 5,
-		KeepAliveTimeout:  time.Minute * 22,
+		KeepAliveTimeout:  time.Minute * 30,
 		MaxFrameSize:      32768,
 		MaxReceiveBuffer:  100 * 1024 * 1024,
 		MaxStreamBuffer:   100 * 1024 * 1024,

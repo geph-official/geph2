@@ -92,7 +92,10 @@ func main() {
 			statClient.Timing(allocGroup+".lossPct", RL)
 		}
 	}()
-	listenLoop()
+	for {
+		go listenLoop(time.Hour * 3)
+		time.Sleep(time.Hour)
+	}
 }
 
 func generateCookie() {
@@ -100,16 +103,16 @@ func generateCookie() {
 	rand.Read(cookie)
 }
 
-func listenLoop() {
+func listenLoop(deadline time.Duration) {
 	udpsock, err := net.ListenPacket("udp", ":")
 	if err != nil {
 		panic(err)
 	}
 	udpsock.(*net.UDPConn).SetWriteBuffer(1000 * 1000 * 10)
 	go func() {
-		for {
+		end := time.Now().Add(deadline)
+		for time.Now().Before(end) {
 			myAddr := fmt.Sprintf("%v:%v", guessIP(), udpsock.LocalAddr().(*net.UDPAddr).Port)
-			log.Println("server started UDP on", myAddr)
 			e := bclient.AddBridge(binderKey, cookie, myAddr)
 			if e != nil {
 				log.Println("error adding bridge:", e)
@@ -122,6 +125,10 @@ func listenLoop() {
 		if err != nil {
 			panic(err)
 		}
+		go func() {
+			time.Sleep(deadline)
+			listener.Close()
+		}()
 		log.Println("N4/TCP listener spinned up")
 		for {
 			rawClient, err := listener.Accept()
@@ -148,10 +155,14 @@ func listenLoop() {
 	}
 	listener := niaucchi4.ListenKCP(e2e)
 	log.Println("N4/UDP listener spinned up")
+	go func() {
+		time.Sleep(deadline)
+		listener.Close()
+	}()
 	for {
 		client, err := listener.Accept()
 		if err != nil {
-			panic(err)
+			return
 		}
 		log.Println("Accepted UDP client", client.RemoteAddr())
 		go handle(client)

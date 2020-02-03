@@ -249,15 +249,15 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 					remid = i
 				}
 			}
-			if doLogging {
-				log.Println("N4: selected", es.remote[remid], "with score", es.info[remid].getScore())
-				go func() {
-					for remid, v := range es.DebugInfo() {
-						log.Printf("%v %v %v/%v", v.RemoteIP, v.Ping,
-							es.info[remid].rtxCount, es.info[remid].txCount)
-					}
-				}()
-			}
+			// if doLogging {
+			// 	log.Println("N4: selected", es.remote[remid], "with score", es.info[remid].getScore())
+			// 	go func() {
+			// 		for remid, v := range es.DebugInfo() {
+			// 			log.Printf("%v %v %v/%v", v.RemoteIP, v.Ping,
+			// 				es.info[remid].rtxCount, es.info[remid].txCount)
+			// 		}
+			// 	}()
+			// }
 			if remid == -1 {
 				err = errors.New("cannot find any path")
 				return

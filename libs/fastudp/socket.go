@@ -11,6 +11,8 @@ import (
 	"gopkg.in/tomb.v1"
 )
 
+const sendQuantum = 64
+
 // Conn wraps an underlying UDPConn and batches stuff to it.
 type Conn struct {
 	sock  *net.UDPConn
@@ -30,11 +32,11 @@ func NewConn(conn *net.UDPConn) net.PacketConn {
 	c := &Conn{
 		sock:     conn,
 		pconn:    ipv4.NewPacketConn(conn),
-		writeBuf: make(chan ipv4.Message, 1024),
+		writeBuf: make(chan ipv4.Message, sendQuantum*2),
 		death:    new(tomb.Tomb),
 		readPtr:  -1,
 	}
-	for i := 0; i < 128; i++ {
+	for i := 0; i < sendQuantum; i++ {
 		c.readBuf = append(c.readBuf, ipv4.Message{
 			Buffers: [][]byte{malloc(2048)},
 		})
@@ -57,7 +59,7 @@ func (conn *Conn) bkgWrite() {
 		select {
 		case first := <-conn.writeBuf:
 			towrite = append(towrite, first)
-			for len(towrite) < 1024 {
+			for len(towrite) < sendQuantum {
 				select {
 				case next := <-conn.writeBuf:
 					towrite = append(towrite, next)
@@ -95,7 +97,7 @@ func (conn *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	// read more data if needed
 	for conn.readPtr < 0 {
 		// first, extend readBuf to its full size.
-		conn.readBuf = conn.readBuf[:128]
+		conn.readBuf = conn.readBuf[:sendQuantum]
 		// then, we fill readBuf as much as we can.
 		fillCnt, e := conn.pconn.ReadBatch(conn.readBuf, 0)
 		if e != nil {

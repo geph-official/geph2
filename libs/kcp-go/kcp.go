@@ -847,14 +847,14 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				}
 
 				if doLogging {
-					log.Printf("[%p] %vK | %vK | cwnd %v/%v | bdp %v | gain %.2f | %v [%v] ms | %.2f%%", kcp,
-						int(kcp.DRE.maxAckRate/1000),
-						int(kcp.DRE.avgAckRate/1000),
-						len(kcp.snd_buf),
-						int(kcp.cwnd), int(bdp), kcp.LOL.gain,
-						kcp.rttProp(),
-						kcp.rx_rttvar,
-						100*float64(kcp.retrans)/float64(kcp.trans))
+					// log.Printf("[%p] %vK | %vK | cwnd %v/%v | bdp %v | gain %.2f | %v [%v] ms | %.2f%%", kcp,
+					// 	int(kcp.DRE.maxAckRate/1000),
+					// 	int(kcp.DRE.avgAckRate/1000),
+					// 	len(kcp.snd_buf),
+					// 	int(kcp.cwnd), int(bdp), kcp.LOL.gain,
+					// 	kcp.rttProp(),
+					// 	kcp.rx_rttvar,
+					// 	100*float64(kcp.retrans)/float64(kcp.trans))
 				}
 			}
 		}
@@ -1086,6 +1086,9 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			kcp.trans++
 			kcp.shortLoss = kcp.shortLoss*0.999 + 0.001
 			kcp.longLoss = kcp.longLoss*0.9999 + 0.0001
+			if doLogging {
+				log.Println("TXX", segment.sn, current, segment.resendts)
+			}
 		} else if segment.fastack >= resent { // fast retransmit
 			needsend = true
 			segment.fastack = 0
@@ -1095,6 +1098,9 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			fastRetransSegs++
 			kcp.longLoss = kcp.shortLoss * 0.9999
 			kcp.shortLoss = kcp.shortLoss * 0.999
+			if doLogging {
+				log.Println("FRT", segment.sn, current, segment.resendts)
+			}
 		} else if (segment.fastack > 0 && newSegsCount == 0) ||
 			(segment.xmit < 2 && len(kcp.snd_buf) == 1) { // early retransmit
 			needsend = true
@@ -1105,6 +1111,9 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			earlyRetransSegs++
 			kcp.longLoss = kcp.shortLoss * 0.9999
 			kcp.shortLoss = kcp.shortLoss * 0.999
+			if doLogging {
+				log.Println("ERT", segment.sn, current, segment.resendts)
+			}
 		} else if _itimediff(current, segment.resendts) >= 0 { // RTO
 			needsend = true
 			// if kcp.nodelay == 0 {
@@ -1126,6 +1135,9 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			// if doLogging {
 			// 	log.Printf("[%p] RTO on %v %v", kcp, segment.sn, segment.rto)
 			// }
+			if doLogging {
+				log.Println("RTO", segment.sn, current, segment.resendts)
+			}
 			kcp.shortLoss = kcp.shortLoss * 0.999
 			kcp.longLoss = kcp.longLoss * 0.9999
 		}

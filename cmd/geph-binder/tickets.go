@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"runtime"
 	"sort"
 	"time"
 
@@ -38,7 +39,17 @@ func handleGetTier(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+var ticketSemaphore chan bool
+
+func init() {
+	ticketSemaphore = make(chan bool, runtime.GOMAXPROCS(0))
+}
+
 func handleGetTicket(w http.ResponseWriter, r *http.Request) {
+	ticketSemaphore <- true
+	defer func() {
+		<-ticketSemaphore
+	}()
 	// first authenticate
 	uid, expiry, paytx, err := verifyUser(r.FormValue("user"), r.FormValue("pwd"))
 	if err != nil {
@@ -98,6 +109,10 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleRedeemTicket(w http.ResponseWriter, r *http.Request) {
+	ticketSemaphore <- true
+	defer func() {
+		<-ticketSemaphore
+	}()
 	// check type
 	if tier := r.FormValue("tier"); tier != "free" && tier != "paid" {
 		log.Println("bad tier:", tier)

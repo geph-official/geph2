@@ -18,21 +18,34 @@ type wrapperRead struct {
 
 // Wrapper is a PacketConn that can be hot-replaced by other PacketConns on I/O failure or manually. It squelches any errors bubbling up.
 type Wrapper struct {
-	wireMap    map[net.Addr]net.PacketConn
-	getConn    func() net.PacketConn
-	nextExpire time.Time
-	wmlock     sync.Mutex
-	incoming   chan wrapperRead
-	death      tomb.Tomb
+	wireMap   map[net.Addr]net.PacketConn
+	expireMap map[net.Addr]time.Time
+	getConn   func() net.PacketConn
+	wmlock    sync.Mutex
+	incoming  chan wrapperRead
+	death     tomb.Tomb
 }
 
 // Wrap creates a new Wrapper instance.
 func Wrap(getConn func() net.PacketConn) *Wrapper {
 	return &Wrapper{
-		wireMap:  make(map[net.Addr]net.PacketConn),
-		getConn:  getConn,
-		incoming: make(chan wrapperRead, 128),
+		wireMap:   make(map[net.Addr]net.PacketConn),
+		expireMap: make(map[net.Addr]time.Time),
+		getConn:   getConn,
+		incoming:  make(chan wrapperRead, 128),
 	}
+}
+
+func (w *Wrapper) getExpire(addr net.Addr) time.Time {
+	w.wmlock.Lock()
+	defer w.wmlock.Unlock()
+	return w.expireMap[addr]
+}
+
+func (w *Wrapper) setExpire(addr net.Addr, t time.Time) {
+	w.wmlock.Lock()
+	defer w.wmlock.Unlock()
+	w.expireMap[addr] = t
 }
 
 func (w *Wrapper) getWire(addr net.Addr) net.PacketConn {
@@ -43,12 +56,18 @@ retry:
 	if !ok {
 		newWire := w.getConn()
 		w.wireMap[addr] = newWire
+		if doLogging {
+			log.Println("N4: set", addr, "=>", newWire.LocalAddr())
+		}
 		go func() {
+			defer newWire.Close()
 			// delete on exit
 			defer func() {
 				w.wmlock.Lock()
 				if w.wireMap[addr] != newWire {
-					panic("WHAT")
+					if doLogging {
+						log.Println("N4: wire already replaced, don't delete")
+					}
 				}
 				delete(w.wireMap, addr)
 				w.wmlock.Unlock()
@@ -89,12 +108,20 @@ func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 	wire := w.getWire(addr)
 	wire.WriteTo(b, addr)
 	now := time.Now()
-	if now.After(w.nextExpire) {
-		oldNextExpire := w.nextExpire
-		w.nextExpire = now.Add(time.Second*10 + time.Millisecond*time.Duration(rand.ExpFloat64()*10000))
+	expire := w.getExpire(addr)
+	if now.After(expire) {
+		w.setExpire(addr, now.Add(time.Second*5+time.Millisecond*time.Duration(rand.ExpFloat64()*5000)))
 		zeroTime := time.Time{}
-		if oldNextExpire != zeroTime {
-			wire.Close()
+		if expire != zeroTime {
+			go func() {
+				w.wmlock.Lock()
+				if w.wireMap[addr] == wire {
+					delete(w.wireMap, addr)
+				}
+				w.wmlock.Unlock()
+				time.Sleep(time.Second * 10)
+				wire.Close()
+			}()
 			if doLogging {
 				log.Println("N4: wrapper killing", wire.LocalAddr())
 			}

@@ -65,3 +65,9 @@ func (l *KCPListener) Accept() (c *kcp.UDPSession, err error) {
 	c = kc
 	return
 }
+
+// Close closes the thing.
+func (l *KCPListener) Close() error {
+	l.conn.Close()
+	return l.k.Close()
+}
