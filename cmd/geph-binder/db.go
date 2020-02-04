@@ -6,8 +6,10 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
+	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/nullchinchilla/natrium"
 	"golang.org/x/crypto/ed25519"
 )
@@ -87,6 +89,8 @@ func getMasterIdentity() (sk ed25519.PrivateKey, err error) {
 	return
 }
 
+var hashCache, _ = simplelru.NewLRU(65536, nil)
+
 // verifyUser verifies a username/password by looking up the database. uid < 0 means authentication failed.
 func verifyUser(uname, pwd string) (uid int, subExpiry time.Time, paytx map[time.Time]int, err error) {
 	tx, err := pgDB.Begin()
@@ -105,9 +109,18 @@ func verifyUser(uname, pwd string) (uid int, subExpiry time.Time, paytx map[time
 	if err != nil {
 		return
 	}
-	if !natrium.PasswordVerify([]byte(pwd), PwdHash) {
-		uid = -1
-		return
+	if v, ok := hashCache.Get(pwd); ok {
+		if v.(string) != PwdHash {
+			uid = -1
+			return
+		}
+		log.Println("password of", uname, "found in cache")
+	} else {
+		if !natrium.PasswordVerify([]byte(pwd), PwdHash) {
+			uid = -1
+			return
+		}
+		hashCache.Add(pwd, PwdHash)
 	}
 	// check subscription
 	err = tx.QueryRow("select expires from subscriptions where id = $1", uid).Scan(&subExpiry)

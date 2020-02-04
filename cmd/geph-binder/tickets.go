@@ -39,17 +39,13 @@ func handleGetTier(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var ticketSemaphore chan bool
+var cpuSemaphore chan bool
 
 func init() {
-	ticketSemaphore = make(chan bool, runtime.GOMAXPROCS(0))
+	cpuSemaphore = make(chan bool, runtime.GOMAXPROCS(0)*2)
 }
 
 func handleGetTicket(w http.ResponseWriter, r *http.Request) {
-	ticketSemaphore <- true
-	defer func() {
-		<-ticketSemaphore
-	}()
 	// first authenticate
 	uid, expiry, paytx, err := verifyUser(r.FormValue("user"), r.FormValue("pwd"))
 	if err != nil {
@@ -109,10 +105,6 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleRedeemTicket(w http.ResponseWriter, r *http.Request) {
-	ticketSemaphore <- true
-	defer func() {
-		<-ticketSemaphore
-	}()
 	// check type
 	if tier := r.FormValue("tier"); tier != "free" && tier != "paid" {
 		log.Println("bad tier:", tier)

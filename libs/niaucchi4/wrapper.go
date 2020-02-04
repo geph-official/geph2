@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gopkg.in/tomb.v1"
@@ -55,6 +56,7 @@ retry:
 	wire, ok := w.wireMap[addr]
 	if !ok {
 		newWire := w.getConn()
+		incrOpenWires()
 		w.wireMap[addr] = newWire
 		if doLogging {
 			log.Println("N4: set", addr, "=>", newWire.LocalAddr())
@@ -68,8 +70,9 @@ retry:
 					if doLogging {
 						log.Println("N4: wire already replaced, don't delete")
 					}
+				} else {
+					delete(w.wireMap, addr)
 				}
-				delete(w.wireMap, addr)
 				w.wmlock.Unlock()
 			}()
 			buf := malloc(2048)
@@ -104,6 +107,16 @@ func (w *Wrapper) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	return
 }
 
+var openWires int64
+
+func incrOpenWires() {
+	log.Println("openWires => ", atomic.AddInt64(&openWires, 1))
+}
+
+func decrOpenWires() {
+	log.Println("openWires => ", atomic.AddInt64(&openWires, -1))
+}
+
 func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 	wire := w.getWire(addr)
 	wire.WriteTo(b, addr)
@@ -113,13 +126,14 @@ func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 		w.setExpire(addr, now.Add(time.Second*5+time.Millisecond*time.Duration(rand.ExpFloat64()*5000)))
 		zeroTime := time.Time{}
 		if expire != zeroTime {
+			w.wmlock.Lock()
+			if w.wireMap[addr] == wire {
+				delete(w.wireMap, addr)
+			}
+			w.wmlock.Unlock()
 			go func() {
-				w.wmlock.Lock()
-				if w.wireMap[addr] == wire {
-					delete(w.wireMap, addr)
-				}
-				w.wmlock.Unlock()
 				time.Sleep(time.Second * 10)
+				decrOpenWires()
 				wire.Close()
 			}()
 			if doLogging {

@@ -129,11 +129,12 @@ func listenLoop(deadline time.Duration) {
 			time.Sleep(deadline)
 			listener.Close()
 		}()
+		defer listener.Close()
 		log.Println("N4/TCP listener spinned up")
 		for {
 			rawClient, err := listener.Accept()
 			if err != nil {
-				panic(err)
+				return
 			}
 			go func() {
 				defer rawClient.Close()
@@ -159,6 +160,7 @@ func listenLoop(deadline time.Duration) {
 		time.Sleep(deadline)
 		listener.Close()
 	}()
+	defer listener.Close()
 	for {
 		client, err := listener.Accept()
 		if err != nil {
