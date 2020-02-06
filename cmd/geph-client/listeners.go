@@ -4,7 +4,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -90,7 +89,12 @@ func listenSocks() {
 			default:
 				return
 			}
-			rmAddr, err := tinysocks.ReadRequest(cl)
+			cmd, rmAddr, err := tinysocks.ReadRequest(cl)
+			if cmd != tinysocks.CmdConnect {
+				log.Debugf("Unsupported command: ", cmd)
+				tinysocks.CompleteRequestTCP(7, cl)
+				return
+			}
 			if err != nil {
 				return
 			}
@@ -100,7 +104,7 @@ func listenSocks() {
 				rmAddr = strings.Replace(rmAddr, hostpart, realName, 1)
 			}
 			start := time.Now()
-			remote, ok := sWrap.DialCmd("proxy", rmAddr)
+			remote, ok := sWrap.DialCmd("proxy", rmAddr.String())
 			if !ok {
 				return
 			}
@@ -115,10 +119,10 @@ func listenSocks() {
 				}
 			})
 			if !ok {
-				tinysocks.CompleteRequest(5, cl)
+				tinysocks.CompleteRequestTCP(5, cl)
 				return
 			}
-			tinysocks.CompleteRequest(0, cl)
+			tinysocks.CompleteRequestTCP(0, cl)
 			go func() {
 				defer remote.Close()
 				defer cl.Close()

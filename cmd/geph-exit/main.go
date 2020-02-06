@@ -97,9 +97,6 @@ func main() {
 	udpsock.(*net.UDPConn).SetWriteBuffer(100 * 1024 * 1024)
 	udpsock.(*net.UDPConn).SetReadBuffer(100 * 1024 * 1024)
 	obfs := niaucchi4.ObfsListen(make([]byte, 32), fastudp.NewConn(udpsock.(*net.UDPConn)))
-	if err != nil {
-		panic(err)
-	}
 	kcpListener := niaucchi4.ListenKCP(obfs)
 	log.Infoln("Listen on UDP 2389")
 	for {

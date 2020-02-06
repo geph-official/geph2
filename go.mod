@@ -39,6 +39,7 @@ require (
 	github.com/tidwall/evio v1.0.3 // indirect
 	github.com/tjfoc/gmsm v1.0.1
 	github.com/vharitonsky/iniflags v0.0.0-20180513140207-a33cd0b5f3de
+	github.com/xtaci/kcp-go v5.4.20+incompatible
 	github.com/xtaci/lossyconn v0.0.0-20190602105132-8df528c0c9ae
 	github.com/xtaci/smux v1.5.7
 	github.com/xtaci/smux/v2 v2.1.0
