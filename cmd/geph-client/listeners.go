@@ -89,22 +89,23 @@ func listenSocks() {
 			default:
 				return
 			}
-			cmd, rmAddr, err := tinysocks.ReadRequest(cl)
+			cmd, rmAddrProt, err := tinysocks.ReadRequest(cl)
 			if cmd != tinysocks.CmdConnect {
-				log.Debugf("Unsupported command: ", cmd)
+				log.Debugln("Unsupported command:", cmd)
 				tinysocks.CompleteRequestTCP(7, cl)
 				return
 			}
 			if err != nil {
 				return
 			}
-			hostpart := strings.Split(rmAddr, ":")[0]
-			if realName := fakeIPToName(hostpart); realName != "" {
-				log.Debugf("[%v] mapped fake IP %v => %v", len(semaphore), hostpart, realName)
-				rmAddr = strings.Replace(rmAddr, hostpart, realName, 1)
+			rmAddr := rmAddrProt.String()
+			host, port, err := net.SplitHostPort(rmAddr)
+			if realName := fakeIPToName(host); realName != "" {
+				log.Debugf("[%v] mapped fake IP %v => %v", len(semaphore), host, realName)
+				rmAddr = net.JoinHostPort(realName, port)
 			}
 			start := time.Now()
-			remote, ok := sWrap.DialCmd("proxy", rmAddr.String())
+			remote, ok := sWrap.DialCmd("proxy", rmAddr)
 			if !ok {
 				return
 			}

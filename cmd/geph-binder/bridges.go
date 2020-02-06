@@ -87,7 +87,6 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 			val := vali.(bridgeInfo)
 			ip := strings.Split(val.Host, ":")[0]
 			if !seenIPs[ip] {
-				seenIPs[ip] = true
 				if isEphemeral {
 					tval, err := bridgeToEphBridge(val.Host, val.Cookie, exitHost)
 					if err != nil {
@@ -97,6 +96,7 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 					val.Cookie = tval.Cookie
 					val.Host = tval.Bridge
 				}
+				seenIPs[ip] = true
 				laboo = append(laboo, val)
 			}
 		}

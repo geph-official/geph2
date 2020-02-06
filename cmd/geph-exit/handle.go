@@ -196,7 +196,10 @@ func handle(rawClient net.Conn) {
 				rlp.Encode(soxclient, true)
 				dialStart := time.Now()
 				host := command[1]
-				tcpAddr, err := net.ResolveTCPAddr("tcp", host)
+				tcpAddr, err := net.ResolveTCPAddr("tcp6", host)
+				if err != nil {
+					tcpAddr, err = net.ResolveTCPAddr("tcp4", host)
+				}
 				if err != nil || isBlack(tcpAddr) {
 					return
 				}

@@ -5,11 +5,30 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/fastudp"
 	"github.com/geph-official/geph2/libs/niaucchi4"
+	"github.com/minio/highwayhash"
 )
+
+type e2ePacket struct {
+	Session niaucchi4.SessionAddr
+	Sn      uint64
+	Ack     uint64
+	Body    []byte
+	Padding []byte
+}
+
+var key [32]byte
+
+func parseSess(bts []byte) uint64 {
+	var pkt e2ePacket
+	rlp.DecodeBytes(bts, &pkt)
+	return highwayhash.Sum64(pkt.Session[:], key[:])
+}
 
 func e2enat(dest string, cookie []byte) (port int, err error) {
 	leftRaw, err := net.ListenPacket("udp", "")
@@ -30,7 +49,8 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 		return
 	}
 	rightSock = fastudp.NewConn(rightSock.(*net.UDPConn))
-	var laddr net.Addr
+	// mapping
+	sessMap := new(sync.Map)
 	go func() {
 		defer leftSock.Close()
 		defer rightSock.Close()
@@ -42,8 +62,9 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 			if err != nil {
 				return
 			}
-			laddr = addr
 			rightSock.SetWriteDeadline(dl)
+			sid := parseSess(bts[:n])
+			sessMap.Store(sid, addr)
 			_, err = rightSock.WriteTo(bts[:n], destReal)
 			if err != nil {
 				log.Println("cannot write:", err)
@@ -65,10 +86,11 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 				return
 			}
 			leftSock.SetWriteDeadline(dl)
-			if laddr != nil {
+			sid := parseSess(bts[:n])
+			if addri, ok := sessMap.Load(sid); ok {
 				bigLimiter.WaitN(context.Background(), n)
 				limiter.WaitN(context.Background(), n)
-				_, e = leftSock.WriteTo(bts[:n], laddr)
+				_, e = leftSock.WriteTo(bts[:n], addri.(net.Addr))
 				if err != nil {
 					log.Println("cannot write:", err)
 				}

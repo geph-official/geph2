@@ -29,7 +29,7 @@ type ebMapVal struct {
 	Cookie []byte
 }
 
-var ebCache = cache.New(time.Minute*10, time.Minute)
+var ebCache = cache.New(time.Minute, time.Minute)
 
 func bridgeToEphBridge(bridgeHost string, bridgeCookie []byte, exitHost string) (ev ebMapVal, err error) {
 	mapKeyStr := ebMapKey{bridgeHost, bridgeCookie, exitHost}.String()
