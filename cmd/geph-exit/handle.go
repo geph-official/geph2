@@ -37,9 +37,9 @@ func init() {
 	}
 }
 
-func isBlack(addr net.IP) bool {
+func isBlack(addr *net.TCPAddr) bool {
 	for _, n := range cidrBlacklist {
-		if n.Contains(addr) {
+		if n.Contains(addr.IP) {
 			return true
 		}
 	}
@@ -195,17 +195,12 @@ func handle(rawClient net.Conn) {
 				}
 				rlp.Encode(soxclient, true)
 				dialStart := time.Now()
-				target := command[1]
-				host, _, err := net.SplitHostPort(target)
-				if err != nil {
+				host := command[1]
+				tcpAddr, err := net.ResolveTCPAddr("tcp", host)
+				if err != nil || isBlack(tcpAddr) {
 					return
 				}
-				if ip := net.ParseIP(host); ip != nil {
-					if isBlack(ip) {
-						return
-					}
-				}
-				remote, err := net.DialTimeout("tcp", target, time.Second*30)
+				remote, err := net.DialTimeout("tcp", tcpAddr.String(), time.Second*30)
 				if err != nil {
 					return
 				}
@@ -253,6 +248,7 @@ func handle(rawClient net.Conn) {
 						return
 					}
 					ip = string(ipb)
+					ipcache.SetDefault("ip", ip)
 				}
 				rlp.Encode(soxclient, true)
 				rlp.Encode(soxclient, ip)

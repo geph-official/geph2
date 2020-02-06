@@ -52,6 +52,7 @@ func listenHTTP() {
 		ReadTimeout: time.Minute * 5,
 		IdleTimeout: time.Minute * 5,
 	}
+	log.Println("HTTP on ", httpAddr)
 	err := proxServ.ListenAndServe()
 	if err != nil {
 		panic(err.Error())
