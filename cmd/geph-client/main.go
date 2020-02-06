@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"flag"
-	"github.com/vharitonsky/iniflags"
 	"fmt"
 	mrand "math/rand"
 	"net"
@@ -11,13 +10,15 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"os/user"
 	"os/signal"
+	"os/user"
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/vharitonsky/iniflags"
 
 	"github.com/acarl005/stripansi"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -258,7 +259,7 @@ func main() {
 }
 
 func dialTun(dest string) (conn net.Conn, err error) {
-	sks, err := proxy.SOCKS5("tcp", "127.0.0.1:9909", nil, proxy.Direct)
+	sks, err := proxy.SOCKS5("tcp", socksAddr, nil, proxy.Direct)
 	if err != nil {
 		return
 	}

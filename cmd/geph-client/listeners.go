@@ -52,6 +52,7 @@ func listenHTTP() {
 		ReadTimeout: time.Minute * 5,
 		IdleTimeout: time.Minute * 5,
 	}
+	log.Println("HTTP on ", httpAddr)
 	err := proxServ.ListenAndServe()
 	if err != nil {
 		panic(err.Error())
@@ -71,7 +72,7 @@ func listenSocks() {
 			upLimit = rate.NewLimiter(100*1000, 1000*1000)
 		}
 	})
-	log.Println("SOCKS5 on 9909")
+	log.Println("SOCKS5 on ", socksAddr)
 	for {
 		cl, err := listener.Accept()
 		if err != nil {
@@ -87,12 +88,17 @@ func listenSocks() {
 			default:
 				return
 			}
-			rmAddr, err := tinysocks.ReadRequest(cl)
+			cmd, rmAddr, err := tinysocks.ReadRequest(cl)
+			if cmd != tinysocks.CmdConnect {
+				log.Debugf("Unsupported command: ", cmd)
+				tinysocks.CompleteRequestTCP(7, cl)
+				return
+			}
 			if err != nil {
 				return
 			}
 			start := time.Now()
-			remote, ok := sWrap.DialCmd("proxy", rmAddr)
+			remote, ok := sWrap.DialCmd("proxy", rmAddr.String())
 			if !ok {
 				return
 			}
@@ -107,10 +113,10 @@ func listenSocks() {
 				}
 			})
 			if !ok {
-				tinysocks.CompleteRequest(5, cl)
+				tinysocks.CompleteRequestTCP(5, cl)
 				return
 			}
-			tinysocks.CompleteRequest(0, cl)
+			tinysocks.CompleteRequestTCP(0, cl)
 			go func() {
 				defer remote.Close()
 				defer cl.Close()
