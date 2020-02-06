@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -15,6 +16,7 @@ import (
 )
 
 func listenStats() {
+	log.Infoln("STATS on", httpAddr)
 	// spin up stats server
 	statsMux := http.NewServeMux()
 	statsServ := &http.Server{
@@ -34,6 +36,7 @@ func listenStats() {
 }
 
 func listenHTTP() {
+	log.Infoln("HTTP on", httpAddr)
 	// HTTP proxy
 	srv := goproxy.NewProxyHttpServer()
 	srv.Tr = &http.Transport{
@@ -71,7 +74,7 @@ func listenSocks() {
 			upLimit = rate.NewLimiter(100*1000, 1000*1000)
 		}
 	})
-	log.Println("SOCKS5 on 9909")
+	log.Infoln("SOCKS5 on", socksAddr)
 	for {
 		cl, err := listener.Accept()
 		if err != nil {
@@ -90,6 +93,11 @@ func listenSocks() {
 			rmAddr, err := tinysocks.ReadRequest(cl)
 			if err != nil {
 				return
+			}
+			hostpart := strings.Split(rmAddr, ":")[0]
+			if realName := fakeIPToName(hostpart); realName != "" {
+				log.Debugf("[%v] mapped fake IP %v => %v", len(semaphore), hostpart, realName)
+				rmAddr = strings.Replace(rmAddr, hostpart, realName, 1)
 			}
 			start := time.Now()
 			remote, ok := sWrap.DialCmd("proxy", rmAddr)

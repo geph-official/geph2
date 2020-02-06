@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"gopkg.in/tomb.v1"
@@ -110,11 +109,11 @@ func (w *Wrapper) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 var openWires int64
 
 func incrOpenWires() {
-	log.Println("openWires => ", atomic.AddInt64(&openWires, 1))
+	//log.Println("openWires => ", atomic.AddInt64(&openWires, 1))
 }
 
 func decrOpenWires() {
-	log.Println("openWires => ", atomic.AddInt64(&openWires, -1))
+	//log.Println("openWires => ", atomic.AddInt64(&openWires, -1))
 }
 
 func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {

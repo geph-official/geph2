@@ -109,11 +109,7 @@ func verifyUser(uname, pwd string) (uid int, subExpiry time.Time, paytx map[time
 	if err != nil {
 		return
 	}
-	if v, ok := hashCache.Get(pwd); ok {
-		if v.(string) != PwdHash {
-			uid = -1
-			return
-		}
+	if v, ok := hashCache.Get(pwd); ok && v.(string) == PwdHash {
 		log.Println("password of", uname, "found in cache")
 	} else {
 		if !natrium.PasswordVerify([]byte(pwd), PwdHash) {

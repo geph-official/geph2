@@ -89,9 +89,12 @@ func (el *e2eLinkInfo) getScore() float64 {
 	// return math.Max(float64(el.lastPing), float64(time.Since(el.lastSendTime).Milliseconds())) + recvLoss*100
 	now := time.Now()
 	if now.Sub(el.checkTime).Seconds() > 5 {
-		el.rtxCount /= 2
-		el.txCount /= 2
-		el.checkTime = now
+		// ensure accurate measurement
+		if el.txCount > 1000 {
+			el.rtxCount /= 2
+			el.txCount /= 2
+			el.checkTime = now
+		}
 	}
 	factor := math.Max(float64(el.lastPing), float64(time.Since(el.lastProbeTime).Milliseconds()))
 	loss := float64(el.rtxCount) / float64(el.txCount+1)

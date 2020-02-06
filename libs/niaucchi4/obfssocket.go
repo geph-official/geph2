@@ -29,13 +29,14 @@ func (sa oAddr) String() string {
 
 // ObfsSocket represents an obfuscated PacketConn.
 type ObfsSocket struct {
-	cookie  []byte
-	sscache *cache.Cache
-	tunnels *cache.Cache
-	pending *cache.Cache
-	wire    net.PacketConn
-	wlock   sync.Mutex
-	rdbuf   [65536]byte
+	cookie           []byte
+	cookieExceptions sync.Map
+	sscache          *cache.Cache
+	tunnels          *cache.Cache
+	pending          *cache.Cache
+	wire             net.PacketConn
+	wlock            sync.Mutex
+	rdbuf            [65536]byte
 }
 
 // ObfsListen opens a new obfuscated PacketConn.
@@ -47,6 +48,11 @@ func ObfsListen(cookie []byte, wire net.PacketConn) *ObfsSocket {
 		pending: cache.New(time.Hour, time.Hour),
 		wire:    wire,
 	}
+}
+
+// AddCookieException adds a cookie exception to a particular destination.
+func (os *ObfsSocket) AddCookieException(addr net.Addr, cookie []byte) {
+	os.cookieExceptions.Store(addr, cookie)
 }
 
 func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
@@ -74,7 +80,6 @@ func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 	}
 	// if we are pending, just ignore
 	if zz, ok := os.pending.Get(addr.String()); ok {
-		//log.Println("pretending to write since ALREADY PENDING")
 		os.wlock.Lock()
 		os.wire.WriteTo(zz.(*prototun).genHello(), addr)
 		os.wlock.Unlock()
@@ -84,11 +89,14 @@ func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 		return len(b), nil
 	}
 	// establish a conn
-	pt := newproto(os.cookie)
-	if doLogging {
-		log.Println("N4: establishing to", addr.String())
+	cookie := os.cookie
+	if v, ok := os.cookieExceptions.Load(addr); ok {
+		cookie = v.([]byte)
 	}
-	//log.Println("pretending to write, actually ESTABLISHING")
+	pt := newproto(cookie)
+	if doLogging {
+		log.Printf("N4: newproto on %v [%x]", addr.String(), cookie[:4])
+	}
 	os.pending.SetDefault(addr.String(), pt)
 	os.wlock.Lock()
 	var err error

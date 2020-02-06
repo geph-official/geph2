@@ -216,6 +216,23 @@ func (cl *Client) GetBridges(ubmsg, ubsig []byte) (bridges []BridgeInfo, err err
 	return
 }
 
+// GetEphBridges obtains a set of ephemeral e2e bridges.
+func (cl *Client) GetEphBridges(ubmsg []byte, ubsig []byte, exit string) (bridges []BridgeInfo, err error) {
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%v/get-bridges?type=ephemeral&exit=%v", cl.frontDomain, exit), bytes.NewReader(nil))
+	req.Host = cl.realDomain
+	resp, err := cl.hclient.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		err = badStatusCode(resp.StatusCode)
+		return
+	}
+	err = json.NewDecoder(resp.Body).Decode(&bridges)
+	return
+}
+
 // RedeemTicket redeems a ticket.
 func (cl *Client) RedeemTicket(tier string, ubmsg, ubsig []byte) (err error) {
 	// Obtain the ticket

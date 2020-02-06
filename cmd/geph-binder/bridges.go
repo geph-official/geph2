@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	mrand "math/rand"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -64,17 +66,39 @@ func getBridges(id string) []string {
 		}
 	}
 	//bridgeMapCache.SetDefault(id, toret)
+
+	// shuffle
+	rand.Shuffle(len(toret), func(i, j int) {
+		toret[i], toret[j] = toret[j], toret[i]
+	})
 	return toret
 }
 
 func handleGetBridges(w http.ResponseWriter, r *http.Request) {
+	isEphemeral := r.FormValue("type") == "ephemeral"
+	exitHost := r.FormValue("exit")
 	// TODO validate the ticket
 	bridges := getBridges(fmt.Sprintf("%v", mrand.Int()))
 	w.Header().Set("content-type", "application/json")
+	seenIPs := make(map[string]bool)
 	var laboo []bridgeInfo
 	for _, str := range bridges {
-		if val, ok := bridgeCache.Get(str); ok {
-			laboo = append(laboo, val.(bridgeInfo))
+		if vali, ok := bridgeCache.Get(str); ok {
+			val := vali.(bridgeInfo)
+			ip := strings.Split(val.Host, ":")[0]
+			if !seenIPs[ip] {
+				seenIPs[ip] = true
+				if isEphemeral {
+					tval, err := bridgeToEphBridge(val.Host, val.Cookie, exitHost)
+					if err != nil {
+						log.Println("error mapping ephemeral bridge for", val.Host, err)
+						continue
+					}
+					val.Cookie = tval.Cookie
+					val.Host = tval.Bridge
+				}
+				laboo = append(laboo, val)
+			}
 		}
 	}
 	json.NewEncoder(w).Encode(laboo)

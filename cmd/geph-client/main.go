@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"flag"
-	"github.com/vharitonsky/iniflags"
 	"fmt"
 	mrand "math/rand"
 	"net"
@@ -11,13 +10,15 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"os/user"
 	"os/signal"
+	"os/user"
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/vharitonsky/iniflags"
 
 	"github.com/acarl005/stripansi"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -45,7 +46,7 @@ var socksAddr string
 var httpAddr string
 var statsAddr string
 var dnsAddr string
-var cachePath string
+var fakeDNS bool
 
 var useTCP bool
 
@@ -124,9 +125,10 @@ func main() {
 	flag.StringVar(&httpAddr, "httpAddr", "localhost:9910", "HTTP proxy listener")
 	flag.StringVar(&statsAddr, "statsAddr", "localhost:9809", "HTTP listener for statistics")
 	flag.StringVar(&dnsAddr, "dnsAddr", "localhost:9983", "local DNS listener")
+	flag.BoolVar(&fakeDNS, "fakeDNS", true, "return fake results for DNS")
 	flag.BoolVar(&loginCheck, "loginCheck", false, "do a login check and immediately exit with code 0")
 	flag.StringVar(&binderProxy, "binderProxy", "", "if set, proxy the binder at the given listening address and do nothing else")
-	flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
+	// flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
 	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
 	flag.BoolVar(&useTCP, "useTCP", false, "use TCP to connect to bridges")
 	iniflags.Parse()
@@ -229,7 +231,7 @@ func main() {
 	sWrap = newSmuxWrapper()
 
 	if dnsAddr != "" {
-		go doDNSProxy()
+		go doDNS()
 	}
 	go listenStats()
 
@@ -258,7 +260,7 @@ func main() {
 }
 
 func dialTun(dest string) (conn net.Conn, err error) {
-	sks, err := proxy.SOCKS5("tcp", "127.0.0.1:9909", nil, proxy.Direct)
+	sks, err := proxy.SOCKS5("tcp", socksAddr, nil, proxy.Direct)
 	if err != nil {
 		return
 	}

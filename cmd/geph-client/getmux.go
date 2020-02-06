@@ -14,6 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/cshirt2"
 	"github.com/geph-official/geph2/libs/tinyss"
 	"github.com/xtaci/smux"
@@ -131,11 +132,21 @@ func newSmuxWrapper() *muxWrap {
 				})
 				return sm
 			}
-			bridges, err := bindClient.GetBridges(ubmsg, ubsig)
-			if err != nil {
-				log.Warnln("getting bridges failed, retrying", err)
-				time.Sleep(time.Second)
-				goto retry
+			var bridges []bdclient.BridgeInfo
+			if useTCP {
+				bridges, err = bindClient.GetBridges(ubmsg, ubsig)
+				if err != nil {
+					log.Warnln("getting bridges failed, retrying", err)
+					time.Sleep(time.Second)
+					goto retry
+				}
+			} else {
+				bridges, err = bindClient.GetEphBridges(ubmsg, ubsig, exitName)
+				if err != nil {
+					log.Warnln("getting ephemeral bridges failed, retrying", err)
+					time.Sleep(time.Second)
+					goto retry
+				}
 			}
 			log.Infoln("Obtained", len(bridges), "bridges")
 			for _, b := range bridges {
@@ -149,7 +160,7 @@ func newSmuxWrapper() *muxWrap {
 					goto retry
 				}
 			} else {
-				conn, err = getMultipath(bridges)
+				conn, err = getMultipath(bridges, false)
 				if err != nil {
 					log.Println("Multipath failed!")
 					goto retry
