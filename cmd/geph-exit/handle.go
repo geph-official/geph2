@@ -196,15 +196,19 @@ func handle(rawClient net.Conn) {
 				rlp.Encode(soxclient, true)
 				dialStart := time.Now()
 				host := command[1]
-				tcpAddr, err := net.ResolveTCPAddr("tcp6", host)
-				if err != nil {
-					tcpAddr, err = net.ResolveTCPAddr("tcp4", host)
+				var remote net.Conn
+				for _, ntype := range []string{"tcp6", "tcp4"} {
+					tcpAddr, err := net.ResolveTCPAddr(ntype, host)
+					if err != nil || isBlack(tcpAddr) {
+						continue
+					}
+					remote, err = net.DialTimeout("tcp", tcpAddr.String(), time.Second*30)
+					if err != nil {
+						continue
+					}
+					break
 				}
-				if err != nil || isBlack(tcpAddr) {
-					return
-				}
-				remote, err := net.DialTimeout("tcp", tcpAddr.String(), time.Second*30)
-				if err != nil {
+				if remote == nil {
 					return
 				}
 				// measure dial latency
