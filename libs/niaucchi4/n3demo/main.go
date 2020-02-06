@@ -85,9 +85,6 @@ func main() {
 		}
 		log.Println("server started UDP on", udpsock.LocalAddr())
 		e2e := niaucchi4.NewE2EConn(niaucchi4.ObfsListen(nil, udpsock))
-		if err != nil {
-			panic(err)
-		}
 		go func() {
 			for {
 				e2e.DebugInfo()
@@ -125,18 +122,22 @@ func main() {
 					}
 					go func() {
 						defer stream.Close()
-						host, err := tinysocks.ReadRequest(stream)
+						cmd, host, err := tinysocks.ReadRequest(stream)
+						if cmd != tinysocks.CmdConnect {
+							log.Println("Unsupported command: ", cmd)
+							return
+						}
 						if err != nil {
 							log.Println("error reading socks5:", err)
 							return
 						}
-						remote, err := net.Dial("tcp", host)
+						remote, err := net.Dial("tcp", host.String())
 						if err != nil {
-							tinysocks.CompleteRequest(0x04, stream)
+							tinysocks.CompleteRequestTCP(0x04, stream)
 							return
 						}
 						defer remote.Close()
-						tinysocks.CompleteRequest(0, stream)
+						tinysocks.CompleteRequestTCP(0, stream)
 						go func() {
 							defer remote.Close()
 							defer stream.Close()
