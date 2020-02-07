@@ -92,10 +92,7 @@ func main() {
 			statClient.Timing(allocGroup+".lossPct", RL)
 		}
 	}()
-	for {
-		go listenLoop(time.Hour * 3)
-		time.Sleep(time.Hour)
-	}
+	listenLoop(-1)
 }
 
 func generateCookie() {
@@ -111,7 +108,7 @@ func listenLoop(deadline time.Duration) {
 	udpsock.(*net.UDPConn).SetWriteBuffer(1000 * 1000 * 10)
 	go func() {
 		end := time.Now().Add(deadline)
-		for time.Now().Before(end) {
+		for deadline < 0 || time.Now().Before(end) {
 			myAddr := fmt.Sprintf("%v:%v", guessIP(), udpsock.LocalAddr().(*net.UDPAddr).Port)
 			e := bclient.AddBridge(binderKey, cookie, myAddr)
 			if e != nil {
@@ -125,10 +122,12 @@ func listenLoop(deadline time.Duration) {
 		if err != nil {
 			panic(err)
 		}
-		go func() {
-			time.Sleep(deadline)
-			listener.Close()
-		}()
+		if deadline > 0 {
+			go func() {
+				time.Sleep(deadline)
+				listener.Close()
+			}()
+		}
 		defer listener.Close()
 		log.Println("N4/TCP listener spinned up")
 		for {
@@ -156,10 +155,12 @@ func listenLoop(deadline time.Duration) {
 	}
 	listener := niaucchi4.ListenKCP(e2e)
 	log.Println("N4/UDP listener spinned up")
-	go func() {
-		time.Sleep(deadline)
-		listener.Close()
-	}()
+	if deadline > 0 {
+		go func() {
+			time.Sleep(deadline)
+			listener.Close()
+		}()
+	}
 	defer listener.Close()
 	for {
 		client, err := listener.Accept()
