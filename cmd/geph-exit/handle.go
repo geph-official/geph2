@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/cwl"
+	"github.com/geph-official/geph2/libs/tinysocks"
 	"github.com/geph-official/geph2/libs/tinyss"
 	"github.com/hashicorp/yamux"
 	"github.com/xtaci/smux"
@@ -197,17 +198,31 @@ func handle(rawClient net.Conn) {
 				dialStart := time.Now()
 				host := command[1]
 				var remote net.Conn
-				for _, ntype := range []string{"tcp6", "tcp4"} {
-					tcpAddr, err := net.ResolveTCPAddr(ntype, host)
-					if err != nil || isBlack(tcpAddr) {
-						continue
-					}
-					remote, err = net.DialTimeout("tcp", tcpAddr.String(), time.Second*30)
+				if outbound != "" {
+					remote, err = net.Dial("tcp", outbound)
 					if err != nil {
-						continue
+						log.Debugf("failed to connect to outbound: %v", err)
+						return
 					}
-					break
+					err = tinysocks.Client(remote, tinysocks.ParseAddr(host))
+					if err != nil {
+						log.Debugf("failed to connect to second socks5 server: %v", err)
+						return
+					}
+				} else {
+					for _, ntype := range []string{"tcp6", "tcp4"} {
+						tcpAddr, err := net.ResolveTCPAddr(ntype, host)
+						if err != nil || isBlack(tcpAddr) {
+							continue
+						}
+						remote, err = net.DialTimeout("tcp", host, time.Second*30)
+						if err != nil {
+							continue
+						}
+						break
+					}
 				}
+
 				if remote == nil {
 					return
 				}

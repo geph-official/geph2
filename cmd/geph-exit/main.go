@@ -24,6 +24,7 @@ var pubkey ed25519.PublicKey
 var seckey ed25519.PrivateKey
 var onlyPaid bool
 
+var outbound string
 var singleHop string
 
 var binderFront string
@@ -46,6 +47,7 @@ func main() {
 	flag.StringVar(&binderReal, "binderReal", "binder.geph.io", "real hostname of the binder")
 	flag.StringVar(&statsdAddr, "statsdAddr", "c2.geph.io:8125", "address of StatsD for gathering statistics")
 	flag.BoolVar(&onlyPaid, "onlyPaid", false, "only allow paying users")
+	flag.StringVar(&outbound, "outbound", "", "Outbound SOCKS5 server")
 	flag.StringVar(&singleHop, "singleHop", "", "if supplied, runs in single-hop mode. (for example, -singleHop :5000 would listen on port 5000)")
 	flag.Parse()
 	go func() {

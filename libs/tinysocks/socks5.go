@@ -169,11 +169,15 @@ func ParseAddr(s string) Addr {
 func ReadRequest(rw io.ReadWriter) (byte, Addr, error) {
 	// Read RFC 1928 for request and reply structure and sizes.
 	buf := make([]byte, MaxAddrLen)
-	// read VER, NMETHODS, METHODS
+	// read VER, NMETHODS
 	if _, err := io.ReadFull(rw, buf[:2]); err != nil {
 		return 0, nil, err
 	}
+	if buf[0] != 5 {
+		return 0, nil, errors.New("SOCKS server mismatch")
+	}
 	nmethods := buf[1]
+	// read METHODS
 	if _, err := io.ReadFull(rw, buf[:nmethods]); err != nil {
 		return 0, nil, err
 	}
@@ -217,14 +221,13 @@ func Client(rw io.ReadWriter, ad Addr) error {
 	if buf[0] != 5 || buf[1] != 0 {
 		return errors.New("SOCKS server mismatch")
 	}
-	// write VER, CMD, RSV
-	if _, err := rw.Write([]byte{5, 1, 0}); err != nil {
+	// write VER, CMD, RSV, ATYP, DST.ADDR, DST.PORT
+	copy(buf[:], []byte{5, 1, 0})
+	copy(buf[3:], ad)
+	lentosend := 3 + len(ad)
+	if _, err := rw.Write(buf[:lentosend]); err != nil {
 		return err
 	}
-	if _, err := rw.Write(ad); err != nil {
-		return err
-	}
-
 	_, err := io.ReadFull(rw, buf[:4])
 	if err != nil {
 		return errors.New("Couldn't read server response")
