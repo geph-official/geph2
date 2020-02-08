@@ -19,6 +19,7 @@ import (
 	"github.com/geph-official/geph2/libs/tinyss"
 	"github.com/hashicorp/yamux"
 	"github.com/xtaci/smux"
+	"golang.org/x/net/proxy"
 	"golang.org/x/time/rate"
 )
 
@@ -260,17 +261,47 @@ func handle(rawClient net.Conn) {
 					ip = ipi.(string)
 				} else {
 					addr := "http://checkip.amazonaws.com"
-					resp, err := http.Get(addr)
-					if err != nil {
-						return
+					if outbound != "" {
+						dialer, err := proxy.SOCKS5("tcp", outbound, nil,
+							&net.Dialer{
+								Timeout:   30 * time.Second,
+								KeepAlive: 30 * time.Second,
+							},
+						)
+						if err != nil {
+							return
+						}
+						transport := &http.Transport{
+							Proxy:               nil,
+							Dial:                dialer.Dial,
+							TLSHandshakeTimeout: 10 * time.Second,
+						}
+						client := &http.Client{Transport: transport}
+						resp, err := client.Get(addr)
+						if err != nil {
+							return
+						}
+						defer resp.Body.Close()
+						ipb, err := ioutil.ReadAll(resp.Body)
+						if err != nil {
+							return
+						}
+						ip = string(ipb)
+						ipcache.SetDefault("ip", ip)
+					} else {
+						resp, err := http.Get(addr)
+						if err != nil {
+							return
+						}
+						defer resp.Body.Close()
+						ipb, err := ioutil.ReadAll(resp.Body)
+						if err != nil {
+							return
+						}
+						ip = string(ipb)
+						ipcache.SetDefault("ip", ip)
 					}
-					defer resp.Body.Close()
-					ipb, err := ioutil.ReadAll(resp.Body)
-					if err != nil {
-						return
-					}
-					ip = string(ipb)
-					ipcache.SetDefault("ip", ip)
+
 				}
 				rlp.Encode(soxclient, true)
 				rlp.Encode(soxclient, ip)
