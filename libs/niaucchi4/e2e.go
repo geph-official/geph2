@@ -89,7 +89,7 @@ func (e2e *E2EConn) ReadFrom(p []byte) (n int, from net.Addr, err error) {
 		default:
 			err = e2e.readOnePacket()
 			if err != nil {
-				continue
+				return
 			}
 		}
 	}

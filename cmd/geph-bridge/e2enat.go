@@ -40,10 +40,10 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 	if err != nil {
 		return
 	}
-	leftRaw.(*net.UDPConn).SetReadBuffer(1000 * 1024)
-	leftRaw.(*net.UDPConn).SetWriteBuffer(1000 * 1024)
-	rightSock.(*net.UDPConn).SetWriteBuffer(1000 * 1024)
-	rightSock.(*net.UDPConn).SetReadBuffer(1000 * 1024)
+	leftRaw.(*net.UDPConn).SetReadBuffer(10 * 1000 * 1024)
+	leftRaw.(*net.UDPConn).SetWriteBuffer(10 * 1000 * 1024)
+	rightSock.(*net.UDPConn).SetWriteBuffer(10 * 1000 * 1024)
+	rightSock.(*net.UDPConn).SetReadBuffer(10 * 1000 * 1024)
 	destReal, err := net.ResolveUDPAddr("udp", dest)
 	if err != nil {
 		return

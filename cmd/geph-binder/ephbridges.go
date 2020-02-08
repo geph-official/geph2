@@ -40,12 +40,12 @@ func bridgeToEphBridge(bridgeHost string, bridgeCookie []byte, exitHost string) 
 	randCookie := make([]byte, 32)
 	rand.Read(randCookie)
 	// first make our connection
-	rawConn, err := net.DialTimeout("tcp4", bridgeHost, time.Second*10)
+	rawConn, err := net.DialTimeout("tcp4", bridgeHost, time.Second)
 	if err != nil {
 		return
 	}
 	defer rawConn.Close()
-	rawConn.SetDeadline(time.Now().Add(time.Minute))
+	rawConn.SetDeadline(time.Now().Add(time.Second * 10))
 	// then we negotiate
 	csConn, err := cshirt2.Client(bridgeCookie, rawConn)
 	if err != nil {

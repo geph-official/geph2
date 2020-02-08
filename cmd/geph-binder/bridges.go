@@ -15,8 +15,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/geph-official/geph2/libs/kcp-go"
-	"github.com/geph-official/geph2/libs/niaucchi4"
+	"github.com/geph-official/geph2/libs/cshirt2"
 	"github.com/patrickmn/go-cache"
 )
 
@@ -136,26 +135,21 @@ func handleAddBridge(w http.ResponseWriter, r *http.Request) {
 }
 
 func testBridge(bi bridgeInfo) bool {
-	udpsock, err := net.ListenPacket("udp", ":")
+	rawconn, err := net.Dial("tcp", bi.Host)
 	if err != nil {
-		panic(err)
+		return false
 	}
-	defer udpsock.Close()
-	e2e := niaucchi4.ObfsListen(bi.Cookie, udpsock)
+	defer rawconn.Close()
+	realconn, err := cshirt2.Client(bi.Cookie, rawconn)
 	if err != nil {
-		panic(err)
+		return false
 	}
-	defer e2e.Close()
-	kcp, err := kcp.NewConn(bi.Host, nil, 0, 0, e2e)
-	if err != nil {
-		panic(err)
-	}
-	defer kcp.Close()
-	kcp.SetDeadline(time.Now().Add(time.Second * 10))
+	defer realconn.Close()
+	realconn.SetDeadline(time.Now().Add(time.Second * 10))
 	start := time.Now()
-	rlp.Encode(kcp, "ping")
+	rlp.Encode(realconn, "ping")
 	var resp string
-	rlp.Decode(kcp, &resp)
+	rlp.Decode(realconn, &resp)
 	if resp != "ping" {
 		log.Println(bi.Host, "failed ping test!")
 		return false

@@ -91,10 +91,9 @@ func listenSocks() {
 			}
 			cmd, rmAddrProt, err := tinysocks.ReadRequest(cl)
 			if err != nil {
-				log.Debugln("tinysocks.ReadRequest failed:", err)
+				log.Debugln("Bad SOCKS5 request:", err)
 				return
-			}
-			if cmd != tinysocks.CmdConnect {
+			}if cmd != tinysocks.CmdConnect {
 				log.Debugln("Unsupported command:", cmd)
 				tinysocks.CompleteRequestTCP(7, cl)
 				return
