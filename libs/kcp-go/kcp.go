@@ -40,7 +40,7 @@ const (
 
 var QuiescentMax = 100
 
-var CongestionControl = "LOL"
+var CongestionControl = "BIC"
 
 var doLogging = false
 
@@ -861,7 +861,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 	}
 
 	if len(kcp.acklist) >= 8 || (ackNoDelay && len(kcp.acklist) > 0) { // ack immediately
-		kcp.flush(false)
+		kcp.flush(true)
 	}
 	return 0
 }
@@ -1031,10 +1031,13 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		}
 		newseg := kcp.snd_queue[k]
 		if CongestionControl == "LOL" {
-			if !kcp.pacer.Allow(math.Max(500*1000, kcp.DRE.maxAckRate),
-				int(float64(len(newseg.data))/math.Max(0.5, kcp.LOL.gain))) && kcp.DRE.maxAckRate > 500*1000 {
-				break
-			}
+			r, x := math.Max(500*1000, kcp.DRE.maxAckRate),
+				int(float64(len(newseg.data))/math.Max(0.5, kcp.LOL.gain))
+			// if !kcp.pacer.Allow(math.Max(500*1000, kcp.DRE.maxAckRate),
+			// 	int(float64(len(newseg.data))/math.Max(0.5, kcp.LOL.gain))) && kcp.DRE.maxAckRate > 500*1000 {
+			// 	break
+			// }
+			kcp.pacer.Limit(r, x)
 		}
 
 		newseg.conv = kcp.conv
@@ -1065,6 +1068,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 	minrto := int32(kcp.interval)
 
 	ref := kcp.snd_buf[:len(kcp.snd_buf)] // for bounds check elimination
+	var lostSn []uint32
 	for k := range ref {
 		busy = true
 		segment := &ref[k]
@@ -1086,9 +1090,6 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			kcp.trans++
 			kcp.shortLoss = kcp.shortLoss*0.999 + 0.001
 			kcp.longLoss = kcp.longLoss*0.9999 + 0.0001
-			if doLogging {
-				log.Println("TXX", segment.sn, current, segment.resendts)
-			}
 		} else if segment.fastack >= resent { // fast retransmit
 			needsend = true
 			segment.fastack = 0
@@ -1098,9 +1099,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			fastRetransSegs++
 			kcp.longLoss = kcp.shortLoss * 0.9999
 			kcp.shortLoss = kcp.shortLoss * 0.999
-			if doLogging {
-				log.Println("FRT", segment.sn, current, segment.resendts)
-			}
+			lostSn = append(lostSn, segment.sn)
 		} else if (segment.fastack > 0 && newSegsCount == 0) ||
 			(segment.xmit < 2 && len(kcp.snd_buf) == 1) { // early retransmit
 			needsend = true
@@ -1111,9 +1110,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			earlyRetransSegs++
 			kcp.longLoss = kcp.shortLoss * 0.9999
 			kcp.shortLoss = kcp.shortLoss * 0.999
-			if doLogging {
-				log.Println("ERT", segment.sn, current, segment.resendts)
-			}
+			lostSn = append(lostSn, segment.sn)
 		} else if _itimediff(current, segment.resendts) >= 0 { // RTO
 			needsend = true
 			// if kcp.nodelay == 0 {
@@ -1135,11 +1132,9 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			// if doLogging {
 			// 	log.Printf("[%p] RTO on %v %v", kcp, segment.sn, segment.rto)
 			// }
-			if doLogging {
-				log.Println("RTO", segment.sn, current, segment.resendts)
-			}
 			kcp.shortLoss = kcp.shortLoss * 0.999
 			kcp.longLoss = kcp.longLoss * 0.9999
+			lostSn = append(lostSn, segment.sn)
 		}
 
 		if needsend {
@@ -1189,7 +1184,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		case "BIC":
 			// congestion control, https://tools.ietf.org/html/rfc5681
 			if sum > 0 {
-				kcp.bic_onloss(int(sum))
+				kcp.bic_onloss(lostSn)
 			}
 		case "LOL":
 		case "VGS":

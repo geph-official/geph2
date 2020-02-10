@@ -1,10 +1,10 @@
 package main
 
 import (
-	"crypto/rand"
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -29,16 +29,21 @@ type ebMapVal struct {
 	Cookie []byte
 }
 
-var ebCache = cache.New(time.Minute, time.Minute)
+var ebCache = cache.New(time.Second*30, time.Minute)
+
+var b2eblk sync.Mutex
 
 func bridgeToEphBridge(bridgeHost string, bridgeCookie []byte, exitHost string) (ev ebMapVal, err error) {
+	b2eblk.Lock()
+	defer b2eblk.Unlock()
 	mapKeyStr := ebMapKey{bridgeHost, bridgeCookie, exitHost}.String()
 	if evi, ok := ebCache.Get(mapKeyStr); ok {
 		ev = evi.(ebMapVal)
 		return
 	}
 	randCookie := make([]byte, 32)
-	rand.Read(randCookie)
+	//rand.Read(randCookie)
+	copy(randCookie, bridgeCookie)
 	// first make our connection
 	rawConn, err := net.DialTimeout("tcp4", bridgeHost, time.Second)
 	if err != nil {

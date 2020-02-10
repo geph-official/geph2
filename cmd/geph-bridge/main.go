@@ -31,11 +31,10 @@ var binderKey string
 var statsdAddr string
 var allocGroup string
 var speedLimit int
-var monthlyGigs int
 var bclient *bdclient.Client
+var e2elimit int
 
 var limiter *rate.Limiter
-var bigLimiter *rate.Limiter
 
 var statClient *statsd.StatsdClient
 
@@ -47,10 +46,10 @@ func main() {
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
 	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")
-	flag.IntVar(&monthlyGigs, "monthlyGigs", -1, "monthly gigs")
+	flag.IntVar(&e2elimit, "e2eLimit", 30, "e2e limit")
 	flag.Parse()
 	if speedLimit > 0 {
-		limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 10*1000)
+		limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 1000*1000)
 	} else {
 		limiter = rate.NewLimiter(rate.Inf, 1000*1000)
 	}
@@ -59,13 +58,6 @@ func main() {
 			log.Fatal(err)
 		}
 	}()
-	if monthlyGigs < 0 {
-		bigLimiter = rate.NewLimiter(rate.Inf, 10*1000)
-	} else {
-		speed := 1000 * 1000 * 1000 * float64(monthlyGigs) / (30 * 24 * 60 * 60)
-		log.Println("Long-term speed limit is", int(speed/1000), "KB/s")
-		bigLimiter = rate.NewLimiter(rate.Limit(speed), 10*1000*1000*1000)
-	}
 	if allocGroup == "" {
 		log.Fatal("must specify an allocation group")
 	}

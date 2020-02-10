@@ -113,8 +113,8 @@ func e2elisten() {
 	if err != nil {
 		panic(err)
 	}
-	udpsock.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
-	udpsock.(*net.UDPConn).SetReadBuffer(10 * 1024 * 1024)
+	udpsock.(*net.UDPConn).SetWriteBuffer(100 * 1024 * 1024)
+	udpsock.(*net.UDPConn).SetReadBuffer(100 * 1024 * 1024)
 	log.Infoln("e2elisten on UDP 2399")
 	e2e := niaucchi4.NewE2EConn(fastudp.NewConn(udpsock.(*net.UDPConn)))
 	kcpListener := niaucchi4.ListenKCP(e2e)
@@ -125,7 +125,7 @@ func e2elisten() {
 			continue
 		}
 		rc.SetWindowSize(10000, 1000)
-		rc.SetNoDelay(0, 50, 5, 0)
+		rc.SetNoDelay(0, 10, 3, 0)
 		rc.SetStreamMode(true)
 		rc.SetMtu(1300)
 		go handle(rc)

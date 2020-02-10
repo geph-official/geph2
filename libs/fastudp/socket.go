@@ -11,7 +11,7 @@ import (
 	"gopkg.in/tomb.v1"
 )
 
-const sendQuantum = 64
+const sendQuantum = 512
 
 // Conn wraps an underlying UDPConn and batches stuff to it.
 type Conn struct {
