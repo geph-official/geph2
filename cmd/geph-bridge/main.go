@@ -32,7 +32,6 @@ var statsdAddr string
 var allocGroup string
 var speedLimit int
 var bclient *bdclient.Client
-var e2elimit int
 
 var limiter *rate.Limiter
 
@@ -46,7 +45,6 @@ func main() {
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
 	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")
-	flag.IntVar(&e2elimit, "e2eLimit", 30, "e2e limit")
 	flag.Parse()
 	if speedLimit > 0 {
 		limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 1000*1000)
@@ -97,12 +95,11 @@ func listenLoop(deadline time.Duration) {
 	if err != nil {
 		panic(err)
 	}
-	udpsock.(*net.UDPConn).SetWriteBuffer(1000 * 1000 * 10)
 	go func() {
 		end := time.Now().Add(deadline)
 		for deadline < 0 || time.Now().Before(end) {
 			myAddr := fmt.Sprintf("%v:%v", guessIP(), udpsock.LocalAddr().(*net.UDPAddr).Port)
-			e := bclient.AddBridge(binderKey, cookie, myAddr)
+			e := bclient.AddBridge(binderKey, cookie, myAddr, allocGroup)
 			if e != nil {
 				log.Println("error adding bridge:", e)
 			}

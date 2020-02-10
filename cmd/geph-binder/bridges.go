@@ -11,7 +11,6 @@ import (
 	mrand "math/rand"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -23,9 +22,10 @@ import (
 var bridgeCache = cache.New(time.Minute*10, time.Hour)
 
 type bridgeInfo struct {
-	Cookie   []byte
-	Host     string
-	LastSeen time.Time
+	Cookie     []byte
+	Host       string
+	LastSeen   time.Time
+	AllocGroup string
 }
 
 func addBridge(nfo bridgeInfo) {
@@ -79,13 +79,12 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 	// TODO validate the ticket
 	bridges := getBridges(fmt.Sprintf("%v", mrand.Int()))
 	w.Header().Set("content-type", "application/json")
-	seenIPs := make(map[string]bool)
+	seenAGs := make(map[string]bool)
 	var laboo []bridgeInfo
 	for _, str := range bridges {
 		if vali, ok := bridgeCache.Get(str); ok {
 			val := vali.(bridgeInfo)
-			ip := strings.Split(val.Host, ":")[0]
-			if !seenIPs[ip] {
+			if !seenAGs[val.AllocGroup] {
 				if isEphemeral {
 					tval, err := bridgeToEphBridge(val.Host, val.Cookie, exitHost)
 					if err != nil {
@@ -95,7 +94,7 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 					val.Cookie = tval.Cookie
 					val.Host = tval.Bridge
 				}
-				seenIPs[ip] = true
+				seenAGs[val.AllocGroup] = true
 				laboo = append(laboo, val)
 			}
 		}
@@ -122,9 +121,10 @@ func handleAddBridge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bi := bridgeInfo{
-		Cookie:   cookie,
-		Host:     r.FormValue("host"),
-		LastSeen: time.Now(),
+		Cookie:     cookie,
+		Host:       r.FormValue("host"),
+		LastSeen:   time.Now(),
+		AllocGroup: r.FormValue("allocGroup"),
 	}
 	if !testBridge(bi) {
 		w.WriteHeader(http.StatusForbidden)
