@@ -39,7 +39,7 @@ const (
 	rxFECMulti = 3
 
 	// accept backlog
-	acceptBacklog = 4096
+	acceptBacklog = 128
 )
 
 var (
@@ -116,6 +116,8 @@ type (
 			nextSendTime time.Time
 		}
 
+		updater updateHeap
+
 		mu sync.Mutex
 	}
 
@@ -152,6 +154,8 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn 
 	sess.remote = remote
 	sess.conn = conn
 	sess.l = l
+	sess.updater.init()
+	go sess.updater.updateTask()
 	sess.recvbuf = make([]byte, mtuLimit)
 
 	// cast to writebatch conn
@@ -181,7 +185,7 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn 
 
 	// register current session to the global updater,
 	// which call sess.update() periodically.
-	updater.addSession(sess)
+	sess.updater.addSession(sess)
 
 	if sess.l == nil { // it's a client connection
 		go sess.readLoop()
@@ -283,7 +287,7 @@ func (s *UDPSession) Write(b []byte) (n int, err error) {
 
 // WriteBuffers write a vector of byte slices to the underlying connection
 func (s *UDPSession) WriteBuffers(v [][]byte) (n int, err error) {
-	defer updater.addSessionIfNotExists(s)
+	defer s.updater.addSessionIfNotExists(s)
 	for {
 		select {
 		case <-s.chSocketWriteError:
@@ -371,7 +375,7 @@ func (s *UDPSession) Close() error {
 
 	if once {
 		// remove from updater
-		updater.removeSession(s)
+		s.updater.stop.Kill(io.EOF)
 		atomic.AddUint64(&DefaultSnmp.CurrEstab, ^uint64(0))
 
 		if s.l != nil { // belongs to listener
@@ -683,7 +687,7 @@ func (s *UDPSession) update() (interval time.Duration) {
 	s.notifyReadEvent()
 	//}
 	s.uncork()
-	if s.kcp.quiescent <= 0 {
+	if s.kcp.quiescent <= 0 || s.kcp.isDead {
 		interval = 0
 	}
 	if s.kcp.isDead {
@@ -730,7 +734,7 @@ func (s *UDPSession) packetInput(data []byte) {
 }
 
 func (s *UDPSession) kcpInput(data []byte) {
-	defer updater.addSessionIfNotExists(s)
+	defer s.updater.addSessionIfNotExists(s)
 	var kcpInErrors, fecErrs, fecRecovered, fecParityShards uint64
 	if s.fecDecoder != nil {
 		if len(data) > fecHeaderSize { // must be larger than fec header size

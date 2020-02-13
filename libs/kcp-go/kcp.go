@@ -149,7 +149,7 @@ func (seg *segment) encode(ptr []byte) []byte {
 	return ptr
 }
 
-const maxSpeed = 1000 * 1000 * 1000
+const maxSpeed = 1000 * 1000 * 100
 
 type rateLimiter struct {
 	limiter *rate.Limiter
@@ -159,7 +159,7 @@ type rateLimiter struct {
 
 func (rl *rateLimiter) fixLimiter(speed float64) {
 	if rl.limiter == nil {
-		rl.limiter = rate.NewLimiter(maxSpeed, 1000*1000*100)
+		rl.limiter = rate.NewLimiter(maxSpeed, maxSpeed/10)
 	}
 }
 
@@ -923,7 +923,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		}
 	}()
 	if kcp.conv == 814 {
-		busy = true
+		//busy = true
 		return kcp.interval
 	}
 
@@ -1038,11 +1038,10 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		if CongestionControl == "LOL" {
 			r, x := math.Max(500*1000, kcp.DRE.maxAckRate),
 				int(float64(len(newseg.data))/math.Max(0.5, kcp.LOL.gain))
-			// if !kcp.pacer.Allow(math.Max(500*1000, kcp.DRE.maxAckRate),
-			// 	int(float64(len(newseg.data))/math.Max(0.5, kcp.LOL.gain))) && kcp.DRE.maxAckRate > 500*1000 {
-			// 	break
-			// }
-			kcp.pacer.Limit(r, x)
+			if !kcp.pacer.Allow(r, x) && kcp.DRE.maxAckRate > 500*1000 {
+				break
+			}
+			//kcp.pacer.Limit(r, x)
 		}
 
 		newseg.conv = kcp.conv

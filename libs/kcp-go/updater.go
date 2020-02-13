@@ -4,14 +4,9 @@ import (
 	"container/heap"
 	"sync"
 	"time"
+
+	"gopkg.in/tomb.v1"
 )
-
-var updater updateHeap
-
-func init() {
-	updater.init()
-	go updater.updateTask()
-}
 
 // entry contains a session update info
 type entry struct {
@@ -25,6 +20,7 @@ type updateHeap struct {
 	exists   map[*UDPSession]bool
 	mu       sync.Mutex
 	chWakeUp chan struct{}
+	stop     tomb.Tomb
 }
 
 func (h *updateHeap) Len() int           { return len(h.entries) }
@@ -95,13 +91,19 @@ func (h *updateHeap) updateTask() {
 		select {
 		case <-timer.C:
 		case <-h.chWakeUp:
+		case <-h.stop.Dying():
+			return
 		}
-
 		h.mu.Lock()
 		hlen := h.Len()
 		for i := 0; i < hlen; i++ {
 			entry := &h.entries[0]
-			if !time.Now().Before(entry.ts) {
+			now := time.Now()
+			if !now.Before(entry.ts) {
+				// zuru := now.Sub(entry.ts)
+				// if zuru.Milliseconds() > 10 {
+				// 	log.Printf("WARNING!! %p zuru %v", h, zuru)
+				// }
 				interval := entry.s.update()
 				if interval != 0 {
 					entry.ts = time.Now().Add(interval)

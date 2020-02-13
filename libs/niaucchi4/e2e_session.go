@@ -59,7 +59,7 @@ type e2eSession struct {
 }
 
 func newSession(sessid [16]byte) *e2eSession {
-	cache, _ := lru.New(4096)
+	cache, _ := lru.New(128)
 	return &e2eSession{
 		dupRateLimit: rate.NewLimiter(10*1000, 10*1000),
 		recvDedup:    cache,
@@ -105,7 +105,7 @@ func (el *e2eLinkInfo) getScore() float64 {
 	}
 	factor := math.Max(float64(el.lastPing), float64(time.Since(el.lastProbeTime).Milliseconds()))
 	loss := float64(el.rtxCount) / float64(el.txCount+1000)
-	if el.remoteLoss != 0 {
+	if el.remoteLoss > 0.000001 {
 		loss = el.remoteLoss
 	}
 	return factor + math.Sqrt(loss)*1000
@@ -281,7 +281,7 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 		}
 	} else {
 		remid := -1
-		if time.Since(es.lastSend).Seconds() > 0.05 {
+		if time.Since(es.lastSend).Seconds() > 0.2 {
 			lowPoint := 1e20
 			for i, li := range es.info {
 				if score := li.getScore(); score < lowPoint {
