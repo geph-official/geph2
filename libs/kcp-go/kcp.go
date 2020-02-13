@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"log"
 	"math"
-	"math/rand"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -794,10 +793,10 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				kcp.vgs_onack(acks)
 			case "LOL":
 				bdp := kcp.bdp() / float64(kcp.mss)
-				targetCwnd := bdp*3 + 64
+				targetCwnd := bdp*2 + 64
 				//targetCwnd := bdp * 2
 				if targetCwnd > kcp.cwnd+float64(acks) {
-					kcp.cwnd += float64(acks)
+					kcp.cwnd += 64 * float64(acks) / kcp.cwnd
 				} else {
 					kcp.cwnd = targetCwnd
 				}
@@ -1184,13 +1183,13 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			}
 		case "LOL":
 			// if sum > 0 {
-			// 	kcp.cwnd *= 0.8
+			// 	kcp.DRE.maxAckRate *= 0.95
 			// }
 		case "VGS":
 		}
-		if sum > 0 || rand.Float64() < 0.1 {
+		if sum > 0 {
 			now := time.Now()
-			if now.Sub(kcp.DRE.lastLossTime).Milliseconds() > 500 {
+			if now.Sub(kcp.DRE.lastLossTime).Milliseconds() > int64(kcp.DRE.minRtt*10) {
 				deltaR := kcp.retrans - kcp.DRE.lastLossRetrans
 				deltaT := kcp.trans - kcp.DRE.lastLossTrans
 				loss := float64(deltaR) / (float64(deltaR) + float64(deltaT) + 1)
@@ -1200,13 +1199,13 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 					log.Printf("[%p] Loss-to-loss delivery rate: %vK @ %.2f%%", kcp, int(rate/1000), loss*100)
 				}
 				now := time.Now()
-				// if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.6 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
-				// 	if doLogging {
-				// 		log.Printf("[%p] ****** POLICE ******", kcp)
-				// 	}
-				// 	kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
-				// 	kcp.DRE.policeTime = now
-				// }
+				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.2 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
+					if doLogging {
+						log.Printf("[%p] ****** POLICE ******", kcp)
+					}
+					kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
+					kcp.DRE.policeTime = now
+				}
 				kcp.DRE.lastLossTime = now
 				kcp.DRE.lastLossDel = kcp.DRE.delivered
 				kcp.DRE.lastLossTrans = kcp.trans
