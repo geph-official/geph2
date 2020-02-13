@@ -49,6 +49,7 @@ var dnsAddr string
 var fakeDNS bool
 
 var useTCP bool
+var noFEC bool
 
 var singleHop string
 
@@ -131,6 +132,7 @@ func main() {
 	// flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
 	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
 	flag.BoolVar(&useTCP, "useTCP", false, "use TCP to connect to bridges")
+	flag.BoolVar(&noFEC, "noFEC", false, "disable automatic FEC")
 	iniflags.Parse()
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)

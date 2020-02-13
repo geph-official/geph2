@@ -11,7 +11,7 @@ import (
 	"gopkg.in/tomb.v1"
 )
 
-const sendQuantum = 512
+const sendQuantum = 16
 
 // Conn wraps an underlying UDPConn and batches stuff to it.
 type Conn struct {
@@ -26,6 +26,14 @@ type Conn struct {
 
 // NewConn creates a new Conn.
 func NewConn(conn *net.UDPConn) net.PacketConn {
+	err := conn.SetWriteBuffer(1500 * 1024)
+	if err != nil {
+		panic(err)
+	}
+	err = conn.SetReadBuffer(1500 * 1024)
+	if err != nil {
+		panic(err)
+	}
 	if runtime.GOOS != "linux" {
 		return conn
 	}

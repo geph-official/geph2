@@ -1,6 +1,7 @@
 package niaucchi4
 
 import (
+	"encoding/binary"
 	"errors"
 	"log"
 	"math"
@@ -58,7 +59,7 @@ type e2eSession struct {
 }
 
 func newSession(sessid [16]byte) *e2eSession {
-	cache, _ := lru.New(128)
+	cache, _ := lru.New(4096)
 	return &e2eSession{
 		dupRateLimit: rate.NewLimiter(10*1000, 10*1000),
 		recvDedup:    cache,
@@ -73,11 +74,15 @@ type e2eLinkInfo struct {
 	recvsn  uint64
 	recvcnt uint64
 
+	recvsnRecent  uint32
+	recvcntRecent uint32
+
 	recvWindow replayWindow
 
-	txCount   uint64
-	rtxCount  uint64
-	checkTime time.Time
+	txCount    uint64
+	rtxCount   uint64
+	remoteLoss float64
+	checkTime  time.Time
 
 	lastSendTime  time.Time
 	lastProbeTime time.Time
@@ -100,7 +105,10 @@ func (el *e2eLinkInfo) getScore() float64 {
 	}
 	factor := math.Max(float64(el.lastPing), float64(time.Since(el.lastProbeTime).Milliseconds()))
 	loss := float64(el.rtxCount) / float64(el.txCount+1000)
-	return factor + loss*1000
+	if el.remoteLoss != 0 {
+		loss = el.remoteLoss
+	}
+	return factor + math.Sqrt(loss)*1000
 	// return el.longLoss
 }
 
@@ -152,6 +160,13 @@ func (es *e2eSession) AddPath(host net.Addr) {
 	es.info = append(es.info, &e2eLinkInfo{lastPing: 10000000})
 }
 
+func (es *e2eSession) processStats(pkt e2ePacket, remid int) {
+	recvd := binary.LittleEndian.Uint32(pkt.Body[:4])
+	total := binary.LittleEndian.Uint32(pkt.Body[4:])
+	loss := 1 - float64(recvd)/(float64(total)+1)
+	es.info[remid].remoteLoss = loss
+}
+
 // Input processes a packet through the e2e session state.
 func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 	es.lock.Lock()
@@ -182,16 +197,23 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 		return
 	}
 	if es.info[remid].recvsn < pkt.Sn {
+		es.info[remid].recvsnRecent += uint32(pkt.Sn - es.info[remid].recvsn)
 		es.info[remid].recvsn = pkt.Sn
 		es.info[remid].acksn = pkt.Ack
 	}
 
 	es.info[remid].recvcnt++
-	bodyHash := highwayhash.Sum128(pkt.Body, make([]byte, 32))
-	if es.recvDedup.Contains(bodyHash) {
-	} else {
-		es.recvDedup.Add(bodyHash, true)
-		es.rdqueue = append(es.rdqueue, pkt.Body)
+	es.info[remid].recvcntRecent++
+	if len(pkt.Body) > 8 {
+		bodyHash := highwayhash.Sum128(pkt.Body, make([]byte, 32))
+		if es.recvDedup.Contains(bodyHash) {
+		} else {
+			es.recvDedup.Add(bodyHash, true)
+			es.rdqueue = append(es.rdqueue, pkt.Body)
+		}
+	}
+	if len(pkt.Body) == 8 {
+		es.processStats(pkt, remid)
 	}
 	nfo := es.info[remid]
 	if nfo.acksn > nfo.lastProbeSn {
@@ -238,14 +260,28 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 		dest := es.remote[remid]
 		sendCallback(toSend, dest)
 	}
+	sendInfo := func(remid int) {
+		nfo := es.info[remid]
+		if nfo.recvsnRecent > 1000 {
+			// nfo.recvsnRecent /= 2
+			// nfo.recvcntRecent /= 2
+		}
+		buf := make([]byte, 8)
+		binary.LittleEndian.PutUint32(buf[4:], nfo.recvsnRecent)
+		binary.LittleEndian.PutUint32(buf[:4], nfo.recvcntRecent)
+		//log.Println("sending feedback", nfo.recvsnRecent, nfo.recvcntRecent)
+		payload = buf
+		send(false, remid)
+	}
 	// find the right destination
 	if es.dupRateLimit.AllowN(time.Now(), len(es.remote)*(len(payload)+50)) {
 		for remid := range es.remote {
 			send(false, remid)
+			defer sendInfo(remid)
 		}
 	} else {
 		remid := -1
-		if time.Since(es.lastSend).Seconds() > 0.1 {
+		if time.Since(es.lastSend).Seconds() > 0.05 {
 			lowPoint := 1e20
 			for i, li := range es.info {
 				if score := li.getScore(); score < lowPoint {

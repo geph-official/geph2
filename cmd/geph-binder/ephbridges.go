@@ -34,8 +34,6 @@ var ebCache = cache.New(time.Second*30, time.Minute)
 var b2eblk sync.Mutex
 
 func bridgeToEphBridge(bridgeHost string, bridgeCookie []byte, exitHost string) (ev ebMapVal, err error) {
-	b2eblk.Lock()
-	defer b2eblk.Unlock()
 	mapKeyStr := ebMapKey{bridgeHost, bridgeCookie, exitHost}.String()
 	if evi, ok := ebCache.Get(mapKeyStr); ok {
 		ev = evi.(ebMapVal)

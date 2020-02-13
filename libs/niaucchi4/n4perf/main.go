@@ -47,15 +47,15 @@ func mainClient(dialto string) {
 		if err != nil {
 			panic(err)
 		}
-		udpsockR.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
-		udpsockR.(*net.UDPConn).SetReadBuffer(10 * 1024 * 1024)
+		// udpsockR.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
+		//udpsockR.(*net.UDPConn).SetReadBuffer(10 * 1024 * 1024)
 		return fastudp.NewConn(udpsockR.(*net.UDPConn))
 	})
 	servAddr, err := net.ResolveUDPAddr("udp4", dialto)
 	if err != nil {
 		panic(err)
 	}
-	kcpremote, err := kcp.NewConn2(servAddr, nil, 0, 0, niaucchi4.ObfsListen(nil, udpsock))
+	kcpremote, err := kcp.NewConn2(servAddr, nil, 8, 16, niaucchi4.ObfsListen(nil, udpsock))
 	if err != nil {
 		panic(err)
 	}
@@ -100,7 +100,7 @@ func mainServer(listen string, klimit int) {
 	if err != nil {
 		panic(err)
 	}
-	listener, err := kcp.ServeConn(nil, 0, 0, obfs)
+	listener, err := kcp.ServeConn(nil, 8, 16, obfs)
 	if err != nil {
 		panic(err)
 	}

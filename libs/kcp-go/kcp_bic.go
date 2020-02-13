@@ -2,7 +2,7 @@ package kcp
 
 import "log"
 
-const bicMultiplier = 8
+const bicMultiplier = 4
 
 func (kcp *KCP) bic_onloss(lost []uint32) {
 	maxRun := 1
@@ -23,7 +23,7 @@ func (kcp *KCP) bic_onloss(lost []uint32) {
 	// if maxRun < int(kcp.cwnd/20) || maxRun < 10 {
 	// 	return
 	// }
-	beta := 0.125 / bicMultiplier
+	beta := 0.05 / bicMultiplier
 	if kcp.cwnd < kcp.wmax {
 		kcp.wmax = kcp.cwnd * (2.0 - beta) / 2.0
 	} else {
@@ -34,12 +34,9 @@ func (kcp *KCP) bic_onloss(lost []uint32) {
 
 func (kcp *KCP) bic_onack(acks int32) {
 	if doLogging {
-		log.Printf("BIC cwnd=%v // s=%.2f%% // l=%.2f%% // t=%.2f%%", int(kcp.cwnd),
-			kcp.shortLoss*100,
-			kcp.longLoss*100,
-			float64(kcp.retrans)/float64(kcp.trans)*100)
+		log.Printf("BIC cwnd=%v // t=%.2f%%", int(kcp.cwnd),
+			100*float64(kcp.retrans)/float64(kcp.trans))
 	}
-	oldCwnd := kcp.cwnd
 	// // TCP BIC
 	for i := 0; i < int(acks*bicMultiplier); i++ {
 		var bicinc float64
@@ -59,9 +56,6 @@ func (kcp *KCP) bic_onack(acks int32) {
 		if uint32(kcp.cwnd) > kcp.rmt_wnd {
 			kcp.cwnd = float64(kcp.rmt_wnd)
 		}
-	}
-	if kcp.cwnd/oldCwnd > 1.1 {
-		kcp.cwnd = oldCwnd * 1.1
 	}
 	// if doLogging {
 	// 	log.Printf("BIC cwnd %.2f => %.2f [%.2f %%]", kcp.cwnd, kcp.wmax, float64(kcp.retrans)/float64(kcp.trans)*100)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/geph-official/geph2/libs/fastudp"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/patrickmn/go-cache"
 )
@@ -69,15 +70,12 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 	if err != nil {
 		return
 	}
-	leftRaw.(*net.UDPConn).SetReadBuffer(1000 * 1024)
-	leftRaw.(*net.UDPConn).SetWriteBuffer(1000 * 1024)
-	rightSock.(*net.UDPConn).SetWriteBuffer(1000 * 1024)
-	rightSock.(*net.UDPConn).SetReadBuffer(1000 * 1024)
 	destReal, err := net.ResolveUDPAddr("udp", dest)
 	if err != nil {
 		return
 	}
-	//rightSock = fastudp.NewConn(rightSock.(*net.UDPConn))
+	rightSock = fastudp.NewConn(rightSock.(*net.UDPConn))
+	leftRaw = fastudp.NewConn(leftRaw.(*net.UDPConn))
 	// mapping
 	sessMap := new(sync.Map)
 	go func() {

@@ -103,7 +103,7 @@ func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 	}
 	pt := newproto(cookie)
 	if doLogging {
-		log.Printf("N4: newproto on %v [%x]", addr.String(), cookie[:4])
+		log.Printf("N4: newproto on %v [%x]", addr.String(), cookie)
 	}
 	os.pending.Add(addr.String(), pt)
 	var err error
