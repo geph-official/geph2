@@ -40,7 +40,13 @@ func listenHTTP() {
 	srv := goproxy.NewProxyHttpServer()
 	srv.Tr = &http.Transport{
 		Dial: func(n, d string) (net.Conn, error) {
-			return dialTun(d)
+			conn, err := dialTun(d)
+			if err != nil {
+				return nil, err
+			}
+			conn.(*net.TCPConn).SetKeepAlive(false)
+			conn.(*net.TCPConn).SetWriteBuffer(16384)
+			return conn, nil
 		},
 		IdleConnTimeout: time.Second * 60,
 		Proxy:           nil,
@@ -67,7 +73,7 @@ func listenSocks() {
 	}
 	semaphore := make(chan bool, 512)
 	downLimit := rate.NewLimiter(rate.Inf, 10000000)
-	upLimit := rate.NewLimiter(1000*1000, 1000*1000)
+	upLimit := rate.NewLimiter(rate.Inf, 1000*1000)
 	useStats(func(sc *stats) {
 		if sc.Tier == "free" {
 			upLimit = rate.NewLimiter(100*1000, 1000*1000)
@@ -81,6 +87,8 @@ func listenSocks() {
 		}
 		go func() {
 			defer cl.Close()
+			cl.(*net.TCPConn).SetKeepAlive(false)
+			cl.(*net.TCPConn).SetReadBuffer(16384)
 			select {
 			case semaphore <- true:
 				defer func() {

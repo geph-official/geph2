@@ -65,6 +65,7 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 	if err != nil {
 		return
 	}
+	leftRaw = fastudp.NewConn(leftRaw.(*net.UDPConn))
 	leftSock := niaucchi4.ObfsListen(cookie, leftRaw)
 	rightSock, err := net.ListenPacket("udp", "")
 	if err != nil {
@@ -75,7 +76,6 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 		return
 	}
 	rightSock = fastudp.NewConn(rightSock.(*net.UDPConn))
-	leftRaw = fastudp.NewConn(leftRaw.(*net.UDPConn))
 	// mapping
 	sessMap := new(sync.Map)
 	go func() {

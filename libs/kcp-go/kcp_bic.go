@@ -2,7 +2,7 @@ package kcp
 
 import "log"
 
-const bicMultiplier = 4
+const bicMultiplier = 1
 
 func (kcp *KCP) bic_onloss(lost []uint32) {
 	maxRun := 1
@@ -23,7 +23,7 @@ func (kcp *KCP) bic_onloss(lost []uint32) {
 	// if maxRun < int(kcp.cwnd/20) || maxRun < 10 {
 	// 	return
 	// }
-	beta := 0.05 / bicMultiplier
+	beta := 0.25 / bicMultiplier
 	if kcp.cwnd < kcp.wmax {
 		kcp.wmax = kcp.cwnd * (2.0 - beta) / 2.0
 	} else {

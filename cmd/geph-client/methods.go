@@ -211,8 +211,9 @@ func getMultipath(bridges []bdclient.BridgeInfo, legacy bool) (conn net.Conn, er
 	if err != nil {
 		panic(err)
 	}
-	toret.SetWindowSize(1000, 10000)
-	toret.SetNoDelay(0, 20, 10, 0)
+	kcp.CongestionControl = "BIC"
+	toret.SetWindowSize(10000, 10000)
+	toret.SetNoDelay(0, 20, 3, 0)
 	toret.SetStreamMode(true)
 	toret.SetMtu(1300)
 	conn = toret

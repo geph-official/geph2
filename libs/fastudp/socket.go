@@ -34,6 +34,7 @@ func NewConn(conn *net.UDPConn) net.PacketConn {
 	if err != nil {
 		panic(err)
 	}
+	return conn
 	if runtime.GOOS != "linux" {
 		return conn
 	}
