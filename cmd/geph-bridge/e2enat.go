@@ -51,16 +51,16 @@ var e2eMap = cache.New(time.Hour, time.Hour)
 var e2eMapLk sync.Mutex
 
 func e2enat(dest string, cookie []byte) (port int, err error) {
-	e2eMapLk.Lock()
-	defer e2eMapLk.Unlock()
-	log.Println("e2enat", atomic.LoadInt64(&e2ecount))
-	kee := fmt.Sprintf("%v/%x", dest, cookie)
-	if porti, ok := e2eMap.Get(kee); ok {
-		log.Println("HIT", kee)
-		port = porti.(int)
-		return
-	}
-	log.Println("MISS", kee)
+	// e2eMapLk.Lock()
+	// defer e2eMapLk.Unlock()
+	// log.Println("e2enat", atomic.LoadInt64(&e2ecount))
+	// kee := fmt.Sprintf("%v/%x", dest, cookie)
+	// if porti, ok := e2eMap.Get(kee); ok {
+	// 	log.Println("HIT", kee)
+	// 	port = porti.(int)
+	// 	return
+	// }
+	// log.Println("MISS", kee)
 	leftRaw, err := net.ListenPacket("udp", "")
 	if err != nil {
 		return
@@ -131,6 +131,6 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 			}
 		}
 	}()
-	e2eMap.SetDefault(kee, leftRaw.LocalAddr().(*net.UDPAddr).Port)
+	//e2eMap.SetDefault(kee, leftRaw.LocalAddr().(*net.UDPAddr).Port)
 	return leftRaw.LocalAddr().(*net.UDPAddr).Port, nil
 }
