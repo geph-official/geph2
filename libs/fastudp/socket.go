@@ -1,8 +1,8 @@
 package fastudp
 
 import (
-	"context"
 	"io"
+	"log"
 	"net"
 	"runtime"
 	"time"
@@ -12,7 +12,7 @@ import (
 	"gopkg.in/tomb.v1"
 )
 
-const sendQuantum = 512
+const sendQuantum = 16
 
 // Conn wraps an underlying UDPConn and batches stuff to it.
 type Conn struct {
@@ -64,9 +64,10 @@ func (conn *Conn) bkgWrite() {
 	defer conn.pconn.Close()
 	defer conn.sock.Close()
 	//
+	//log.Println("bkgWrite started")
 	var towrite []ipv4.Message
 	for {
-		limiter.Wait(context.Background())
+		//limiter.Wait(context.Background())
 		select {
 		case first := <-conn.writeBuf:
 			towrite = append(towrite, first)
@@ -83,6 +84,7 @@ func (conn *Conn) bkgWrite() {
 			for len(ptr) > 0 {
 				n, err := conn.pconn.WriteBatch(ptr, 0)
 				if err != nil {
+					log.Println("kill", err)
 					conn.death.Kill(err)
 					return
 				}
@@ -141,7 +143,11 @@ func (conn *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	}
 	select {
 	case conn.writeBuf <- msg:
-	default:
+	case <-conn.death.Dying():
+		err = conn.death.Err()
+		return
+		// default:
+		// 	log.Println("fastudp: write to", addr, "overflowed")
 	}
 	return len(p), nil
 }

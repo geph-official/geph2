@@ -133,7 +133,7 @@ func listenLoop(deadline time.Duration) {
 					log.Println("cshirt2 failed", err, rawClient.RemoteAddr())
 					return
 				}
-				log.Println("Accepted TCP from", rawClient.RemoteAddr())
+				//log.Println("Accepted TCP from", rawClient.RemoteAddr())
 				handle(client)
 			}()
 		}
@@ -156,7 +156,7 @@ func listenLoop(deadline time.Duration) {
 		if err != nil {
 			return
 		}
-		log.Println("Accepted UDP client", client.RemoteAddr())
+		//log.Println("Accepted UDP client", client.RemoteAddr())
 		go handle(client)
 	}
 }

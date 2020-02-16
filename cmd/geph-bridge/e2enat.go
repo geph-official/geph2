@@ -14,6 +14,7 @@ import (
 	"github.com/geph-official/geph2/libs/fastudp"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/patrickmn/go-cache"
+	"golang.org/x/time/rate"
 )
 
 type e2ePacket struct {
@@ -83,7 +84,7 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 		defer atomic.AddInt64(&e2ecount, -1)
 		defer leftSock.Close()
 		defer rightSock.Close()
-		bts := make([]byte, 2048)
+		bts := malloc(2048)
 		for {
 			dl := time.Now().Add(time.Hour * 2)
 			leftSock.SetReadDeadline(dl)
@@ -92,22 +93,26 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 				log.Println("closing", leftRaw.LocalAddr(), err)
 				return
 			}
-			rightSock.SetWriteDeadline(dl)
 			sid := parseSess(bts[:n])
 			sessMap.Store(sid, addr)
-			_, err = rightSock.WriteTo(bts[:n], destReal)
-			if err != nil {
-				log.Println("cannot write:", err)
-			}
-			if statClient != nil && rand.Int()%100000 < n {
-				statClient.Increment(allocGroup + ".e2eup")
-			}
+			btsCopy := malloc(n)
+			copy(btsCopy, bts)
+			maybeDoJob(func() {
+				_, err = rightSock.WriteTo(btsCopy, destReal)
+				if err != nil {
+					log.Println("cannot write:", err)
+				}
+				if statClient != nil && rand.Int()%100000 < n {
+					statClient.Increment(allocGroup + ".e2eup")
+				}
+				free(btsCopy)
+			})
 		}
 	}()
 	go func() {
 		defer leftSock.Close()
 		defer rightSock.Close()
-		bts := make([]byte, 2048)
+		bts := malloc(2048)
 		for {
 			dl := time.Now().Add(time.Hour * 2)
 			rightSock.SetReadDeadline(dl)
@@ -119,18 +124,32 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 			leftSock.SetWriteDeadline(dl)
 			sid := parseSess(bts[:n])
 			if addri, ok := sessMap.Load(sid); ok {
-				if limiter.AllowN(time.Now(), n) {
-					_, e = leftSock.WriteTo(bts[:n], addri.(net.Addr))
-					if err != nil {
-						log.Println("cannot write:", err)
+				btsCopy := malloc(n)
+				copy(btsCopy, bts)
+				start := time.Now()
+				maybeDoJob(func() {
+					if limiter.AllowN(time.Now(), n) {
+						_, e = leftSock.WriteTo(btsCopy, addri.(net.Addr))
+						if err != nil {
+							log.Println("cannot write:", err)
+						}
+						free(btsCopy)
+						if statClient != nil {
+							inducedLatency := time.Since(start)
+							if rand.Int()%100000 < n {
+								statClient.Increment(allocGroup + ".e2edown")
+							}
+							if queueReportLimiter.Allow() {
+								statClient.Timing(allocGroup+".queuens", inducedLatency.Nanoseconds())
+							}
+						}
 					}
-				}
-			}
-			if statClient != nil && rand.Int()%100000 < n {
-				statClient.Increment(allocGroup + ".e2edown")
+				})
 			}
 		}
 	}()
 	//e2eMap.SetDefault(kee, leftRaw.LocalAddr().(*net.UDPAddr).Port)
 	return leftRaw.LocalAddr().(*net.UDPAddr).Port, nil
 }
+
+var queueReportLimiter = rate.NewLimiter(100, 1000)

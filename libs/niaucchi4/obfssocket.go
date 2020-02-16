@@ -8,7 +8,8 @@ import (
 	"sync"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru"
+	"github.com/hashicorp/golang-lru/simplelru"
+	"github.com/patrickmn/go-cache"
 )
 
 var doLogging = false
@@ -31,16 +32,16 @@ func (sa oAddr) String() string {
 type ObfsSocket struct {
 	cookie           []byte
 	cookieExceptions sync.Map
-	sscache          *lru.Cache
-	tunnels          *lru.Cache
-	pending          *lru.Cache
+	sscache          *simplelru.LRU
+	tunnels          *simplelru.LRU
+	pending          *simplelru.LRU
 	wire             net.PacketConn
 	wlock            sync.Mutex
 	rdbuf            [65536]byte
 }
 
-func newLRU() *lru.Cache {
-	l, e := lru.New(8192)
+func newLRU() *simplelru.LRU {
+	l, e := simplelru.NewLRU(8192, nil)
 	if e != nil {
 		panic(e)
 	}
@@ -121,9 +122,14 @@ func (os *ObfsSocket) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	return
 }
 
+var badHelloBlacklist = cache.New(time.Minute*5, time.Minute)
+
 func (os *ObfsSocket) hiddenReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	readBytes, addr, err := os.wire.ReadFrom(os.rdbuf[:])
 	if err != nil {
+		return
+	}
+	if _, ok := badHelloBlacklist.Get(addr.String()); ok {
 		return
 	}
 	os.wlock.Lock()
@@ -185,8 +191,11 @@ func (os *ObfsSocket) hiddenReadFrom(p []byte) (n int, addr net.Addr, err error)
 		if doLogging {
 			log.Println("N4: bad hello from", addr.String(), e.Error())
 		}
+		badHelloBlacklist.SetDefault(addr.String(), true)
 		return
 	}
+	os.tunnels.Add(addr.String(), ts)
+	os.sscache.Add(string(ts.ss), addr)
 	go func() {
 		os.wlock.Lock()
 		defer os.wlock.Unlock()
@@ -194,8 +203,6 @@ func (os *ObfsSocket) hiddenReadFrom(p []byte) (n int, addr net.Addr, err error)
 		if doLogging {
 			log.Println("N4: responded to a hello from", addr)
 		}
-		os.tunnels.Add(addr.String(), ts)
-		os.sscache.Add(string(ts.ss), addr)
 	}()
 	return
 }

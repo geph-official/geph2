@@ -2,7 +2,7 @@ package kcp
 
 import "log"
 
-const bicMultiplier = 1
+const bicMultiplier = 16
 
 func (kcp *KCP) bic_onloss(lost []uint32) {
 	maxRun := 1
