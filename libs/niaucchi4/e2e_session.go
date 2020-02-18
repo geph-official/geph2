@@ -61,7 +61,7 @@ type e2eSession struct {
 func newSession(sessid [16]byte) *e2eSession {
 	cache, _ := lru.New(128)
 	return &e2eSession{
-		dupRateLimit: rate.NewLimiter(10*1000, 10*1000),
+		dupRateLimit: rate.NewLimiter(3, 100),
 		recvDedup:    cache,
 		sendDedup:    newRtTracker(),
 		sessid:       sessid,
@@ -122,11 +122,12 @@ type e2ePacket struct {
 
 // LinkInfo describes info for a link.
 type LinkInfo struct {
-	RemoteIP string
-	RecvCnt  int
-	Ping     int
-	LossPct  float64
-	Score    float64
+	RemoteIP      string
+	RecvCnt       int
+	Ping          int
+	LossPct       float64
+	RecentLossPct float64
+	Score         float64
 }
 
 // DebugInfo dumps out info about all the links.
@@ -135,11 +136,12 @@ func (es *e2eSession) DebugInfo() (lii []LinkInfo) {
 	defer es.lock.Unlock()
 	for i, nfo := range es.info {
 		lii = append(lii, LinkInfo{
-			RemoteIP: strings.Split(es.remote[i].String(), ":")[0],
-			RecvCnt:  int(nfo.recvcnt),
-			Ping:     int(nfo.lastPing),
-			LossPct:  math.Max(0, 1.0-float64(nfo.recvcnt)/(1+float64(nfo.recvsn))),
-			Score:    nfo.getScore(),
+			RemoteIP:      strings.Split(es.remote[i].String(), ":")[0],
+			RecvCnt:       int(nfo.recvcnt),
+			Ping:          int(nfo.lastPing),
+			LossPct:       math.Max(0, 1.0-float64(nfo.recvcnt)/(1+float64(nfo.recvsn))),
+			RecentLossPct: math.Max(0, 1.0-float64(nfo.recvcntRecent)/(1+float64(nfo.recvsnRecent))),
+			Score:         nfo.getScore(),
 		})
 	}
 	return
@@ -164,7 +166,7 @@ func (es *e2eSession) processStats(pkt e2ePacket, remid int) {
 	recvd := binary.LittleEndian.Uint32(pkt.Body[:4])
 	total := binary.LittleEndian.Uint32(pkt.Body[4:])
 	loss := 1 - float64(recvd)/(float64(total)+1)
-	es.info[remid].remoteLoss = loss
+	es.info[remid].remoteLoss = es.info[remid].remoteLoss*0.9 + loss*0.1
 }
 
 // Input processes a packet through the e2e session state.
@@ -235,7 +237,7 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 	defer es.lock.Unlock()
 	now := time.Now()
 	send := func(rtd bool, remid int) {
-		if len(payload) > 1000 {
+		if len(payload) > 10000 {
 			bodyHash := highwayhash.Sum64(payload[256:], make([]byte, 32))
 			val := es.sendDedup.get(bodyHash)
 			if val >= 0 {
@@ -262,53 +264,53 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 	}
 	sendInfo := func(remid int) {
 		nfo := es.info[remid]
-		if nfo.recvsnRecent > 1000 {
-			// nfo.recvsnRecent /= 2
-			// nfo.recvcntRecent /= 2
+		if nfo.recvsnRecent > 1000 && now.Sub(nfo.checkTime).Seconds() > 5 {
+			nfo.recvsnRecent /= 2
+			nfo.recvcntRecent /= 2
+			nfo.checkTime = now
 		}
 		buf := make([]byte, 8)
 		binary.LittleEndian.PutUint32(buf[4:], nfo.recvsnRecent)
 		binary.LittleEndian.PutUint32(buf[:4], nfo.recvcntRecent)
-		//log.Println("sending feedback", nfo.recvsnRecent, nfo.recvcntRecent)
+		//log.Println("sending feedback", es.remote[remid], nfo.recvsnRecent, nfo.recvcntRecent)
 		payload = buf
 		send(false, remid)
 	}
 	// find the right destination
-	if es.dupRateLimit.AllowN(time.Now(), len(es.remote)*(len(payload)+50)) {
+	if es.dupRateLimit.AllowN(time.Now(), len(es.remote)) {
 		for remid := range es.remote {
 			send(false, remid)
 			defer sendInfo(remid)
 		}
-	} else {
-		remid := -1
-		if time.Since(es.lastSend).Seconds() > 0.2 {
-			lowPoint := 1e20
-			for i, li := range es.info {
-				if score := li.getScore(); score < lowPoint {
-					lowPoint = score
-					remid = i
-				}
-			}
-			// if doLogging {
-			// 	log.Println("N4: selected", es.remote[remid], "with score", es.info[remid].getScore())
-			// 	go func() {
-			// 		for remid, v := range es.DebugInfo() {
-			// 			log.Printf("%v %v %v/%v", v.RemoteIP, v.Ping,
-			// 				es.info[remid].rtxCount, es.info[remid].txCount)
-			// 		}
-			// 	}()
-			// }
-			if remid == -1 {
-				err = errors.New("cannot find any path")
-				return
-			}
-			es.lastSend = now
-		} else {
-			remid = es.lastRemid
-		}
-		es.lastRemid = remid
-		send(true, remid)
 	}
+	remid := -1
+	if time.Since(es.lastSend).Seconds() > 1 {
+		lowPoint := 1e20
+		for i, li := range es.info {
+			if score := li.getScore(); score < lowPoint {
+				lowPoint = score
+				remid = i
+			}
+		}
+		// if doLogging {
+		// 	log.Println("N4: selected", es.remote[remid], "with score", es.info[remid].getScore())
+		// 	go func() {
+		// 		for remid, v := range es.DebugInfo() {
+		// 			log.Printf("%v %v %v/%v", v.RemoteIP, v.Ping,
+		// 				es.info[remid].rtxCount, es.info[remid].txCount)
+		// 		}
+		// 	}()
+		// }
+		if remid == -1 {
+			err = errors.New("cannot find any path")
+			return
+		}
+		es.lastSend = now
+	} else {
+		remid = es.lastRemid
+	}
+	es.lastRemid = remid
+	send(true, remid)
 	return
 }
 

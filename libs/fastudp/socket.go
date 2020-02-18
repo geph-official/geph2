@@ -27,11 +27,11 @@ type Conn struct {
 
 // NewConn creates a new Conn.
 func NewConn(conn *net.UDPConn) net.PacketConn {
-	err := conn.SetWriteBuffer(262144)
+	err := conn.SetWriteBuffer(261244)
 	if err != nil {
 		panic(err)
 	}
-	err = conn.SetReadBuffer(262144)
+	err = conn.SetReadBuffer(261244)
 	if err != nil {
 		panic(err)
 	}

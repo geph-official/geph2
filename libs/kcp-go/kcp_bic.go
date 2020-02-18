@@ -1,8 +1,19 @@
 package kcp
 
-import "log"
+import (
+	"log"
+	"math"
+	"time"
+)
 
 const bicMultiplier = 16
+
+func (kcp *KCP) cubic_onloss(lost []uint32) {
+	kcp.wmax = kcp.cwnd
+	kcp.cwnd *= (2 - cubicB) / 2
+	kcp.lastLoss = time.Now()
+	log.Println("wmax at", int(kcp.cwnd))
+}
 
 func (kcp *KCP) bic_onloss(lost []uint32) {
 	maxRun := 1
@@ -23,7 +34,7 @@ func (kcp *KCP) bic_onloss(lost []uint32) {
 	// if maxRun < int(kcp.cwnd/20) || maxRun < 10 {
 	// 	return
 	// }
-	beta := 0.25 / bicMultiplier
+	beta := 0.15 / bicMultiplier
 	if kcp.cwnd < kcp.wmax {
 		kcp.wmax = kcp.cwnd * (2.0 - beta) / 2.0
 	} else {
@@ -32,11 +43,29 @@ func (kcp *KCP) bic_onloss(lost []uint32) {
 	kcp.cwnd = kcp.cwnd * (1.0 - beta)
 }
 
+const (
+	cubicC = 100
+	cubicB = 0.5
+)
+
+func (kcp *KCP) cubic_onack(acks int32) {
+	if doLogging {
+		log.Printf("CUBIC cwnd=%v // t=%.2f%%", int(kcp.cwnd),
+			100*float64(kcp.retrans)/float64(kcp.trans))
+	}
+	for i := int32(0); i < acks; i++ {
+		t := time.Since(kcp.lastLoss).Seconds()
+		K := math.Pow(kcp.wmax*cubicB/cubicC, 1.0/3.0)
+		kcp.cwnd = math.Min(cubicC*math.Pow(t-K, 3)+kcp.wmax, kcp.cwnd+1)
+	}
+}
+
 func (kcp *KCP) bic_onack(acks int32) {
 	if doLogging {
 		log.Printf("BIC cwnd=%v // t=%.2f%%", int(kcp.cwnd),
 			100*float64(kcp.retrans)/float64(kcp.trans))
 	}
+
 	// // TCP BIC
 	for i := 0; i < int(acks*bicMultiplier); i++ {
 		var bicinc float64

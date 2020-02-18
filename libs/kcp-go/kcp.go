@@ -193,9 +193,10 @@ type KCP struct {
 
 	isDead bool
 
-	wmax    float64
-	retrans uint64
-	trans   uint64
+	wmax     float64
+	lastLoss time.Time
+	retrans  uint64
+	trans    uint64
 
 	pacer rateLimiter
 
@@ -789,6 +790,8 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 			switch CongestionControl {
 			case "BIC":
 				kcp.bic_onack(acks)
+			case "CUBIC":
+				kcp.cubic_onack(acks)
 			case "VGS":
 				kcp.vgs_onack(acks)
 			case "LOL":
@@ -825,15 +828,15 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					// vibrate the gain up and down every 50 rtts
 					period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
 					if period%10 == 0 {
-						kcp.LOL.gain = 1.5
+						kcp.LOL.gain = 1.25
 					} else if period%10 == 1 {
-						kcp.LOL.gain = 0.5
+						kcp.LOL.gain = 0.75
 					} else {
 						kcp.LOL.gain = 1
 					}
-					if period%100 == 0 {
-						kcp.LOL.gain = 0.2
-					}
+					// if period%100 == 0 {
+					// 	kcp.LOL.gain = 0.2
+					// }
 					// if period%3 == 0 {
 					// 	kcp.LOL.gain = 1.5
 					// } else if period%3 == 1 {
@@ -1181,6 +1184,11 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			if sum > 0 {
 				kcp.bic_onloss(lostSn)
 			}
+		case "CUBIC":
+			// congestion control, https://tools.ietf.org/html/rfc5681
+			if sum > 0 {
+				kcp.cubic_onloss(lostSn)
+			}
 		case "LOL":
 			// if sum > 0 {
 			// 	kcp.DRE.maxAckRate *= 0.95
@@ -1199,13 +1207,13 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 					log.Printf("[%p] Loss-to-loss delivery rate: %vK @ %.2f%%", kcp, int(rate/1000), loss*100)
 				}
 				now := time.Now()
-				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.2 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
-					if doLogging {
-						log.Printf("[%p] ****** POLICE ******", kcp)
-					}
-					kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
-					kcp.DRE.policeTime = now
-				}
+				// if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.2 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
+				// 	if doLogging {
+				// 		log.Printf("[%p] ****** POLICE ******", kcp)
+				// 	}
+				// 	kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
+				// 	kcp.DRE.policeTime = now
+				// }
 				kcp.DRE.lastLossTime = now
 				kcp.DRE.lastLossDel = kcp.DRE.delivered
 				kcp.DRE.lastLossTrans = kcp.trans

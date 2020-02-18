@@ -23,11 +23,11 @@ func free(bts []byte) {
 var e2ejobs = make(chan func(), 100*1024)
 
 func maybeDoJob(f func()) {
-	// select {
-	// case e2ejobs <- f:
-	// default:
-	// }
-	f()
+	select {
+	case e2ejobs <- f:
+	default:
+	}
+	//f()
 }
 
 func init() {
