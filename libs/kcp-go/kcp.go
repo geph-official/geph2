@@ -520,7 +520,7 @@ func (kcp *KCP) update_ack(rtt int32) {
 	// if kcp.rx_rto < 500 {
 	// 	kcp.rx_rto = 500
 	// }
-	kcp.rx_rto += 1500
+	kcp.rx_rto += 300
 }
 
 func (kcp *KCP) shrink_buf() {
@@ -796,13 +796,13 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				kcp.vgs_onack(acks)
 			case "LOL":
 				bdp := kcp.bdp() / float64(kcp.mss)
-				targetCwnd := bdp*2 + 64
-				//targetCwnd := bdp * 2
+				targetCwnd := bdp*3 + 64
 				if targetCwnd > kcp.cwnd+float64(acks) {
-					kcp.cwnd += 64 * float64(acks) / kcp.cwnd
+					kcp.cwnd += math.Min(float64(acks), 32*float64(acks)/kcp.cwnd)
 				} else {
 					kcp.cwnd = targetCwnd
 				}
+				kcp.cwnd = targetCwnd
 				if kcp.cwnd < 16 {
 					kcp.cwnd = 16
 				}
@@ -827,10 +827,10 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				} else {
 					// vibrate the gain up and down every 50 rtts
 					period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
-					if period%10 == 0 {
-						kcp.LOL.gain = 1.25
-					} else if period%10 == 1 {
-						kcp.LOL.gain = 0.75
+					if period%5 == 0 {
+						kcp.LOL.gain = 1.5
+					} else if period%5 == 1 {
+						kcp.LOL.gain = 0.5
 					} else {
 						kcp.LOL.gain = 1
 					}
@@ -1190,9 +1190,9 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.cubic_onloss(lostSn)
 			}
 		case "LOL":
-			// if sum > 0 {
-			// 	kcp.DRE.maxAckRate *= 0.95
-			// }
+			if sum > 0 {
+				kcp.cwnd = math.Min(kcp.cwnd, kcp.bdp()/float64(kcp.mss))
+			}
 		case "VGS":
 		}
 		if sum > 0 {
@@ -1207,13 +1207,13 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 					log.Printf("[%p] Loss-to-loss delivery rate: %vK @ %.2f%%", kcp, int(rate/1000), loss*100)
 				}
 				now := time.Now()
-				// if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.2 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
-				// 	if doLogging {
-				// 		log.Printf("[%p] ****** POLICE ******", kcp)
-				// 	}
-				// 	kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
-				// 	kcp.DRE.policeTime = now
-				// }
+				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.2 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
+					if doLogging {
+						log.Printf("[%p] ****** POLICE ******", kcp)
+					}
+					kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
+					kcp.DRE.policeTime = now
+				}
 				kcp.DRE.lastLossTime = now
 				kcp.DRE.lastLossDel = kcp.DRE.delivered
 				kcp.DRE.lastLossTrans = kcp.trans

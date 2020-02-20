@@ -29,7 +29,7 @@ type ebMapVal struct {
 	Cookie []byte
 }
 
-var ebCache = cache.New(time.Second*30, time.Minute)
+var ebCache = cache.New(time.Minute*30, time.Minute)
 
 var b2eblk sync.Mutex
 

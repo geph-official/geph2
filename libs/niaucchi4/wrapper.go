@@ -122,7 +122,7 @@ func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 	now := time.Now()
 	expire := w.getExpire(addr)
 	if now.After(expire) {
-		w.setExpire(addr, now.Add(time.Second*5+time.Millisecond*time.Duration(rand.ExpFloat64()*5000)))
+		w.setExpire(addr, now.Add(time.Second*30+time.Millisecond*time.Duration(rand.ExpFloat64()*30000)))
 		zeroTime := time.Time{}
 		if expire != zeroTime {
 			w.wmlock.Lock()

@@ -20,7 +20,8 @@ func free(bts []byte) {
 	bufPool.Put(bts[:2048])
 }
 
-var e2ejobs = make(chan func(), 100*1024)
+// ~ 1.4 MB buffer. This gives us ample buffer space to deal with CPU spikes and avoid packet loss.
+var e2ejobs = make(chan func(), 1024*1024)
 
 func maybeDoJob(f func()) {
 	select {

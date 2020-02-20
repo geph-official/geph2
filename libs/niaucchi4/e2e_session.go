@@ -166,7 +166,7 @@ func (es *e2eSession) processStats(pkt e2ePacket, remid int) {
 	recvd := binary.LittleEndian.Uint32(pkt.Body[:4])
 	total := binary.LittleEndian.Uint32(pkt.Body[4:])
 	loss := 1 - float64(recvd)/(float64(total)+1)
-	es.info[remid].remoteLoss = es.info[remid].remoteLoss*0.9 + loss*0.1
+	es.info[remid].remoteLoss = loss
 }
 
 // Input processes a packet through the e2e session state.
@@ -223,7 +223,7 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 		pingSample := now.Sub(nfo.lastProbeTime).Milliseconds()
 		if pingSample < nfo.lastPing {
 			nfo.lastPing = pingSample
-		} else {
+		} else if pingSample < nfo.lastPing*2 { // filter out absurd values
 			nfo.lastPing = 31*nfo.lastPing/32 + pingSample/32
 		}
 		nfo.lastProbeSn = nfo.sendsn
@@ -284,7 +284,7 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 		}
 	}
 	remid := -1
-	if time.Since(es.lastSend).Seconds() > 1 {
+	if time.Since(es.lastSend).Seconds() > 1 || true {
 		lowPoint := 1e20
 		for i, li := range es.info {
 			if score := li.getScore(); score < lowPoint {

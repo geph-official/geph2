@@ -62,13 +62,11 @@ func handleLogs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Access-Control-Allow-Origin", "*")
 	var bts []byte
 	useStats(func(sc *stats) {
-		var err error
-		bts, err = json.Marshal(sc.LogLines)
-		if err != nil {
-			panic(err)
+		for _, line := range sc.LogLines {
+			fmt.Fprintln(w, line)
 		}
 	})
-	w.Header().Add("content-type", "application/json")
+	w.Header().Add("content-type", "text/plain")
 	w.Write(bts)
 }
 

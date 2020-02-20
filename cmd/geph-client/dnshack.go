@@ -13,5 +13,5 @@ func setDefaultNS2(addrs []string) {
 }
 
 func init() {
-	setDefaultNS2([]string{"1.1.1.1:53", "1.0.0.1:53", "8.8.8.8:53", "8.8.4.4:53"})
+	setDefaultNS2([]string{"74.82.42.42:53", "1.0.0.1:53", "8.8.8.8:53", "8.8.4.4:53"})
 }

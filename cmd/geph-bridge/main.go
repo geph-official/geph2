@@ -99,6 +99,7 @@ func listenLoop(deadline time.Duration) {
 		end := time.Now().Add(deadline)
 		for deadline < 0 || time.Now().Before(end) {
 			myAddr := fmt.Sprintf("%v:%v", guessIP(), udpsock.LocalAddr().(*net.UDPAddr).Port)
+			log.Println(myAddr)
 			e := bclient.AddBridge(binderKey, cookie, myAddr, allocGroup)
 			if e != nil {
 				log.Println("error adding bridge:", e)
@@ -111,6 +112,7 @@ func listenLoop(deadline time.Duration) {
 		if err != nil {
 			panic(err)
 		}
+		log.Println("Listen on", listener.Addr())
 		if deadline > 0 {
 			go func() {
 				time.Sleep(deadline)

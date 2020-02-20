@@ -686,7 +686,9 @@ func (s *UDPSession) output(buf []byte) {
 		loss := s.lossReporter.UnderlyingLoss(s.remote)
 		fecRate = loss2fecfrac(loss)
 		if fecRate != s.lastFecRate {
-			log.Println("fec rate is", fecRate)
+			if doLogging {
+				log.Println("fec rate is", fecRate, loss)
+			}
 			s.lastFecRate = fecRate
 		}
 	}

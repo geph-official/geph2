@@ -13,7 +13,7 @@ import (
 
 	statsd "github.com/etsy/statsd/examples/go"
 	"github.com/geph-official/geph2/libs/bdclient"
-	"github.com/geph-official/geph2/libs/fastudp"
+	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/patrickmn/go-cache"
 	log "github.com/sirupsen/logrus"
@@ -55,6 +55,7 @@ func main() {
 	}()
 
 	// load the key
+	kcp.CongestionControl = "LOL"
 	loadKey()
 	if singleHop != "" {
 		mainSingleHop()
@@ -98,7 +99,7 @@ func main() {
 	}
 	udpsock.(*net.UDPConn).SetWriteBuffer(100 * 1024 * 1024)
 	udpsock.(*net.UDPConn).SetReadBuffer(100 * 1024 * 1024)
-	obfs := niaucchi4.ObfsListen(make([]byte, 32), fastudp.NewConn(udpsock.(*net.UDPConn)))
+	obfs := niaucchi4.ObfsListen(make([]byte, 32), udpsock)
 	kcpListener := niaucchi4.ListenKCP(obfs)
 	log.Infoln("Listen on UDP 2389")
 	for {
@@ -106,6 +107,10 @@ func main() {
 		if err != nil {
 			continue
 		}
+		rc.SetWindowSize(10000, 1000)
+		rc.SetNoDelay(0, 10, 32, 0)
+		rc.SetStreamMode(true)
+		rc.SetMtu(1300)
 		go handle(rc)
 	}
 }
@@ -127,7 +132,7 @@ func e2elisten() {
 			continue
 		}
 		rc.SetWindowSize(10000, 1000)
-		rc.SetNoDelay(0, 50, 3, 0)
+		rc.SetNoDelay(0, 10, 32, 0)
 		rc.SetStreamMode(true)
 		rc.SetMtu(1300)
 		go handle(rc)

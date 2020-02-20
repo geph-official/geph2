@@ -106,6 +106,7 @@ func handleAddBridge(w http.ResponseWriter, r *http.Request) {
 	// first get the cookie
 	cookie, err := hex.DecodeString(r.FormValue("cookie"))
 	if err != nil {
+		log.Println("can't add bridge (bad cookie)")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -113,10 +114,12 @@ func handleAddBridge(w http.ResponseWriter, r *http.Request) {
 	_, pwd, _ := r.BasicAuth()
 	ok, err := checkBridgeKey(pwd)
 	if err != nil {
+		log.Println("can't add bridge (bad DB)")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	if !ok {
+		log.Printf("can't add bridge (bad bridge key %v)", pwd)
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -127,6 +130,7 @@ func handleAddBridge(w http.ResponseWriter, r *http.Request) {
 		AllocGroup: r.FormValue("allocGroup"),
 	}
 	if !testBridge(bi) {
+		log.Println("can't add bridge (bad bridge test)")
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -137,11 +141,13 @@ func handleAddBridge(w http.ResponseWriter, r *http.Request) {
 func testBridge(bi bridgeInfo) bool {
 	rawconn, err := net.Dial("tcp", bi.Host)
 	if err != nil {
+		log.Println("bridge test failed for", bi.Host, err)
 		return false
 	}
 	defer rawconn.Close()
 	realconn, err := cshirt2.Client(bi.Cookie, rawconn)
 	if err != nil {
+		log.Println("bridge test failed for", bi.Host, err)
 		return false
 	}
 	defer realconn.Close()
