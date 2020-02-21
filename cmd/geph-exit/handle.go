@@ -197,12 +197,12 @@ func handle(rawClient net.Conn) {
 				dialStart := time.Now()
 				host := command[1]
 				var remote net.Conn
-				for _, ntype := range []string{"tcp6", "tcp4"} {
+				for _, ntype := range []string{"tcp4", "tcp6"} {
 					tcpAddr, err := net.ResolveTCPAddr(ntype, host)
 					if err != nil || isBlack(tcpAddr) {
 						continue
 					}
-					remote, err = net.DialTimeout("tcp", tcpAddr.String(), time.Second*30)
+					remote, err = net.DialTimeout(ntype, tcpAddr.String(), time.Second*30)
 					if err != nil {
 						continue
 					}
