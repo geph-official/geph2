@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"log"
 	"math"
+	mrand "math/rand"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -226,13 +227,14 @@ type KCP struct {
 	}
 
 	LOL struct {
-		filledPipe   bool
-		fullBwCount  int
-		fullBw       float64
-		lastFillTime time.Time
-		gain         float64
-		slack        float64
-		lossRate     float64
+		filledPipe    bool
+		fullBwCount   int
+		fullBw        float64
+		lastFillTime  time.Time
+		gain          float64
+		slack         float64
+		lossRate      float64
+		bdpMultiplier float64
 
 		devi float64
 	}
@@ -290,6 +292,7 @@ func NewKCP(conv uint32, output output_callback) *KCP {
 	kcp.DRE.ppDelivered = make(map[uint32]float64)
 	kcp.DRE.ppAppLimited = make(map[uint32]bool)
 	kcp.LOL.gain = 1
+	kcp.LOL.bdpMultiplier = 3
 	kcp.quiescent = QuiescentMax
 	kcp.fecRate = 0
 	if CongestionControl == "BBR" {
@@ -411,6 +414,10 @@ func (kcp *KCP) Recv(buffer []byte) (n int) {
 		// ready to send back IKCP_CMD_WINS in ikcp_flush
 		// tell remote my window size
 		kcp.probe |= IKCP_ASK_TELL
+	}
+
+	if kcp.rcv_wnd < 10000 && mrand.Int()%100 == 0 {
+		kcp.rcv_wnd++
 	}
 	return
 }
@@ -796,7 +803,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				kcp.vgs_onack(acks)
 			case "LOL":
 				bdp := kcp.bdp() / float64(kcp.mss)
-				targetCwnd := bdp*3 + 64
+				targetCwnd := bdp*kcp.LOL.bdpMultiplier + 64
 				if targetCwnd > kcp.cwnd+float64(acks) {
 					kcp.cwnd += math.Min(float64(acks), 32*float64(acks)/kcp.cwnd)
 				} else {
@@ -826,14 +833,15 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					}
 				} else {
 					// vibrate the gain up and down every 50 rtts
-					period := int(float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt)
-					if period%5 == 0 {
-						kcp.LOL.gain = 1.5
-					} else if period%5 == 1 {
-						kcp.LOL.gain = 0.5
-					} else {
-						kcp.LOL.gain = 1
-					}
+					period := float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt
+					kcp.LOL.gain = math.Sin(period*(2*math.Pi)/10)*0.25 + 1
+					// if period%2 == 0 {
+					// 	kcp.LOL.gain = 1.25
+					// } else if period%2 == 1 {
+					// 	kcp.LOL.gain = 0.75
+					// } else {
+					// 	kcp.LOL.gain = 1
+					// }
 					// if period%100 == 0 {
 					// 	kcp.LOL.gain = 0.2
 					// }
@@ -864,7 +872,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 		}
 	}
 
-	if len(kcp.acklist) >= 8 || (ackNoDelay && len(kcp.acklist) > 0) { // ack immediately
+	if len(kcp.acklist) >= 16 || (ackNoDelay && len(kcp.acklist) > 0) { // ack immediately
 		kcp.flush(true)
 	}
 	return 0
@@ -1190,9 +1198,9 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.cubic_onloss(lostSn)
 			}
 		case "LOL":
-			if sum > 0 {
-				kcp.cwnd = math.Min(kcp.cwnd, kcp.bdp()/float64(kcp.mss))
-			}
+			// if sum > 0 {
+			// 	kcp.cwnd = math.Min(kcp.cwnd, kcp.bdp()/float64(kcp.mss))
+			// }
 		case "VGS":
 		}
 		if sum > 0 {
@@ -1207,12 +1215,21 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 					log.Printf("[%p] Loss-to-loss delivery rate: %vK @ %.2f%%", kcp, int(rate/1000), loss*100)
 				}
 				now := time.Now()
+				if loss > 0.1 {
+					kcp.LOL.bdpMultiplier = kcp.LOL.bdpMultiplier*0.7 + 0.3
+				}
+				if loss < 0.05 {
+					kcp.LOL.bdpMultiplier = kcp.LOL.bdpMultiplier*0.9 + 0.1*3
+				}
+				if doLogging {
+					log.Println("bdpMultiplier =>", kcp.LOL.bdpMultiplier)
+				}
 				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.2 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
-					if doLogging {
-						log.Printf("[%p] ****** POLICE ******", kcp)
-					}
-					kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
-					kcp.DRE.policeTime = now
+					// if doLogging {
+					// 	log.Printf("[%p] ****** POLICE ******", kcp)
+					// }
+					// kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
+					// kcp.DRE.policeTime = now
 				}
 				kcp.DRE.lastLossTime = now
 				kcp.DRE.lastLossDel = kcp.DRE.delivered

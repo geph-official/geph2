@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"runtime"
 	"sync"
 	"time"
 
 	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/niaucchi4"
+	log "github.com/sirupsen/logrus"
 )
 
 type stats struct {
@@ -36,6 +38,12 @@ func useStats(f func(sc *stats)) {
 	statsCollector.lock.Lock()
 	defer statsCollector.lock.Unlock()
 	f(statsCollector)
+}
+
+func handleKill(w http.ResponseWriter, r *http.Request) {
+	log.Println("dying on command")
+	time.Sleep(time.Millisecond * 100)
+	os.Exit(0)
 }
 
 func handleStats(w http.ResponseWriter, r *http.Request) {

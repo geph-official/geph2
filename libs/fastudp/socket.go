@@ -27,14 +27,14 @@ type Conn struct {
 
 // NewConn creates a new Conn.
 func NewConn(conn *net.UDPConn) net.PacketConn {
-	err := conn.SetWriteBuffer(261244)
-	if err != nil {
-		panic(err)
-	}
-	err = conn.SetReadBuffer(261244)
-	if err != nil {
-		panic(err)
-	}
+	// err := conn.SetWriteBuffer(261244)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// err = conn.SetReadBuffer(261244)
+	// if err != nil {
+	// 	panic(err)
+	// }
 	//return conn
 	if runtime.GOOS != "linux" {
 		return conn

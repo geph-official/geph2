@@ -122,7 +122,7 @@ func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 	now := time.Now()
 	expire := w.getExpire(addr)
 	if now.After(expire) {
-		w.setExpire(addr, now.Add(time.Second*30+time.Millisecond*time.Duration(rand.ExpFloat64()*30000)))
+		w.setExpire(addr, now.Add(time.Second+time.Millisecond*time.Duration(rand.ExpFloat64()*1000)))
 		zeroTime := time.Time{}
 		if expire != zeroTime {
 			w.wmlock.Lock()
@@ -131,7 +131,7 @@ func (w *Wrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
 			}
 			w.wmlock.Unlock()
 			go func() {
-				time.Sleep(time.Second * 10)
+				time.Sleep(time.Second * 60)
 				decrOpenWires()
 				wire.Close()
 			}()

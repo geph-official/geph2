@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
@@ -95,6 +96,8 @@ restart:
 }
 
 func main() {
+	debug.SetGCPercent(30)
+	runtime.GOMAXPROCS(1)
 	mrand.Seed(time.Now().UnixNano())
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp: false,
@@ -172,6 +175,11 @@ func main() {
 		}
 	}()
 
+	if dnsAddr != "" {
+		go doDNS()
+	}
+	go listenStats()
+
 	log.Println("GephNG version", GitVersion)
 	// special actions
 	if loginCheck {
@@ -231,11 +239,6 @@ func main() {
 		}
 	}
 	sWrap = newSmuxWrapper()
-
-	if dnsAddr != "" {
-		go doDNS()
-	}
-	go listenStats()
 
 	// confirm we are connected
 	func() {

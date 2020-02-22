@@ -155,7 +155,10 @@ func newUDPSession(conv uint32, dataShards, parityShards int, l *Listener, conn 
 	sess.remote = remote
 	sess.conn = conn
 	sess.l = l
-	sess.updater.init()
+	sess.updater.init(func() {
+		//log.Println("receive window is", sess.kcp.rcv_wnd)
+		sess.kcp.rcv_wnd = sess.kcp.rcv_wnd * 9 / 10
+	})
 	go sess.updater.updateTask()
 	sess.recvbuf = make([]byte, mtuLimit)
 

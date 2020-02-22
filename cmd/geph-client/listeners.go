@@ -25,6 +25,7 @@ func listenStats() {
 		WriteTimeout: time.Minute,
 	}
 	statsMux.HandleFunc("/proxy.pac", handleProxyPac)
+	statsMux.HandleFunc("/kill", handleKill)
 	statsMux.HandleFunc("/", handleStats)
 	statsMux.HandleFunc("/logs", handleLogs)
 	statsMux.HandleFunc("/stacktrace", handleStacktrace)

@@ -38,6 +38,7 @@ var statClient *statsd.StatsdClient
 var ipcache = cache.New(time.Hour, time.Hour)
 
 func main() {
+
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp: false,
 	})
@@ -108,7 +109,7 @@ func main() {
 			continue
 		}
 		rc.SetWindowSize(10000, 1000)
-		rc.SetNoDelay(0, 10, 32, 0)
+		rc.SetNoDelay(0, 20, 3, 0)
 		rc.SetStreamMode(true)
 		rc.SetMtu(1300)
 		go handle(rc)
@@ -132,7 +133,7 @@ func e2elisten() {
 			continue
 		}
 		rc.SetWindowSize(10000, 1000)
-		rc.SetNoDelay(0, 10, 32, 0)
+		rc.SetNoDelay(0, 20, 3, 0)
 		rc.SetStreamMode(true)
 		rc.SetMtu(1300)
 		go handle(rc)

@@ -82,7 +82,7 @@ func handle(rawClient net.Conn) {
 	ssSignature := ed25519.Sign(seckey, tssClient.SharedSec())
 	rlp.Encode(tssClient, &ssSignature)
 	var limiter *rate.Limiter
-	limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), speedLimit*1024*10)
+	limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), speedLimit*1024)
 	// "generic" stuff
 	var acceptStream func() (net.Conn, error)
 	if singleHop == "" {
