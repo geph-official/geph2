@@ -688,7 +688,7 @@ func (s *UDPSession) output(buf []byte) {
 		// }
 	}
 	for k := range ecc {
-		if float64(k) < float64(len(ecc))*fecRate || true {
+		if float64(k) < float64(len(ecc))*fecRate {
 			bts := xmitBuf.Get().([]byte)[:len(ecc[k])]
 			copy(bts, ecc[k])
 			msg.Buffers = [][]byte{bts}
