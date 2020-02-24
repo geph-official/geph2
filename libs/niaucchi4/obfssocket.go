@@ -41,7 +41,7 @@ type ObfsSocket struct {
 }
 
 func newLRU() *simplelru.LRU {
-	l, e := simplelru.NewLRU(8192, nil)
+	l, e := simplelru.NewLRU(65536, nil)
 	if e != nil {
 		panic(e)
 	}

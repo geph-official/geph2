@@ -29,7 +29,7 @@ func newRtTracker() *rtTracker {
 func (rtt *rtTracker) add(k uint64, v int) {
 	rtt.tab[k] = v
 	rtt.queue = append(rtt.queue, k)
-	if len(rtt.queue) > 10000 {
+	if len(rtt.queue) > 1000 {
 		oldest := rtt.queue[0]
 		rtt.queue = rtt.queue[1:]
 		delete(rtt.tab, oldest)

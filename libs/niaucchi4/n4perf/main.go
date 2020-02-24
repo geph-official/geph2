@@ -58,13 +58,13 @@ func mainClient(dialto string) {
 	e2e := niaucchi4.NewE2EConn(niaucchi4.ObfsListen(nil, udpsock))
 	var sid niaucchi4.SessionAddr
 	e2e.SetSessPath(sid, servAddr)
-	kcpremote, err := kcp.NewConn2(sid, nil, 16, 16, e2e)
+	kcpremote, err := kcp.NewConn2(sid, nil, 0, 0, e2e)
 	if err != nil {
 		panic(err)
 	}
 	defer kcpremote.Close()
 	kcpremote.SetWindowSize(10000, 10000)
-	kcpremote.SetNoDelay(0, 20, 3, 0)
+	kcpremote.SetNoDelay(0, 10, 32, 0)
 	kcpremote.SetStreamMode(true)
 	kcpremote.SetMtu(1200)
 	kcpremote.Write([]byte("HELLO"))
@@ -116,7 +116,7 @@ func mainServer(listen string, klimit int) {
 		}
 		log.Println("Accepted kclient from", kclient.RemoteAddr())
 		kclient.SetWindowSize(10000, 10000)
-		kclient.SetNoDelay(0, 20, 3, 0)
+		kclient.SetNoDelay(0, 10, 32, 0)
 		kclient.SetStreamMode(true)
 		kclient.SetMtu(1200)
 		go func() {

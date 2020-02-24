@@ -527,7 +527,7 @@ func (kcp *KCP) update_ack(rtt int32) {
 	// if kcp.rx_rto < 500 {
 	// 	kcp.rx_rto = 500
 	// }
-	kcp.rx_rto += 300
+	kcp.rx_rto += 1500
 }
 
 func (kcp *KCP) shrink_buf() {
@@ -1215,15 +1215,15 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 					log.Printf("[%p] Loss-to-loss delivery rate: %vK @ %.2f%%", kcp, int(rate/1000), loss*100)
 				}
 				now := time.Now()
-				if loss > 0.1 {
-					kcp.LOL.bdpMultiplier = kcp.LOL.bdpMultiplier*0.7 + 0.3
-				}
-				if loss < 0.05 {
-					kcp.LOL.bdpMultiplier = kcp.LOL.bdpMultiplier*0.9 + 0.1*3
-				}
-				if doLogging {
-					log.Println("bdpMultiplier =>", kcp.LOL.bdpMultiplier)
-				}
+				// if loss > 0.1 {
+				// 	kcp.LOL.bdpMultiplier = kcp.LOL.bdpMultiplier*0.7 + 0.3
+				// }
+				// if loss < 0.05 {
+				// 	kcp.LOL.bdpMultiplier = kcp.LOL.bdpMultiplier*0.9 + 0.1*3
+				// }
+				// if doLogging {
+				// 	log.Println("bdpMultiplier =>", kcp.LOL.bdpMultiplier)
+				// }
 				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.2 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
 					// if doLogging {
 					// 	log.Printf("[%p] ****** POLICE ******", kcp)
