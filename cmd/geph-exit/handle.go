@@ -139,8 +139,8 @@ func handle(rawClient net.Conn) {
 		// create smux context
 		muxSrv, err := smux.Server(tssClient, &smux.Config{
 			Version:           2,
-			KeepAliveInterval: time.Minute * 10,
-			KeepAliveTimeout:  time.Minute * 40,
+			KeepAliveInterval: time.Minute * 2,
+			KeepAliveTimeout:  time.Minute * 20,
 			MaxFrameSize:      32768,
 			MaxReceiveBuffer:  100 * 1024 * 1024,
 			MaxStreamBuffer:   100 * 1024 * 1024,

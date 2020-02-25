@@ -39,7 +39,7 @@ const (
 	IKCP_PROBE_LIMIT = 120000 // up to 120 secs to probe window
 )
 
-var QuiescentMax = 100
+var QuiescentMax = 1
 
 var CongestionControl = "LOL"
 
@@ -149,7 +149,7 @@ func (seg *segment) encode(ptr []byte) []byte {
 	return ptr
 }
 
-const maxSpeed = 1000 * 1000 * 100
+const maxSpeed = 1000 * 1000 * 1000
 
 type rateLimiter struct {
 	limiter *rate.Limiter
@@ -159,7 +159,7 @@ type rateLimiter struct {
 
 func (rl *rateLimiter) fixLimiter(speed float64) {
 	if rl.limiter == nil {
-		rl.limiter = rate.NewLimiter(maxSpeed, maxSpeed/10)
+		rl.limiter = rate.NewLimiter(maxSpeed, maxSpeed/20)
 	}
 }
 
@@ -923,9 +923,9 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 	var busy bool
 	defer func() {
 		if !busy {
-			kcp.LOL.filledPipe = false
-			kcp.LOL.fullBwCount = 0
-			kcp.LOL.fullBw = 0
+			// kcp.LOL.filledPipe = false
+			// kcp.LOL.fullBwCount = 0
+			// kcp.LOL.fullBw = 0
 			kcp.quiescent--
 			if kcp.quiescent <= 0 {
 				kcp.quiescent = 0
@@ -1126,10 +1126,10 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			// } else {
 			// 	segment.rto += kcp.rx_rto / 2
 			// }
-			segment.rto += segment.rto / 2
+			segment.rto += segment.rto / 4
 			segment.fastack = 0
 			segment.resendts = current + segment.rto
-			if segment.rto > IKCP_RTO_MAX {
+			if segment.rto > IKCP_RTO_MAX*4 {
 				if doLogging {
 					log.Printf("[%p] self-destruct due to far too long RTO", kcp)
 				}

@@ -27,8 +27,8 @@ func DialKCP(addr string, cookie []byte) (conn net.Conn, err error) {
 		socket.Close()
 		return
 	}
-	kcpConn.SetWindowSize(1000, 10000)
-	kcpConn.SetNoDelay(0, 10, 32, 0)
+	kcpConn.SetWindowSize(10000, 10000)
+	kcpConn.SetNoDelay(0, 100, 32, 0)
 	kcpConn.SetStreamMode(true)
 	kcpConn.SetMtu(1300)
 	conn = kcpConn
@@ -59,8 +59,8 @@ func (l *KCPListener) Accept() (c *kcp.UDPSession, err error) {
 	if err != nil {
 		return
 	}
-	kc.SetWindowSize(10000, 1000)
-	kc.SetNoDelay(0, 10, 32, 0)
+	kc.SetWindowSize(10000, 10000)
+	kc.SetNoDelay(0, 100, 32, 0)
 	kc.SetMtu(1300)
 	c = kc
 	return
