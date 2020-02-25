@@ -126,8 +126,8 @@ func getMultipath(bridges []bdclient.BridgeInfo, legacy bool) (conn net.Conn, er
 		if err != nil {
 			panic(err)
 		}
-		us.(*net.UDPConn).SetReadBuffer(10 * 1024 * 1024)
-		us.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
+		// us.(*net.UDPConn).SetReadBuffer(10 * 1024 * 1024)
+		// us.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
 		return us
 	})
 	cookie := make([]byte, 32)
