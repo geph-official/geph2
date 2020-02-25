@@ -47,6 +47,7 @@ func isBlack(addr *net.TCPAddr) bool {
 }
 
 var sessCount uint64
+var tunnCount uint64
 
 func init() {
 	go func() {
@@ -55,6 +56,9 @@ func init() {
 			if statClient != nil {
 				statClient.Send(map[string]string{
 					hostname + ".sessionCount": fmt.Sprintf("%v|g", atomic.LoadUint64(&sessCount)),
+				}, 1)
+				statClient.Send(map[string]string{
+					hostname + ".tunnelCount": fmt.Sprintf("%v|g", atomic.LoadUint64(&tunnCount)),
 				}, 1)
 			}
 		}
@@ -176,6 +180,8 @@ func handle(rawClient net.Conn) {
 		}
 		go func() {
 			defer soxclient.Close()
+			atomic.AddUint64(&tunnCount, 1)
+			defer atomic.AddUint64(&tunnCount, ^uint64(0))
 			soxclient.SetDeadline(time.Now().Add(time.Minute))
 			var command []string
 			err = rlp.Decode(&io.LimitedReader{R: soxclient, N: 1000}, &command)
@@ -186,7 +192,7 @@ func handle(rawClient net.Conn) {
 				return
 			}
 			soxclient.SetDeadline(time.Time{})
-			log.Debugf("[%v] cmd %v", rawClient.RemoteAddr(), command)
+			log.Debugf("<%v> cmd %v", atomic.LoadUint64(&tunnCount), command)
 			// match command
 			switch command[0] {
 			case "proxy":
@@ -211,6 +217,10 @@ func handle(rawClient net.Conn) {
 				if remote == nil {
 					return
 				}
+				regConn(remote)
+				defer func() {
+					log.Debugf("<%v> cmd %v closed in %v", atomic.LoadUint64(&tunnCount), command, time.Since(dialStart))
+				}()
 				// measure dial latency
 				dialLatency := time.Since(dialStart)
 				if statClient != nil && singleHop == "" {
@@ -220,10 +230,9 @@ func handle(rawClient net.Conn) {
 						statClient.Timing(hostname+".connLifetime", dialLatency.Milliseconds())
 					}()
 				}
-
-				remote.SetDeadline(time.Now().Add(time.Hour))
 				defer remote.Close()
 				onPacket := func(l int) {
+					regConn(remote)
 					if statClient != nil && singleHop == "" {
 						before := atomic.LoadUint64(&counter)
 						atomic.AddUint64(&counter, uint64(l))
@@ -236,9 +245,9 @@ func handle(rawClient net.Conn) {
 				go func() {
 					defer remote.Close()
 					defer soxclient.Close()
-					cwl.CopyWithLimit(remote, soxclient, limiter, onPacket)
+					cwl.CopyWithLimit(remote, soxclient, limiter, onPacket, time.Hour)
 				}()
-				cwl.CopyWithLimit(soxclient, remote, limiter, onPacket)
+				cwl.CopyWithLimit(soxclient, remote, limiter, onPacket, time.Hour)
 			case "ip":
 				var ip string
 				if ipi, ok := ipcache.Get("ip"); ok {

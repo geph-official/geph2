@@ -141,14 +141,14 @@ func listenSocks() {
 					useStats(func(sc *stats) {
 						sc.UpBytes += uint64(n)
 					})
-				})
+				}, time.Hour)
 			}()
 			cwl.CopyWithLimit(cl, remote,
 				downLimit, func(n int) {
 					useStats(func(sc *stats) {
 						sc.DownBytes += uint64(n)
 					})
-				})
+				}, time.Hour)
 		}()
 	}
 }

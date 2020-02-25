@@ -90,6 +90,9 @@ type e2eLinkInfo struct {
 	lastProbeTime time.Time
 	lastProbeSn   uint64
 	lastPing      int64
+	lastPingTime  time.Time
+
+	lastRecvTime time.Time
 }
 
 func (el *e2eLinkInfo) getScore() float64 {
@@ -105,11 +108,7 @@ func (el *e2eLinkInfo) getScore() float64 {
 			el.checkTime = now
 		}
 	}
-	isProbing := el.sendsn > el.lastProbeSn
-	factor := float64(el.lastPing)
-	if isProbing {
-		factor = math.Max(float64(el.lastPing), float64(time.Since(el.lastProbeTime).Milliseconds()))
-	}
+	factor := float64(el.lastPing) + math.Max(0, time.Since(el.lastRecvTime).Seconds()*1000-3000)
 	loss := float64(el.rtxCount) / float64(el.txCount+1000)
 	if el.remoteLoss > 0.001 {
 		loss = el.remoteLoss
@@ -165,7 +164,7 @@ func (es *e2eSession) AddPath(host net.Addr) {
 		log.Printf("N4: [%p] adding new path %v", es, host)
 	}
 	es.remote = append(es.remote, host)
-	es.info = append(es.info, &e2eLinkInfo{lastPing: 10000000})
+	es.info = append(es.info, &e2eLinkInfo{lastPing: 10000000, lastRecvTime: time.Now()})
 }
 
 func (es *e2eSession) processStats(pkt e2ePacket, remid int) {
@@ -224,17 +223,17 @@ func (es *e2eSession) Input(pkt e2ePacket, source net.Addr) {
 		es.processStats(pkt, remid)
 	}
 	nfo := es.info[remid]
-	if nfo.acksn > nfo.lastProbeSn {
-		now := time.Now()
+	now := time.Now()
+	if nfo.acksn > nfo.lastProbeSn && nfo.acksn > 10 {
 		pingSample := now.Sub(nfo.lastProbeTime).Milliseconds()
-		if pingSample < nfo.lastPing {
+		if pingSample < nfo.lastPing || now.Sub(nfo.lastPingTime).Seconds() > 60 {
 			nfo.lastPing = pingSample
-		} else if pingSample < nfo.lastPing*2 { // filter out absurd values
-			nfo.lastPing = 31*nfo.lastPing/32 + pingSample/32
+			nfo.lastPingTime = now
 		}
 		nfo.lastProbeSn = nfo.sendsn
 		nfo.lastProbeTime = now
 	}
+	nfo.lastRecvTime = now
 }
 
 // Send sends a packet. It returns instructions to where the packet should be sent etc
@@ -298,9 +297,9 @@ func (es *e2eSession) Send(payload []byte, sendCallback func(e2ePacket, net.Addr
 	}
 	remid := -1
 	if time.Since(es.lastSend).Seconds() > 1 {
-		lowPoint := 1e20
+		lowPoint := -1.0
 		for i, li := range es.info {
-			if score := li.getScore(); score < lowPoint {
+			if score := li.getScore(); score < lowPoint || lowPoint < 0 {
 				lowPoint = score
 				remid = i
 			}

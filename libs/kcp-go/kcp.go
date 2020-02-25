@@ -1225,11 +1225,11 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				// 	log.Println("bdpMultiplier =>", kcp.LOL.bdpMultiplier)
 				// }
 				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.2 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
-					// if doLogging {
-					// 	log.Printf("[%p] ****** POLICE ******", kcp)
-					// }
-					// kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
-					// kcp.DRE.policeTime = now
+					if doLogging {
+						log.Printf("[%p] ****** POLICE ******", kcp)
+					}
+					kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
+					kcp.DRE.policeTime = now
 				}
 				kcp.DRE.lastLossTime = now
 				kcp.DRE.lastLossDel = kcp.DRE.delivered
