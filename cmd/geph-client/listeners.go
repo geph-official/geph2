@@ -28,6 +28,7 @@ func listenStats() {
 	statsMux.HandleFunc("/kill", handleKill)
 	statsMux.HandleFunc("/", handleStats)
 	statsMux.HandleFunc("/logs", handleLogs)
+	statsMux.HandleFunc("/debugpack", handleDebugPack)
 	statsMux.HandleFunc("/stacktrace", handleStacktrace)
 	err := statsServ.ListenAndServe()
 	if err != nil {

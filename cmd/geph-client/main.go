@@ -10,13 +10,10 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"os/signal"
 	"os/user"
 	"runtime"
 	"runtime/debug"
-	"runtime/pprof"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/vharitonsky/iniflags"
@@ -56,8 +53,6 @@ var noFEC bool
 var singleHop string
 
 var bindClient *bdclient.Client
-
-var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
 
 var sWrap *muxWrap
 
@@ -139,24 +134,6 @@ func main() {
 	flag.BoolVar(&useTCP, "useTCP", false, "use TCP to connect to bridges")
 	flag.BoolVar(&noFEC, "noFEC", false, "disable automatic FEC")
 	iniflags.Parse()
-	if *cpuprofile != "" {
-		f, err := os.Create(*cpuprofile)
-		if err != nil {
-			log.Fatal("could not create CPU profile: ", err)
-		}
-		c := make(chan os.Signal)
-		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-		if err := pprof.StartCPUProfile(f); err != nil {
-			log.Fatal("could not start CPU profile: ", err)
-		}
-		go func() {
-			<-c
-			pprof.StopCPUProfile()
-			f.Close()
-			debug.SetTraceback("all")
-			panic("TB")
-		}()
-	}
 	if GitVersion == "" {
 		GitVersion = "NOVER"
 	}

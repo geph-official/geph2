@@ -2,6 +2,7 @@ package kcp
 
 import (
 	"container/heap"
+	"log"
 	"sync"
 	"time"
 
@@ -14,19 +15,13 @@ type entry struct {
 	s  *UDPSession
 }
 
-var updater updateHeap
-
-func init() {
-	updater.init()
-	go updater.updateTask()
-}
-
 // a global heap managed kcp.flush() caller
 type updateHeap struct {
 	entries  []entry
 	exists   map[*UDPSession]bool
 	mu       sync.Mutex
 	chWakeUp chan struct{}
+	onzuru   func()
 	stop     tomb.Tomb
 }
 
@@ -53,9 +48,10 @@ func (h *updateHeap) Pop() interface{} {
 	return x
 }
 
-func (h *updateHeap) init() {
+func (h *updateHeap) init(onzuru func()) {
 	h.chWakeUp = make(chan struct{}, 1)
 	h.exists = make(map[*UDPSession]bool)
+	h.onzuru = onzuru
 }
 
 func (h *updateHeap) addSession(s *UDPSession) {
@@ -107,11 +103,11 @@ func (h *updateHeap) updateTask() {
 			entry := &h.entries[0]
 			now := time.Now()
 			if !now.Before(entry.ts) {
-				// zuru := now.Sub(entry.ts)
-				// if zuru.Milliseconds() > 10 {
-				// 	//log.Printf("WARNING!! %p zuru %v", h, zuru)
-				// 	h.onzuru()
-				// }
+				zuru := now.Sub(entry.ts)
+				if zuru.Milliseconds() > 20 {
+					log.Printf("WARNING!! %p zuru %v", h, zuru)
+					h.onzuru()
+				}
 				interval := entry.s.update()
 				if interval != 0 {
 					entry.ts = time.Now().Add(interval)
