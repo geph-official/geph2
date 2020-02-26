@@ -39,7 +39,7 @@ const (
 	IKCP_PROBE_LIMIT = 120000 // up to 120 secs to probe window
 )
 
-var QuiescentMax = 1
+var QuiescentMax = 20
 
 var CongestionControl = "LOL"
 
@@ -923,9 +923,9 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 	var busy bool
 	defer func() {
 		if !busy {
-			// kcp.LOL.filledPipe = false
-			// kcp.LOL.fullBwCount = 0
-			// kcp.LOL.fullBw = 0
+			kcp.LOL.filledPipe = false
+			kcp.LOL.fullBwCount = 0
+			kcp.LOL.fullBw = 0
 			kcp.quiescent--
 			if kcp.quiescent <= 0 {
 				kcp.quiescent = 0

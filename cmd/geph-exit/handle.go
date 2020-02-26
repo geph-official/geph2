@@ -180,8 +180,6 @@ func handle(rawClient net.Conn) {
 		}
 		go func() {
 			defer soxclient.Close()
-			atomic.AddUint64(&tunnCount, 1)
-			defer atomic.AddUint64(&tunnCount, ^uint64(0))
 			soxclient.SetDeadline(time.Now().Add(time.Minute))
 			var command []string
 			err = rlp.Decode(&io.LimitedReader{R: soxclient, N: 1000}, &command)
@@ -203,7 +201,7 @@ func handle(rawClient net.Conn) {
 				dialStart := time.Now()
 				host := command[1]
 				var remote net.Conn
-				for _, ntype := range []string{"tcp4", "tcp6"} {
+				for _, ntype := range []string{"tcp6", "tcp4"} {
 					tcpAddr, err := net.ResolveTCPAddr(ntype, host)
 					if err != nil || isBlack(tcpAddr) {
 						continue
@@ -217,6 +215,8 @@ func handle(rawClient net.Conn) {
 				if remote == nil {
 					return
 				}
+				atomic.AddUint64(&tunnCount, 1)
+				defer atomic.AddUint64(&tunnCount, ^uint64(0))
 				regConn(remote)
 				defer func() {
 					log.Debugf("<%v> cmd %v closed in %v", atomic.LoadUint64(&tunnCount), command, time.Since(dialStart))
