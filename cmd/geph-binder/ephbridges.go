@@ -29,7 +29,7 @@ type ebMapVal struct {
 	Cookie []byte
 }
 
-var ebCache = cache.New(time.Minute*30, time.Minute)
+var ebCache = cache.New(time.Minute, time.Minute)
 
 var b2eblk sync.Mutex
 
@@ -48,7 +48,7 @@ func bridgeToEphBridge(bridgeHost string, bridgeCookie []byte, exitHost string) 
 		return
 	}
 	defer rawConn.Close()
-	rawConn.SetDeadline(time.Now().Add(time.Second * 10))
+	rawConn.SetDeadline(time.Now().Add(time.Second * 5))
 	// then we negotiate
 	csConn, err := cshirt2.Client(bridgeCookie, rawConn)
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/cshirt2"
+	"github.com/geph-official/geph2/libs/fastudp"
 	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 	log "github.com/sirupsen/logrus"
@@ -126,9 +127,7 @@ func getMultipath(bridges []bdclient.BridgeInfo, legacy bool) (conn net.Conn, er
 		if err != nil {
 			panic(err)
 		}
-		us.(*net.UDPConn).SetReadBuffer(100 * 1024)
-		us.(*net.UDPConn).SetWriteBuffer(100 * 1024)
-		return us
+		return fastudp.NewConn(us.(*net.UDPConn))
 	})
 	cookie := make([]byte, 32)
 	rand.Read(cookie)
@@ -211,7 +210,7 @@ func getMultipath(bridges []bdclient.BridgeInfo, legacy bool) (conn net.Conn, er
 		panic(err)
 	}
 	toret.SetWindowSize(10000, 10000)
-	toret.SetNoDelay(0, 100, 3, 0)
+	toret.SetNoDelay(0, 100, 32, 0)
 	toret.SetStreamMode(true)
 	toret.SetMtu(1300)
 	conn = toret

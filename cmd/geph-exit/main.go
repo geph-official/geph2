@@ -13,7 +13,6 @@ import (
 
 	statsd "github.com/etsy/statsd/examples/go"
 	"github.com/geph-official/geph2/libs/bdclient"
-	"github.com/geph-official/geph2/libs/fastudp"
 	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/patrickmn/go-cache"
@@ -110,7 +109,7 @@ func main() {
 			continue
 		}
 		rc.SetWindowSize(10000, 10000)
-		rc.SetNoDelay(0, 100, 32, 0)
+		rc.SetNoDelay(0, 10, 32, 0)
 		rc.SetStreamMode(true)
 		rc.SetMtu(1300)
 		go handle(rc)
@@ -122,11 +121,11 @@ func e2elisten() {
 	if err != nil {
 		panic(err)
 	}
-	fastsock := fastudp.NewConn(udpsock.(*net.UDPConn))
+	//fastsock := fastudp.NewConn(udpsock.(*net.UDPConn))
 	udpsock.(*net.UDPConn).SetWriteBuffer(100 * 1024 * 1024)
 	udpsock.(*net.UDPConn).SetReadBuffer(100 * 1024 * 1024)
 	log.Infoln("e2elisten on UDP 2399")
-	e2e := niaucchi4.NewE2EConn(fastsock)
+	e2e := niaucchi4.NewE2EConn(udpsock)
 	kcpListener := niaucchi4.ListenKCP(e2e)
 	for {
 		rc, err := kcpListener.Accept()
@@ -135,7 +134,7 @@ func e2elisten() {
 			continue
 		}
 		rc.SetWindowSize(10000, 10000)
-		rc.SetNoDelay(0, 100, 32, 0)
+		rc.SetNoDelay(0, 100, 8, 0)
 		rc.SetStreamMode(true)
 		rc.SetMtu(1300)
 		go handle(rc)
