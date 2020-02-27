@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -29,13 +30,17 @@ type ebMapVal struct {
 	Cookie []byte
 }
 
-var ebCache = cache.New(time.Minute, time.Minute)
+var ebCache = cache.New(time.Minute*30, time.Minute)
 
 var b2eblk sync.Mutex
 
 func bridgeToEphBridge(bridgeHost string, bridgeCookie []byte, exitHost string) (ev ebMapVal, err error) {
 	mapKeyStr := ebMapKey{bridgeHost, bridgeCookie, exitHost}.String()
 	if evi, ok := ebCache.Get(mapKeyStr); ok {
+		if evi == nil {
+			err = errors.New("unspecified error")
+			return
+		}
 		ev = evi.(ebMapVal)
 		return
 	}
@@ -62,6 +67,7 @@ func bridgeToEphBridge(bridgeHost string, bridgeCookie []byte, exitHost string) 
 	var port uint
 	err = rlp.Decode(csConn, &port)
 	if err != nil {
+		ebCache.SetDefault(mapKeyStr, nil)
 		return
 	}
 	// we construct the bridge addr

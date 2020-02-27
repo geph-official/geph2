@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/elazarl/goproxy"
+	"github.com/geph-official/geph2/cmd/geph-client/chinalist"
 	"github.com/geph-official/geph2/libs/cwl"
 	"github.com/geph-official/geph2/libs/tinysocks"
 	"golang.org/x/time/rate"
@@ -112,27 +113,39 @@ func listenSocks() {
 			rmAddr := rmAddrProt.String()
 			host, port, err := net.SplitHostPort(rmAddr)
 			if realName := fakeIPToName(host); realName != "" {
-				log.Debugf("[%v] mapped fake IP %v => %v", len(semaphore), host, realName)
 				rmAddr = net.JoinHostPort(realName, port)
 			}
-			start := time.Now()
-			remote, ok := sWrap.DialCmd("proxy", rmAddr)
-			if !ok {
-				return
-			}
-			defer remote.Close()
-			ping := time.Since(start)
-			log.Debugf("[%v] opened %v in %v", len(semaphore), rmAddr, ping)
-			useStats(func(sc *stats) {
-				pmil := ping.Milliseconds()
-				if time.Since(sc.PingTime).Seconds() > 30 || uint64(pmil) < sc.MinPing {
-					sc.MinPing = uint64(pmil)
-					sc.PingTime = time.Now()
+			var remote net.Conn
+			var ok bool
+			if bypassHost(host) {
+				remote, err = net.Dial("tcp", rmAddr)
+				if err != nil {
+					log.Println("[%v] failed to bypass %v", len(semaphore), remote)
+					tinysocks.CompleteRequestTCP(5, cl)
+					return
 				}
-			})
-			if !ok {
-				tinysocks.CompleteRequestTCP(5, cl)
-				return
+				log.Debugf("[%v] BYPASSED %v", len(semaphore), rmAddr)
+				remote.(*net.TCPConn).SetKeepAlive(false) // app responsibility
+			} else {
+				start := time.Now()
+				remote, ok = sWrap.DialCmd("proxy", rmAddr)
+				if !ok {
+					return
+				}
+				defer remote.Close()
+				ping := time.Since(start)
+				log.Debugf("[%v] opened %v in %v", len(semaphore), rmAddr, ping)
+				useStats(func(sc *stats) {
+					pmil := ping.Milliseconds()
+					if time.Since(sc.PingTime).Seconds() > 30 || uint64(pmil) < sc.MinPing {
+						sc.MinPing = uint64(pmil)
+						sc.PingTime = time.Now()
+					}
+				})
+				if !ok {
+					tinysocks.CompleteRequestTCP(5, cl)
+					return
+				}
 			}
 			tinysocks.CompleteRequestTCP(0, cl)
 			go func() {
@@ -152,4 +165,9 @@ func listenSocks() {
 				}, time.Hour)
 		}()
 	}
+}
+
+// TODO bypass local domains
+func bypassHost(str string) bool {
+	return chinalist.IsChinese(str)
 }

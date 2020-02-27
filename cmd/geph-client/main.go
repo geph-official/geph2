@@ -46,6 +46,7 @@ var httpAddr string
 var statsAddr string
 var dnsAddr string
 var fakeDNS bool
+var bypassChinese bool
 
 var useTCP bool
 var noFEC bool
@@ -133,6 +134,7 @@ func main() {
 	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
 	flag.BoolVar(&useTCP, "useTCP", false, "use TCP to connect to bridges")
 	flag.BoolVar(&noFEC, "noFEC", false, "disable automatic FEC")
+	flag.BoolVar(&bypassChinese, "bypassChinese", false, "bypass proxy for Chinese domains")
 	iniflags.Parse()
 	if GitVersion == "" {
 		GitVersion = "NOVER"
