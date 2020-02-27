@@ -114,6 +114,7 @@ func listenSocks() {
 			host, port, err := net.SplitHostPort(rmAddr)
 			if realName := fakeIPToName(host); realName != "" {
 				rmAddr = net.JoinHostPort(realName, port)
+				host = realName
 			}
 			var remote net.Conn
 			var ok bool
