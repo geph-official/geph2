@@ -18,17 +18,17 @@ func DialKCP(addr string, cookie []byte) (conn net.Conn, err error) {
 		if doLogging {
 			log.Println("N4: recreating source socket", udpsock.LocalAddr())
 		}
-		udpsock.(*net.UDPConn).SetReadBuffer(10 * 1024 * 1024)
-		udpsock.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
+		// udpsock.(*net.UDPConn).SetReadBuffer(10 * 1024 * 1024)
+		// udpsock.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
 		return fastudp.NewConn(udpsock.(*net.UDPConn))
 	})
-	kcpConn, err := kcp.NewConn(addr, nil, 0, 0, ObfsListen(cookie, socket))
+	kcpConn, err := kcp.NewConn(addr, nil, 16, 16, ObfsListen(cookie, socket))
 	if err != nil {
 		socket.Close()
 		return
 	}
-	kcpConn.SetWindowSize(1000, 10000)
-	kcpConn.SetNoDelay(0, 50, 3, 0)
+	kcpConn.SetWindowSize(10000, 10000)
+	kcpConn.SetNoDelay(0, 100, 32, 0)
 	kcpConn.SetStreamMode(true)
 	kcpConn.SetMtu(1300)
 	conn = kcpConn
@@ -43,7 +43,7 @@ type KCPListener struct {
 
 // ListenKCP creates a new listener.
 func ListenKCP(sock net.PacketConn) *KCPListener {
-	listener, err := kcp.ServeConn(nil, 0, 0, sock)
+	listener, err := kcp.ServeConn(nil, 16, 16, sock)
 	if err != nil {
 		panic(err)
 	}
@@ -59,8 +59,8 @@ func (l *KCPListener) Accept() (c *kcp.UDPSession, err error) {
 	if err != nil {
 		return
 	}
-	kc.SetWindowSize(10000, 1000)
-	kc.SetNoDelay(0, 50, 2, 0)
+	kc.SetWindowSize(10000, 10000)
+	kc.SetNoDelay(0, 100, 32, 0)
 	kc.SetMtu(1300)
 	c = kc
 	return

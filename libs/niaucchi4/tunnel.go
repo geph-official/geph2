@@ -17,6 +17,16 @@ import (
 	"golang.org/x/crypto/curve25519"
 )
 
+var masterSec = make([]byte, 32)
+
+func genSK(seed []byte) [32]byte {
+	return c25519.GenSKWithSeed(append(seed, masterSec...))
+}
+
+func init() {
+	rand.Read(masterSec)
+}
+
 func hm(m, k []byte) []byte {
 	h := hmac.New(sha256.New, k)
 	h.Write(m)
@@ -90,6 +100,9 @@ func (pt *prototun) realize(response []byte, isserv bool) (ts *tunstate, err err
 		var sharedsec [32]byte
 		var theirPKf [32]byte
 		copy(theirPKf[:], theirPK)
+		if isserv {
+			pt.mySK = genSK(theirPKf[:])
+		}
 		curve25519.ScalarMult(&sharedsec, &pt.mySK, &theirPKf)
 		// make ts
 		ts = &tunstate{

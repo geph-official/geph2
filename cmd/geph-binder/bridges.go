@@ -11,7 +11,6 @@ import (
 	mrand "math/rand"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -23,9 +22,10 @@ import (
 var bridgeCache = cache.New(time.Minute*10, time.Hour)
 
 type bridgeInfo struct {
-	Cookie   []byte
-	Host     string
-	LastSeen time.Time
+	Cookie     []byte
+	Host       string
+	LastSeen   time.Time
+	AllocGroup string
 }
 
 func addBridge(nfo bridgeInfo) {
@@ -79,13 +79,12 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 	// TODO validate the ticket
 	bridges := getBridges(fmt.Sprintf("%v", mrand.Int()))
 	w.Header().Set("content-type", "application/json")
-	seenIPs := make(map[string]bool)
+	seenAGs := make(map[string]bool)
 	var laboo []bridgeInfo
 	for _, str := range bridges {
 		if vali, ok := bridgeCache.Get(str); ok {
 			val := vali.(bridgeInfo)
-			ip := strings.Split(val.Host, ":")[0]
-			if !seenIPs[ip] {
+			if !seenAGs[val.AllocGroup] {
 				if isEphemeral {
 					tval, err := bridgeToEphBridge(val.Host, val.Cookie, exitHost)
 					if err != nil {
@@ -95,7 +94,7 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 					val.Cookie = tval.Cookie
 					val.Host = tval.Bridge
 				}
-				seenIPs[ip] = true
+				seenAGs[val.AllocGroup] = true
 				laboo = append(laboo, val)
 			}
 		}
@@ -107,6 +106,7 @@ func handleAddBridge(w http.ResponseWriter, r *http.Request) {
 	// first get the cookie
 	cookie, err := hex.DecodeString(r.FormValue("cookie"))
 	if err != nil {
+		log.Println("can't add bridge (bad cookie)")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -114,19 +114,23 @@ func handleAddBridge(w http.ResponseWriter, r *http.Request) {
 	_, pwd, _ := r.BasicAuth()
 	ok, err := checkBridgeKey(pwd)
 	if err != nil {
+		log.Println("can't add bridge (bad DB)")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	if !ok {
+		log.Printf("can't add bridge (bad bridge key %v)", pwd)
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 	bi := bridgeInfo{
-		Cookie:   cookie,
-		Host:     r.FormValue("host"),
-		LastSeen: time.Now(),
+		Cookie:     cookie,
+		Host:       r.FormValue("host"),
+		LastSeen:   time.Now(),
+		AllocGroup: r.FormValue("allocGroup"),
 	}
 	if !testBridge(bi) {
+		log.Println("can't add bridge (bad bridge test)")
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -137,11 +141,13 @@ func handleAddBridge(w http.ResponseWriter, r *http.Request) {
 func testBridge(bi bridgeInfo) bool {
 	rawconn, err := net.Dial("tcp", bi.Host)
 	if err != nil {
+		log.Println("bridge test failed for", bi.Host, err)
 		return false
 	}
 	defer rawconn.Close()
 	realconn, err := cshirt2.Client(bi.Cookie, rawconn)
 	if err != nil {
+		log.Println("bridge test failed for", bi.Host, err)
 		return false
 	}
 	defer realconn.Close()

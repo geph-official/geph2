@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/patrickmn/go-cache"
 )
 
@@ -31,21 +32,29 @@ func (sa oAddr) String() string {
 type ObfsSocket struct {
 	cookie           []byte
 	cookieExceptions sync.Map
-	sscache          *cache.Cache
-	tunnels          *cache.Cache
-	pending          *cache.Cache
+	sscache          *simplelru.LRU
+	tunnels          *simplelru.LRU
+	pending          *simplelru.LRU
 	wire             net.PacketConn
 	wlock            sync.Mutex
 	rdbuf            [65536]byte
+}
+
+func newLRU() *simplelru.LRU {
+	l, e := simplelru.NewLRU(65536, nil)
+	if e != nil {
+		panic(e)
+	}
+	return l
 }
 
 // ObfsListen opens a new obfuscated PacketConn.
 func ObfsListen(cookie []byte, wire net.PacketConn) *ObfsSocket {
 	return &ObfsSocket{
 		cookie:  cookie,
-		sscache: cache.New(time.Hour*24, time.Hour),
-		tunnels: cache.New(time.Hour*24, time.Hour),
-		pending: cache.New(time.Hour, time.Hour),
+		sscache: newLRU(),
+		tunnels: newLRU(),
+		pending: newLRU(),
 		wire:    wire,
 	}
 }
@@ -56,6 +65,8 @@ func (os *ObfsSocket) AddCookieException(addr net.Addr, cookie []byte) {
 }
 
 func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
+	os.wlock.Lock()
+	defer os.wlock.Unlock()
 	var isHidden bool
 	switch addr.(type) {
 	case oAddr:
@@ -80,9 +91,7 @@ func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 	}
 	// if we are pending, just ignore
 	if zz, ok := os.pending.Get(addr.String()); ok {
-		os.wlock.Lock()
 		os.wire.WriteTo(zz.(*prototun).genHello(), addr)
-		os.wlock.Unlock()
 		if doLogging {
 			log.Println("N4: retransmitting existing pending to", addr.String())
 		}
@@ -95,35 +104,45 @@ func (os *ObfsSocket) WriteTo(b []byte, addr net.Addr) (int, error) {
 	}
 	pt := newproto(cookie)
 	if doLogging {
-		log.Printf("N4: newproto on %v [%x]", addr.String(), cookie[:4])
+		log.Printf("N4: newproto on %v [%x]", addr.String(), cookie)
 	}
-	os.pending.SetDefault(addr.String(), pt)
-	os.wlock.Lock()
+	os.pending.Add(addr.String(), pt)
 	var err error
 	_, err = os.wire.WriteTo(pt.genHello(), addr)
-	os.wlock.Unlock()
 	if err != nil {
 		return 0, nil
 	}
 	return len(b), nil
 }
 
-func (os *ObfsSocket) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-RESTART:
+func (os *ObfsSocket) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
+	for n == 0 && err == nil {
+		n, addr, err = os.hiddenReadFrom(b)
+	}
+	return
+}
+
+var badHelloBlacklist = cache.New(time.Minute*5, time.Minute)
+
+func (os *ObfsSocket) hiddenReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	readBytes, addr, err := os.wire.ReadFrom(os.rdbuf[:])
 	if err != nil {
 		return
 	}
+	if _, ok := badHelloBlacklist.Get(addr.String()); ok {
+		return
+	}
+	os.wlock.Lock()
+	defer os.wlock.Unlock()
 	// check if the packet belongs to a known tunnel
 	if tuni, ok := os.tunnels.Get(addr.String()); ok {
 		tun := tuni.(*tunstate)
-		//log.Println("got packet of known tunnel from", addr.String())
 		plain, e := tun.Decrypt(os.rdbuf[:readBytes])
 		if e == nil {
-			os.tunnels.SetDefault(addr.String(), tun)
+			os.tunnels.Add(addr.String(), tun)
 			n = copy(p, plain)
 			if _, ok := os.sscache.Get(string(tun.ss)); ok {
-				os.sscache.SetDefault(string(tun.ss), addr)
+				os.sscache.Add(string(tun.ss), addr)
 				addr = oAddr(tun.ss)
 			}
 			return
@@ -134,31 +153,31 @@ RESTART:
 		prot := proti.(*prototun)
 		ts, e := prot.realize(os.rdbuf[:readBytes], false)
 		if e != nil {
-			//log.Println("got bad response to pending", addr, e)
-			goto RESTART
+			return
 		}
-		os.tunnels.SetDefault(addr.String(), ts)
+		os.tunnels.Add(addr.String(), ts)
 		if doLogging {
 			log.Println("N4: got realization of pending", addr)
 		}
-		goto RESTART
+		return
 	}
 	// iterate through all the stuff to create an association
-	for k, v := range os.tunnels.Items() {
-		if v.Expired() {
+	for _, k := range os.tunnels.Keys() {
+		v, ok := os.tunnels.Get(k)
+		if !ok {
 			continue
 		}
-		tun := v.Object.(*tunstate)
+		tun := v.(*tunstate)
 		plain, e := tun.Decrypt(os.rdbuf[:readBytes])
 		if e == nil {
-			os.tunnels.Delete(k)
+			os.tunnels.Remove(k)
 			if doLogging {
 				log.Println("N4: found a decryptable session through scanning, ROAM to", addr)
 			}
-			os.tunnels.SetDefault(addr.String(), tun)
+			os.tunnels.Add(addr.String(), tun)
 			n = copy(p, plain)
 			if _, ok := os.sscache.Get(string(tun.ss)); ok {
-				os.sscache.SetDefault(string(tun.ss), addr)
+				os.sscache.Add(string(tun.ss), addr)
 				addr = oAddr(tun.ss)
 			}
 			return
@@ -172,17 +191,20 @@ RESTART:
 		if doLogging {
 			log.Println("N4: bad hello from", addr.String(), e.Error())
 		}
-		goto RESTART
+		badHelloBlacklist.SetDefault(addr.String(), true)
+		return
 	}
-	os.wlock.Lock()
-	os.wire.WriteTo(pt.genHello(), addr)
-	if doLogging {
-		log.Println("N4: responded to a hello from", addr)
-	}
-	os.wlock.Unlock()
-	os.tunnels.SetDefault(addr.String(), ts)
-	os.sscache.SetDefault(string(ts.ss), addr)
-	goto RESTART
+	os.tunnels.Add(addr.String(), ts)
+	os.sscache.Add(string(ts.ss), addr)
+	go func() {
+		os.wlock.Lock()
+		defer os.wlock.Unlock()
+		os.wire.WriteTo(pt.genHello(), addr)
+		if doLogging {
+			log.Println("N4: responded to a hello from", addr)
+		}
+	}()
+	return
 }
 
 func (os *ObfsSocket) Close() error {

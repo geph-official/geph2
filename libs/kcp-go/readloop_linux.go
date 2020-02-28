@@ -39,7 +39,7 @@ func (s *UDPSession) readLoop() {
 					continue
 				}
 
-				if msg.N < s.headerSize+IKCP_OVERHEAD {
+				if msg.N < s.headerSize()+IKCP_OVERHEAD {
 					atomic.AddUint64(&DefaultSnmp.InErrs, 1)
 					continue
 				}

@@ -31,11 +31,9 @@ var binderKey string
 var statsdAddr string
 var allocGroup string
 var speedLimit int
-var monthlyGigs int
 var bclient *bdclient.Client
 
 var limiter *rate.Limiter
-var bigLimiter *rate.Limiter
 
 var statClient *statsd.StatsdClient
 
@@ -47,10 +45,9 @@ func main() {
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
 	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")
-	flag.IntVar(&monthlyGigs, "monthlyGigs", -1, "monthly gigs")
 	flag.Parse()
 	if speedLimit > 0 {
-		limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 10*1000)
+		limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 1000*1000)
 	} else {
 		limiter = rate.NewLimiter(rate.Inf, 1000*1000)
 	}
@@ -59,13 +56,6 @@ func main() {
 			log.Fatal(err)
 		}
 	}()
-	if monthlyGigs < 0 {
-		bigLimiter = rate.NewLimiter(rate.Inf, 10*1000)
-	} else {
-		speed := 1000 * 1000 * 1000 * float64(monthlyGigs) / (30 * 24 * 60 * 60)
-		log.Println("Long-term speed limit is", int(speed/1000), "KB/s")
-		bigLimiter = rate.NewLimiter(rate.Limit(speed), 10*1000*1000*1000)
-	}
 	if allocGroup == "" {
 		log.Fatal("must specify an allocation group")
 	}
@@ -105,12 +95,12 @@ func listenLoop(deadline time.Duration) {
 	if err != nil {
 		panic(err)
 	}
-	udpsock.(*net.UDPConn).SetWriteBuffer(1000 * 1000 * 10)
 	go func() {
 		end := time.Now().Add(deadline)
 		for deadline < 0 || time.Now().Before(end) {
 			myAddr := fmt.Sprintf("%v:%v", guessIP(), udpsock.LocalAddr().(*net.UDPAddr).Port)
-			e := bclient.AddBridge(binderKey, cookie, myAddr)
+			log.Println(myAddr)
+			e := bclient.AddBridge(binderKey, cookie, myAddr, allocGroup)
 			if e != nil {
 				log.Println("error adding bridge:", e)
 			}
@@ -122,6 +112,7 @@ func listenLoop(deadline time.Duration) {
 		if err != nil {
 			panic(err)
 		}
+		log.Println("Listen on", listener.Addr())
 		if deadline > 0 {
 			go func() {
 				time.Sleep(deadline)
@@ -144,7 +135,7 @@ func listenLoop(deadline time.Duration) {
 					log.Println("cshirt2 failed", err, rawClient.RemoteAddr())
 					return
 				}
-				log.Println("Accepted TCP from", rawClient.RemoteAddr())
+				//log.Println("Accepted TCP from", rawClient.RemoteAddr())
 				handle(client)
 			}()
 		}
@@ -167,7 +158,7 @@ func listenLoop(deadline time.Duration) {
 		if err != nil {
 			return
 		}
-		log.Println("Accepted UDP client", client.RemoteAddr())
+		//log.Println("Accepted UDP client", client.RemoteAddr())
 		go handle(client)
 	}
 }

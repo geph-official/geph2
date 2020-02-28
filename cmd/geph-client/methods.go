@@ -127,8 +127,6 @@ func getMultipath(bridges []bdclient.BridgeInfo, legacy bool) (conn net.Conn, er
 		if err != nil {
 			panic(err)
 		}
-		us.(*net.UDPConn).SetReadBuffer(10 * 1024 * 1024)
-		us.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
 		return fastudp.NewConn(us.(*net.UDPConn))
 	})
 	cookie := make([]byte, 32)
@@ -203,12 +201,16 @@ func getMultipath(bridges []bdclient.BridgeInfo, legacy bool) (conn net.Conn, er
 			log.Debugln("adding ephemeral", host, "to our e2e")
 		}
 	}
-	toret, err := kcp.NewConn2(e2esid, nil, 0, 0, e2e)
+	fecsize := 16
+	if noFEC {
+		fecsize = 0
+	}
+	toret, err := kcp.NewConn2(e2esid, nil, fecsize, fecsize, e2e)
 	if err != nil {
 		panic(err)
 	}
-	toret.SetWindowSize(1000, 10000)
-	toret.SetNoDelay(0, 50, 3, 0)
+	toret.SetWindowSize(10000, 10000)
+	toret.SetNoDelay(0, 100, 32, 0)
 	toret.SetStreamMode(true)
 	toret.SetMtu(1300)
 	conn = toret

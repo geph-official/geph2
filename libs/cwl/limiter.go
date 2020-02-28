@@ -3,25 +3,23 @@ package cwl
 import (
 	"context"
 	. "io"
+	"net"
+	"time"
 
 	"golang.org/x/time/rate"
 )
 
 // CopyWithLimit is like io.Copy but subject to a rate limit and calling a callback.
-func CopyWithLimit(dst Writer, src Reader, limiter *rate.Limiter, callback func(int)) (n int, err error) {
+func CopyWithLimit(dst Writer, src net.Conn, limiter *rate.Limiter, callback func(int), idleTimeout time.Duration) (n int, err error) {
 	var buf []byte
 	if buf == nil {
 		size := 32 * 1024
-		if l, ok := src.(*LimitedReader); ok && int64(size) > l.N {
-			if l.N < 1 {
-				size = 1
-			} else {
-				size = int(l.N)
-			}
-		}
 		buf = make([]byte, size)
 	}
 	for {
+		if idleTimeout > 0 {
+			src.SetReadDeadline(time.Now().Add(idleTimeout))
+		}
 		nr, er := src.Read(buf)
 		if nr > 0 {
 			if callback != nil {

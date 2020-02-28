@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/elazarl/goproxy"
+	"github.com/geph-official/geph2/cmd/geph-client/chinalist"
 	"github.com/geph-official/geph2/libs/cwl"
 	"github.com/geph-official/geph2/libs/tinysocks"
 	"golang.org/x/time/rate"
@@ -25,8 +26,10 @@ func listenStats() {
 		WriteTimeout: time.Minute,
 	}
 	statsMux.HandleFunc("/proxy.pac", handleProxyPac)
+	statsMux.HandleFunc("/kill", handleKill)
 	statsMux.HandleFunc("/", handleStats)
 	statsMux.HandleFunc("/logs", handleLogs)
+	statsMux.HandleFunc("/debugpack", handleDebugPack)
 	statsMux.HandleFunc("/stacktrace", handleStacktrace)
 	err := statsServ.ListenAndServe()
 	if err != nil {
@@ -40,7 +43,13 @@ func listenHTTP() {
 	srv := goproxy.NewProxyHttpServer()
 	srv.Tr = &http.Transport{
 		Dial: func(n, d string) (net.Conn, error) {
-			return dialTun(d)
+			conn, err := dialTun(d)
+			if err != nil {
+				return nil, err
+			}
+			conn.(*net.TCPConn).SetKeepAlive(false)
+			conn.(*net.TCPConn).SetWriteBuffer(16384)
+			return conn, nil
 		},
 		IdleConnTimeout: time.Second * 60,
 		Proxy:           nil,
@@ -67,7 +76,7 @@ func listenSocks() {
 	}
 	semaphore := make(chan bool, 512)
 	downLimit := rate.NewLimiter(rate.Inf, 10000000)
-	upLimit := rate.NewLimiter(1000*1000, 1000*1000)
+	upLimit := rate.NewLimiter(rate.Inf, 1000*1000)
 	useStats(func(sc *stats) {
 		if sc.Tier == "free" {
 			upLimit = rate.NewLimiter(100*1000, 1000*1000)
@@ -81,6 +90,8 @@ func listenSocks() {
 		}
 		go func() {
 			defer cl.Close()
+			cl.(*net.TCPConn).SetKeepAlive(false)
+			cl.(*net.TCPConn).SetReadBuffer(16384)
 			select {
 			case semaphore <- true:
 				defer func() {
@@ -93,7 +104,8 @@ func listenSocks() {
 			if err != nil {
 				log.Debugln("Bad SOCKS5 request:", err)
 				return
-			}if cmd != tinysocks.CmdConnect {
+			}
+			if cmd != tinysocks.CmdConnect {
 				log.Debugln("Unsupported command:", cmd)
 				tinysocks.CompleteRequestTCP(7, cl)
 				return
@@ -101,27 +113,40 @@ func listenSocks() {
 			rmAddr := rmAddrProt.String()
 			host, port, err := net.SplitHostPort(rmAddr)
 			if realName := fakeIPToName(host); realName != "" {
-				log.Debugf("[%v] mapped fake IP %v => %v", len(semaphore), host, realName)
 				rmAddr = net.JoinHostPort(realName, port)
+				host = realName
 			}
-			start := time.Now()
-			remote, ok := sWrap.DialCmd("proxy", rmAddr)
-			if !ok {
-				return
-			}
-			defer remote.Close()
-			ping := time.Since(start)
-			log.Debugf("[%v] opened %v in %v", len(semaphore), rmAddr, ping)
-			useStats(func(sc *stats) {
-				pmil := ping.Milliseconds()
-				if time.Since(sc.PingTime).Seconds() > 30 || uint64(pmil) < sc.MinPing {
-					sc.MinPing = uint64(pmil)
-					sc.PingTime = time.Now()
+			var remote net.Conn
+			var ok bool
+			if bypassHost(host) {
+				remote, err = net.Dial("tcp", rmAddr)
+				if err != nil {
+					log.Println("[%v] failed to bypass %v", len(semaphore), remote)
+					tinysocks.CompleteRequestTCP(5, cl)
+					return
 				}
-			})
-			if !ok {
-				tinysocks.CompleteRequestTCP(5, cl)
-				return
+				log.Debugf("[%v] BYPASSED %v", len(semaphore), rmAddr)
+				remote.(*net.TCPConn).SetKeepAlive(false) // app responsibility
+			} else {
+				start := time.Now()
+				remote, ok = sWrap.DialCmd("proxy", rmAddr)
+				if !ok {
+					return
+				}
+				defer remote.Close()
+				ping := time.Since(start)
+				log.Debugf("[%v] opened %v in %v", len(semaphore), rmAddr, ping)
+				useStats(func(sc *stats) {
+					pmil := ping.Milliseconds()
+					if time.Since(sc.PingTime).Seconds() > 30 || uint64(pmil) < sc.MinPing {
+						sc.MinPing = uint64(pmil)
+						sc.PingTime = time.Now()
+					}
+				})
+				if !ok {
+					tinysocks.CompleteRequestTCP(5, cl)
+					return
+				}
 			}
 			tinysocks.CompleteRequestTCP(0, cl)
 			go func() {
@@ -131,14 +156,19 @@ func listenSocks() {
 					useStats(func(sc *stats) {
 						sc.UpBytes += uint64(n)
 					})
-				})
+				}, time.Hour)
 			}()
 			cwl.CopyWithLimit(cl, remote,
 				downLimit, func(n int) {
 					useStats(func(sc *stats) {
 						sc.DownBytes += uint64(n)
 					})
-				})
+				}, time.Hour)
 		}()
 	}
+}
+
+// TODO bypass local domains
+func bypassHost(str string) bool {
+	return chinalist.IsChinese(str)
 }

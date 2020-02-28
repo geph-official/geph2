@@ -121,6 +121,22 @@ func (e2e *E2EConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	return
 }
 
+// UnderlyingLoss returns the underlying loss.
+func (e2e *E2EConn) UnderlyingLoss(destAddr net.Addr) (frac float64) {
+	sessid := destAddr.(SessionAddr)
+	sessi, ok := e2e.sidToSess.Get(sessid.String())
+	if !ok {
+		log.Println("cannot find underlying loss")
+		return
+	}
+	sess := sessi.(*e2eSession)
+	sess.lock.Lock()
+	defer sess.lock.Unlock()
+	rem := sess.info[sess.lastRemid]
+	frac = rem.remoteLoss
+	return
+}
+
 // Close closes the underlying socket.
 func (e2e *E2EConn) Close() error {
 	e2e.Closed = true

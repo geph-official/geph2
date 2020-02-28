@@ -2,6 +2,7 @@ package fastudp
 
 import (
 	"io"
+	"log"
 	"net"
 	"runtime"
 	"time"
@@ -11,7 +12,7 @@ import (
 	"gopkg.in/tomb.v1"
 )
 
-const sendQuantum = 64
+const sendQuantum = 16
 
 // Conn wraps an underlying UDPConn and batches stuff to it.
 type Conn struct {
@@ -26,6 +27,15 @@ type Conn struct {
 
 // NewConn creates a new Conn.
 func NewConn(conn *net.UDPConn) net.PacketConn {
+	err := conn.SetWriteBuffer(261244)
+	if err != nil {
+		panic(err)
+	}
+	err = conn.SetReadBuffer(261244)
+	if err != nil {
+		panic(err)
+	}
+	//return conn
 	if runtime.GOOS != "linux" {
 		return conn
 	}
@@ -45,6 +55,7 @@ func NewConn(conn *net.UDPConn) net.PacketConn {
 	return c
 }
 
+// 100Hz syscall limiter
 var limiter = rate.NewLimiter(100, 100)
 
 var spamLimiter = rate.NewLimiter(1, 10)
@@ -53,6 +64,7 @@ func (conn *Conn) bkgWrite() {
 	defer conn.pconn.Close()
 	defer conn.sock.Close()
 	//
+	//log.Println("bkgWrite started")
 	var towrite []ipv4.Message
 	for {
 		//limiter.Wait(context.Background())
@@ -72,6 +84,7 @@ func (conn *Conn) bkgWrite() {
 			for len(ptr) > 0 {
 				n, err := conn.pconn.WriteBatch(ptr, 0)
 				if err != nil {
+					log.Println("kill", err)
 					conn.death.Kill(err)
 					return
 				}
@@ -130,7 +143,11 @@ func (conn *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	}
 	select {
 	case conn.writeBuf <- msg:
-	default:
+	case <-conn.death.Dying():
+		err = conn.death.Err()
+		return
+		// default:
+		// 	log.Println("fastudp: write to", addr, "overflowed")
 	}
 	return len(p), nil
 }

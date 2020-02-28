@@ -36,9 +36,11 @@ require (
 	github.com/sparrc/go-ping v0.0.0-20190613174326-4e5b6552494c // indirect
 	github.com/templexxx/cpufeat v0.0.0-20180724012125-cef66df7f161 // indirect
 	github.com/templexxx/xor v0.0.0-20181023030647-4e92f724b73b
+	github.com/templexxx/xorsimd v0.4.1
 	github.com/tidwall/evio v1.0.3 // indirect
 	github.com/tjfoc/gmsm v1.0.1
 	github.com/vharitonsky/iniflags v0.0.0-20180513140207-a33cd0b5f3de
+	github.com/weppos/publicsuffix-go v0.13.0
 	github.com/xtaci/kcp-go v5.4.20+incompatible
 	github.com/xtaci/lossyconn v0.0.0-20190602105132-8df528c0c9ae
 	github.com/xtaci/smux v1.5.7

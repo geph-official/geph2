@@ -10,12 +10,10 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"os/signal"
 	"os/user"
+	"runtime"
 	"runtime/debug"
-	"runtime/pprof"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/vharitonsky/iniflags"
@@ -23,6 +21,7 @@ import (
 	"github.com/acarl005/stripansi"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/bdclient"
+	"github.com/geph-official/geph2/libs/kcp-go"
 	"golang.org/x/net/proxy"
 
 	log "github.com/sirupsen/logrus"
@@ -47,14 +46,14 @@ var httpAddr string
 var statsAddr string
 var dnsAddr string
 var fakeDNS bool
+var bypassChinese bool
 
 var useTCP bool
+var noFEC bool
 
 var singleHop string
 
 var bindClient *bdclient.Client
-
-var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
 
 var sWrap *muxWrap
 
@@ -94,12 +93,15 @@ restart:
 }
 
 func main() {
+	debug.SetGCPercent(30)
+	runtime.GOMAXPROCS(1)
 	mrand.Seed(time.Now().UnixNano())
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp: false,
 		ForceColors:   true,
 	})
 	log.SetLevel(log.DebugLevel)
+	kcp.CongestionControl = "LOL"
 
 	// configfile path
 	usr, err := user.Current()
@@ -131,25 +133,9 @@ func main() {
 	// flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
 	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
 	flag.BoolVar(&useTCP, "useTCP", false, "use TCP to connect to bridges")
+	flag.BoolVar(&noFEC, "noFEC", false, "disable automatic FEC")
+	flag.BoolVar(&bypassChinese, "bypassChinese", false, "bypass proxy for Chinese domains")
 	iniflags.Parse()
-	if *cpuprofile != "" {
-		f, err := os.Create(*cpuprofile)
-		if err != nil {
-			log.Fatal("could not create CPU profile: ", err)
-		}
-		c := make(chan os.Signal)
-		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-		if err := pprof.StartCPUProfile(f); err != nil {
-			log.Fatal("could not start CPU profile: ", err)
-		}
-		go func() {
-			<-c
-			pprof.StopCPUProfile()
-			f.Close()
-			debug.SetTraceback("all")
-			panic("TB")
-		}()
-	}
 	if GitVersion == "" {
 		GitVersion = "NOVER"
 	}
@@ -169,6 +155,11 @@ func main() {
 			})
 		}
 	}()
+
+	if dnsAddr != "" {
+		go doDNS()
+	}
+	go listenStats()
 
 	log.Println("GephNG version", GitVersion)
 	// special actions
@@ -229,11 +220,6 @@ func main() {
 		}
 	}
 	sWrap = newSmuxWrapper()
-
-	if dnsAddr != "" {
-		go doDNS()
-	}
-	go listenStats()
 
 	// confirm we are connected
 	func() {

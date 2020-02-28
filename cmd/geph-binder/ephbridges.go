@@ -1,10 +1,11 @@
 package main
 
 import (
-	"crypto/rand"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -29,23 +30,30 @@ type ebMapVal struct {
 	Cookie []byte
 }
 
-var ebCache = cache.New(time.Minute, time.Minute)
+var ebCache = cache.New(time.Minute*30, time.Minute)
+
+var b2eblk sync.Mutex
 
 func bridgeToEphBridge(bridgeHost string, bridgeCookie []byte, exitHost string) (ev ebMapVal, err error) {
 	mapKeyStr := ebMapKey{bridgeHost, bridgeCookie, exitHost}.String()
 	if evi, ok := ebCache.Get(mapKeyStr); ok {
+		if evi == nil {
+			err = errors.New("unspecified error")
+			return
+		}
 		ev = evi.(ebMapVal)
 		return
 	}
 	randCookie := make([]byte, 32)
-	rand.Read(randCookie)
+	//rand.Read(randCookie)
+	copy(randCookie, bridgeCookie)
 	// first make our connection
 	rawConn, err := net.DialTimeout("tcp4", bridgeHost, time.Second)
 	if err != nil {
 		return
 	}
 	defer rawConn.Close()
-	rawConn.SetDeadline(time.Now().Add(time.Second * 10))
+	rawConn.SetDeadline(time.Now().Add(time.Second * 5))
 	// then we negotiate
 	csConn, err := cshirt2.Client(bridgeCookie, rawConn)
 	if err != nil {
@@ -59,6 +67,7 @@ func bridgeToEphBridge(bridgeHost string, bridgeCookie []byte, exitHost string) 
 	var port uint
 	err = rlp.Decode(csConn, &port)
 	if err != nil {
+		ebCache.SetDefault(mapKeyStr, nil)
 		return
 	}
 	// we construct the bridge addr

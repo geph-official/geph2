@@ -15,11 +15,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/cwl"
-	"github.com/geph-official/geph2/libs/tinysocks"
 	"github.com/geph-official/geph2/libs/tinyss"
 	"github.com/hashicorp/yamux"
 	"github.com/xtaci/smux"
-	"golang.org/x/net/proxy"
 	"golang.org/x/time/rate"
 )
 
@@ -49,6 +47,7 @@ func isBlack(addr *net.TCPAddr) bool {
 }
 
 var sessCount uint64
+var tunnCount uint64
 
 func init() {
 	go func() {
@@ -57,6 +56,9 @@ func init() {
 			if statClient != nil {
 				statClient.Send(map[string]string{
 					hostname + ".sessionCount": fmt.Sprintf("%v|g", atomic.LoadUint64(&sessCount)),
+				}, 1)
+				statClient.Send(map[string]string{
+					hostname + ".tunnelCount": fmt.Sprintf("%v|g", atomic.LoadUint64(&tunnCount)),
 				}, 1)
 			}
 		}
@@ -84,7 +86,7 @@ func handle(rawClient net.Conn) {
 	ssSignature := ed25519.Sign(seckey, tssClient.SharedSec())
 	rlp.Encode(tssClient, &ssSignature)
 	var limiter *rate.Limiter
-	limiter = rate.NewLimiter(12.5*1024*1024, 1000*1000)
+	limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), speedLimit*1024)
 	// "generic" stuff
 	var acceptStream func() (net.Conn, error)
 	if singleHop == "" {
@@ -137,8 +139,8 @@ func handle(rawClient net.Conn) {
 		// create smux context
 		muxSrv, err := smux.Server(tssClient, &smux.Config{
 			Version:           2,
-			KeepAliveInterval: time.Minute * 10,
-			KeepAliveTimeout:  time.Minute * 40,
+			KeepAliveInterval: time.Minute * 2,
+			KeepAliveTimeout:  time.Minute * 20,
 			MaxFrameSize:      32768,
 			MaxReceiveBuffer:  100 * 1024 * 1024,
 			MaxStreamBuffer:   100 * 1024 * 1024,
@@ -188,7 +190,7 @@ func handle(rawClient net.Conn) {
 				return
 			}
 			soxclient.SetDeadline(time.Time{})
-			log.Debugf("[%v] cmd %v", rawClient.RemoteAddr(), command)
+			log.Debugf("<%v> cmd %v", atomic.LoadUint64(&tunnCount), command)
 			// match command
 			switch command[0] {
 			case "proxy":
@@ -199,34 +201,26 @@ func handle(rawClient net.Conn) {
 				dialStart := time.Now()
 				host := command[1]
 				var remote net.Conn
-				if outbound != "" {
-					remote, err = net.Dial("tcp", outbound)
+				for _, ntype := range []string{"tcp6", "tcp4"} {
+					tcpAddr, err := net.ResolveTCPAddr(ntype, host)
+					if err != nil || isBlack(tcpAddr) {
+						continue
+					}
+					remote, err = net.DialTimeout(ntype, tcpAddr.String(), time.Second*30)
 					if err != nil {
-						log.Debugf("failed to connect to outbound: %v", err)
-						return
+						continue
 					}
-					err = tinysocks.Client(remote, tinysocks.ParseAddr(host))
-					if err != nil {
-						log.Debugf("failed to connect to second socks5 server: %v", err)
-						return
-					}
-				} else {
-					for _, ntype := range []string{"tcp6", "tcp4"} {
-						tcpAddr, err := net.ResolveTCPAddr(ntype, host)
-						if err != nil || isBlack(tcpAddr) {
-							continue
-						}
-						remote, err = net.DialTimeout("tcp", host, time.Second*30)
-						if err != nil {
-							continue
-						}
-						break
-					}
+					break
 				}
-
 				if remote == nil {
 					return
 				}
+				atomic.AddUint64(&tunnCount, 1)
+				defer atomic.AddUint64(&tunnCount, ^uint64(0))
+				regConn(remote)
+				defer func() {
+					log.Debugf("<%v> cmd %v closed in %v", atomic.LoadUint64(&tunnCount), command, time.Since(dialStart))
+				}()
 				// measure dial latency
 				dialLatency := time.Since(dialStart)
 				if statClient != nil && singleHop == "" {
@@ -236,10 +230,9 @@ func handle(rawClient net.Conn) {
 						statClient.Timing(hostname+".connLifetime", dialLatency.Milliseconds())
 					}()
 				}
-
-				remote.SetDeadline(time.Now().Add(time.Hour))
 				defer remote.Close()
 				onPacket := func(l int) {
+					regConn(remote)
 					if statClient != nil && singleHop == "" {
 						before := atomic.LoadUint64(&counter)
 						atomic.AddUint64(&counter, uint64(l))
@@ -252,56 +245,26 @@ func handle(rawClient net.Conn) {
 				go func() {
 					defer remote.Close()
 					defer soxclient.Close()
-					cwl.CopyWithLimit(remote, soxclient, limiter, onPacket)
+					cwl.CopyWithLimit(remote, soxclient, limiter, onPacket, time.Hour)
 				}()
-				cwl.CopyWithLimit(soxclient, remote, limiter, onPacket)
+				cwl.CopyWithLimit(soxclient, remote, limiter, onPacket, time.Hour)
 			case "ip":
 				var ip string
 				if ipi, ok := ipcache.Get("ip"); ok {
 					ip = ipi.(string)
 				} else {
 					addr := "http://checkip.amazonaws.com"
-					if outbound != "" {
-						dialer, err := proxy.SOCKS5("tcp", outbound, nil,
-							&net.Dialer{
-								Timeout:   30 * time.Second,
-								KeepAlive: 30 * time.Second,
-							},
-						)
-						if err != nil {
-							return
-						}
-						transport := &http.Transport{
-							Proxy:               nil,
-							Dial:                dialer.Dial,
-							TLSHandshakeTimeout: 10 * time.Second,
-						}
-						client := &http.Client{Transport: transport}
-						resp, err := client.Get(addr)
-						if err != nil {
-							return
-						}
-						defer resp.Body.Close()
-						ipb, err := ioutil.ReadAll(resp.Body)
-						if err != nil {
-							return
-						}
-						ip = string(ipb)
-						ipcache.SetDefault("ip", ip)
-					} else {
-						resp, err := http.Get(addr)
-						if err != nil {
-							return
-						}
-						defer resp.Body.Close()
-						ipb, err := ioutil.ReadAll(resp.Body)
-						if err != nil {
-							return
-						}
-						ip = string(ipb)
-						ipcache.SetDefault("ip", ip)
+					resp, err := http.Get(addr)
+					if err != nil {
+						return
 					}
-
+					defer resp.Body.Close()
+					ipb, err := ioutil.ReadAll(resp.Body)
+					if err != nil {
+						return
+					}
+					ip = string(ipb)
+					ipcache.SetDefault("ip", ip)
 				}
 				rlp.Encode(soxclient, true)
 				rlp.Encode(soxclient, ip)

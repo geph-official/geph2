@@ -64,8 +64,8 @@ func (cl *Client) GetClientInfo() (ui ClientInfo, err error) {
 }
 
 // AddBridge uploads some bridge info.
-func (cl *Client) AddBridge(secret string, cookie []byte, host string) (err error) {
-	req, _ := http.NewRequest("GET", fmt.Sprintf("%v/add-bridge?cookie=%x&host=%v", cl.frontDomain, cookie, host), bytes.NewReader(nil))
+func (cl *Client) AddBridge(secret string, cookie []byte, host string, allocGroup string) (err error) {
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%v/add-bridge?cookie=%x&host=%v&allocGroup=%v", cl.frontDomain, cookie, host, allocGroup), bytes.NewReader(nil))
 	req.Host = cl.realDomain
 	req.SetBasicAuth("user", secret)
 	resp, err := cl.hclient.Do(req)

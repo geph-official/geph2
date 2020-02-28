@@ -169,15 +169,11 @@ func ParseAddr(s string) Addr {
 func ReadRequest(rw io.ReadWriter) (byte, Addr, error) {
 	// Read RFC 1928 for request and reply structure and sizes.
 	buf := make([]byte, MaxAddrLen)
-	// read VER, NMETHODS
+	// read VER, NMETHODS, METHODS
 	if _, err := io.ReadFull(rw, buf[:2]); err != nil {
 		return 0, nil, err
 	}
-	if buf[0] != 5 {
-		return 0, nil, errors.New("SOCKS server mismatch")
-	}
 	nmethods := buf[1]
-	// read METHODS
 	if _, err := io.ReadFull(rw, buf[:nmethods]); err != nil {
 		return 0, nil, err
 	}

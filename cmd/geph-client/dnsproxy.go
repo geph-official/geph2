@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -124,7 +125,8 @@ func nameToFakeIP(name string) string {
 	for fakeIPCache.revmap[retval] != "" {
 		retval = genFakeIP()
 	}
-	fakeIPCache.revmap[retval] = name
+	log.Debugf("mapped fake IP %v => %v", retval, name)
+	fakeIPCache.revmap[retval] = strings.Trim(name, ".")
 	fakeIPCache.mapping[name] = retval
 	return retval
 }

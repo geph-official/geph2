@@ -1,15 +1,19 @@
 package main
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"runtime"
+	"runtime/pprof"
 	"sync"
 	"time"
 
 	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/niaucchi4"
+	log "github.com/sirupsen/logrus"
 )
 
 type stats struct {
@@ -38,6 +42,12 @@ func useStats(f func(sc *stats)) {
 	f(statsCollector)
 }
 
+func handleKill(w http.ResponseWriter, r *http.Request) {
+	log.Println("dying on command")
+	time.Sleep(time.Millisecond * 100)
+	os.Exit(0)
+}
+
 func handleStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Access-Control-Allow-Origin", "*")
 	var bts []byte
@@ -58,17 +68,47 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 	w.Write(bts)
 }
 
+func handleDebugPack(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Disposition", fmt.Sprintf("attachment; filename=\"geph-logs-%v-%v.zip\"", username, time.Now().Format(time.RFC3339)))
+	w.Header().Add("content-type", "application/zip")
+	zwriter := zip.NewWriter(w)
+	defer zwriter.Close()
+	logFile, err := zwriter.Create("logs.txt")
+	if err != nil {
+		return
+	}
+	useStats(func(sc *stats) {
+		for _, line := range sc.LogLines {
+			fmt.Fprintln(logFile, line)
+		}
+	})
+	straceFile, err := zwriter.Create("stacktrace.txt")
+	if err != nil {
+		return
+	}
+	buf := make([]byte, 8192)
+	for {
+		n := runtime.Stack(buf, true)
+		if n < len(buf) {
+			buf = buf[:n]
+			break
+		}
+		buf = append(buf, buf...)
+	}
+	straceFile.Write(buf)
+	heapprofFile, err := zwriter.Create("heap.pprof")
+	pprof.WriteHeapProfile(heapprofFile)
+}
+
 func handleLogs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Access-Control-Allow-Origin", "*")
 	var bts []byte
 	useStats(func(sc *stats) {
-		var err error
-		bts, err = json.Marshal(sc.LogLines)
-		if err != nil {
-			panic(err)
+		for _, line := range sc.LogLines {
+			fmt.Fprintln(w, line)
 		}
 	})
-	w.Header().Add("content-type", "application/json")
+	w.Header().Add("content-type", "text/plain")
 	w.Write(bts)
 }
 
