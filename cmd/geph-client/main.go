@@ -52,6 +52,7 @@ var useTCP bool
 var noFEC bool
 
 var singleHop string
+var dualHop string
 
 var bindClient *bdclient.Client
 
@@ -132,6 +133,7 @@ func main() {
 	flag.StringVar(&binderProxy, "binderProxy", "", "if set, proxy the binder at the given listening address and do nothing else")
 	// flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
 	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
+	flag.StringVar(&dualHop, "dualHop", "", "if set in form password1@bridge1:port1;password2@bridge2:port2;password3@bridge3:port3, connect to exit through these bridge servers, need to give exitName and exitKey")
 	flag.BoolVar(&useTCP, "useTCP", false, "use TCP to connect to bridges")
 	flag.BoolVar(&noFEC, "noFEC", false, "disable automatic FEC")
 	flag.BoolVar(&bypassChinese, "bypassChinese", false, "bypass proxy for Chinese domains")
@@ -170,7 +172,7 @@ func main() {
 			os.Exit(10)
 		}()
 	}
-	if singleHop == "" {
+	if singleHop == "" && dualHop == "" {
 		binderRace()
 		if binderProxy != "" {
 			log.Println("binderProxy mode on", binderProxy)

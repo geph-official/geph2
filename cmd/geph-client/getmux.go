@@ -96,7 +96,7 @@ func newSmuxWrapper() *muxWrap {
 			sc.Connected = true
 		})
 	retry:
-		if singleHop == "" {
+		if singleHop == "" && dualHop == "" {
 			// obtain a ticket
 			ubmsg, ubsig, details, err := bindClient.GetTicket(username, password)
 			if err != nil {
@@ -174,13 +174,24 @@ func newSmuxWrapper() *muxWrap {
 			}
 			conn.SetDeadline(time.Now().Add(time.Hour * 24))
 			return sm
-		} else {
+		} else if dualHop == "" {
 			splitted := strings.Split(singleHop, "@")
 			lel, err := hex.DecodeString(splitted[0])
 			if err != nil {
 				panic(err)
 			}
 			lol, err := getSingleHop(splitted[1], lel)
+			if err != nil {
+				goto retry
+			}
+			return lol
+		} else {
+			lel, err := hex.DecodeString(exitKey)
+			if err != nil {
+				panic(err)
+			}
+			splitted := strings.Split(dualHop, ";")
+			lol, err := getdualHop(exitName, lel, splitted)
 			if err != nil {
 				goto retry
 			}

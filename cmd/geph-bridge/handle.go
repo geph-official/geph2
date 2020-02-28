@@ -43,9 +43,11 @@ func handle(client net.Conn) {
 			if err != nil {
 				return
 			}
-			if !exitMatcher.MatchString(host) {
-				err = fmt.Errorf("bad pattern: %v", host)
-				return
+			if dualHop == "" {
+				if !exitMatcher.MatchString(host) {
+					err = fmt.Errorf("bad pattern: %v", host)
+					return
+				}
 			}
 			var cookie []byte
 			err = dec.Decode(&cookie)

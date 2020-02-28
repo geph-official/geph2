@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"flag"
 	"fmt"
 	"io"
@@ -32,7 +33,7 @@ var statsdAddr string
 var allocGroup string
 var speedLimit int
 var bclient *bdclient.Client
-
+var dualHop string
 var limiter *rate.Limiter
 
 var statClient *statsd.StatsdClient
@@ -45,6 +46,7 @@ func main() {
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
 	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")
+	flag.StringVar(&dualHop, "dualHop", "", "if supplied, runs in duan-hop mode, and listen at this port for connections")
 	flag.Parse()
 	if speedLimit > 0 {
 		limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 1000*1000)
@@ -56,10 +58,10 @@ func main() {
 			log.Fatal(err)
 		}
 	}()
-	if allocGroup == "" {
+	if dualHop == "" && allocGroup == "" {
 		log.Fatal("must specify an allocation group")
 	}
-	if statsdAddr != "" {
+	if dualHop == "" && statsdAddr != "" {
 		z, e := net.ResolveUDPAddr("udp", statsdAddr)
 		if e != nil {
 			panic(e)
@@ -67,46 +69,64 @@ func main() {
 		statClient = statsd.New(z.IP.String(), z.Port)
 	}
 	generateCookie()
-	bclient = bdclient.NewClient(binderFront, binderReal)
-	go func() {
-		lastTotal := uint64(0)
-		lastRetrans := uint64(0)
-		for {
-			time.Sleep(time.Second * 10)
-			s := kcp.DefaultSnmp.Copy()
-			deltaTotal := float64(s.OutSegs - lastTotal)
-			lastTotal = s.OutSegs
-			deltaRetrans := float64(s.RetransSegs - lastRetrans)
-			lastRetrans = s.RetransSegs
-			RL := int64(10000 * deltaRetrans / (deltaRetrans + deltaTotal))
-			statClient.Timing(allocGroup+".lossPct", RL)
-		}
-	}()
+	if dualHop == "" {
+		bclient = bdclient.NewClient(binderFront, binderReal)
+	}
+	if dualHop == "" {
+		go func() {
+			lastTotal := uint64(0)
+			lastRetrans := uint64(0)
+			for {
+				time.Sleep(time.Second * 10)
+				s := kcp.DefaultSnmp.Copy()
+				deltaTotal := float64(s.OutSegs - lastTotal)
+				lastTotal = s.OutSegs
+				deltaRetrans := float64(s.RetransSegs - lastRetrans)
+				lastRetrans = s.RetransSegs
+				RL := int64(10000 * deltaRetrans / (deltaRetrans + deltaTotal))
+				statClient.Timing(allocGroup+".lossPct", RL)
+			}
+		}()
+	}
 	listenLoop(-1)
 }
 
 func generateCookie() {
-	cookie = make([]byte, 32)
-	rand.Read(cookie)
+	if dualHop == "" {
+		cookie = make([]byte, 32)
+		rand.Read(cookie)
+	} else {
+		hasg := sha256.Sum256([]byte(binderKey))
+		copy(cookie, hasg[:])
+	}
 }
 
 func listenLoop(deadline time.Duration) {
-	udpsock, err := net.ListenPacket("udp", ":")
+	var udpsock net.PacketConn
+	var err error
+	if dualHop != "" {
+		udpsock, err = net.ListenPacket("udp", dualHop)
+	} else {
+		udpsock, err = net.ListenPacket("udp", ":")
+	}
+
 	if err != nil {
 		panic(err)
 	}
-	go func() {
-		end := time.Now().Add(deadline)
-		for deadline < 0 || time.Now().Before(end) {
-			myAddr := fmt.Sprintf("%v:%v", guessIP(), udpsock.LocalAddr().(*net.UDPAddr).Port)
-			log.Println(myAddr)
-			e := bclient.AddBridge(binderKey, cookie, myAddr, allocGroup)
-			if e != nil {
-				log.Println("error adding bridge:", e)
+	if dualHop == "" {
+		go func() {
+			end := time.Now().Add(deadline)
+			for deadline < 0 || time.Now().Before(end) {
+				myAddr := fmt.Sprintf("%v:%v", guessIP(), udpsock.LocalAddr().(*net.UDPAddr).Port)
+				log.Println(myAddr)
+				e := bclient.AddBridge(binderKey, cookie, myAddr, allocGroup)
+				if e != nil {
+					log.Println("error adding bridge:", e)
+				}
+				time.Sleep(time.Minute)
 			}
-			time.Sleep(time.Minute)
-		}
-	}()
+		}()
+	}
 	go func() {
 		listener, err := net.Listen("tcp", udpsock.LocalAddr().String())
 		if err != nil {

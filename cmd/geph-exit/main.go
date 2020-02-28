@@ -25,6 +25,7 @@ var seckey ed25519.PrivateKey
 var onlyPaid bool
 
 var singleHop string
+var dualHop bool
 
 var binderFront string
 var binderReal string
@@ -50,6 +51,7 @@ func main() {
 	flag.BoolVar(&onlyPaid, "onlyPaid", false, "only allow paying users")
 	flag.IntVar(&speedLimit, "speedLimit", 12500, "per-session speed limit, in KB/s")
 	flag.StringVar(&singleHop, "singleHop", "", "if supplied, runs in single-hop mode. (for example, -singleHop :5000 would listen on port 5000)")
+	flag.BoolVar(&dualHop, "dualHop", false, "if supplied, runs in duan-hop mode")
 	flag.Parse()
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
@@ -63,21 +65,22 @@ func main() {
 	}
 	log.Infof("Loaded PK = %x", pubkey)
 
-	var err error
-	hostname, err = os.Hostname()
-	if err != nil {
-		statsdAddr = ""
-	} else {
-	}
-	if statsdAddr != "" {
-		z, e := net.ResolveUDPAddr("udp", statsdAddr)
-		if e != nil {
-			panic(e)
+	if !dualHop {
+		var err error
+		hostname, err = os.Hostname()
+		if err != nil {
+			statsdAddr = ""
+		} else {
 		}
-		statClient = statsd.New(z.IP.String(), z.Port)
+		if statsdAddr != "" {
+			z, e := net.ResolveUDPAddr("udp", statsdAddr)
+			if e != nil {
+				panic(e)
+			}
+			statClient = statsd.New(z.IP.String(), z.Port)
+		}
+		bclient = bdclient.NewClient(binderFront, binderReal)
 	}
-	bclient = bdclient.NewClient(binderFront, binderReal)
-
 	// listen
 	go func() {
 		tcpListener, err := net.Listen("tcp", ":2389")

@@ -89,7 +89,7 @@ func handle(rawClient net.Conn) {
 	limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), speedLimit*1024)
 	// "generic" stuff
 	var acceptStream func() (net.Conn, error)
-	if singleHop == "" {
+	if singleHop == "" && !dualHop {
 		// authenticate the client
 		var greeting [2][]byte
 		err = rlp.Decode(tssClient, &greeting)
