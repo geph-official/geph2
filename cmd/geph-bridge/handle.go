@@ -105,9 +105,11 @@ func handle(client net.Conn) {
 				return
 			}
 			log.Println("host is", host)
-			if !exitMatcher.MatchString(host) {
-				err = fmt.Errorf("bad pattern: %v", host)
-				return
+			if dualHop == "" {
+				if !exitMatcher.MatchString(host) {
+					err = fmt.Errorf("bad pattern: %v", host)
+					return
+				}
 			}
 			remoteAddr := fmt.Sprintf("%v:2389", host)
 			var remote net.Conn

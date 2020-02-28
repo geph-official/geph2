@@ -46,7 +46,7 @@ func main() {
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
 	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")
-	flag.StringVar(&dualHop, "dualHop", "", "if supplied, runs in duan-hop mode, and listen at this port for connections")
+	flag.StringVar(&dualHop, "dualHop", "", "if supplied, runs in dual-hop mode, and listen at this port for connections")
 	flag.Parse()
 	if speedLimit > 0 {
 		limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 1000*1000)
