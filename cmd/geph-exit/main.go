@@ -51,7 +51,7 @@ func main() {
 	flag.BoolVar(&onlyPaid, "onlyPaid", false, "only allow paying users")
 	flag.IntVar(&speedLimit, "speedLimit", 12500, "per-session speed limit, in KB/s")
 	flag.StringVar(&singleHop, "singleHop", "", "if supplied, runs in single-hop mode. (for example, -singleHop :5000 would listen on port 5000)")
-	flag.BoolVar(&dualHop, "dualHop", false, "if supplied, runs in duan-hop mode")
+	flag.BoolVar(&dualHop, "dualHop", false, "if supplied, runs in dual-hop mode")
 	flag.Parse()
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))

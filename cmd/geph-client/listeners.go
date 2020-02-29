@@ -118,7 +118,7 @@ func listenSocks() {
 			}
 			var remote net.Conn
 			var ok bool
-			if bypassHost(host) {
+			if bypassChinese && bypassHost(host) {
 				remote, err = net.Dial("tcp", rmAddr)
 				if err != nil {
 					log.Println("[%v] failed to bypass %v", len(semaphore), remote)
