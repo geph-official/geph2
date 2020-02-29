@@ -527,7 +527,7 @@ func (kcp *KCP) update_ack(rtt int32) {
 	// if kcp.rx_rto < 500 {
 	// 	kcp.rx_rto = 500
 	// }
-	kcp.rx_rto += 1500
+	kcp.rx_rto += 500
 }
 
 func (kcp *KCP) shrink_buf() {
