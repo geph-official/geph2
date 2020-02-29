@@ -52,7 +52,7 @@ func shUDP() {
 	}
 	udpsock.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
 	udpsock.(*net.UDPConn).SetReadBuffer(10 * 1024 * 1024)
-	obfs := niaucchi4.ObfsListen(pubkey, udpsock)
+	obfs := niaucchi4.ObfsListen(pubkey, udpsock, false)
 	log.Infoln("... UDP on", obfs.LocalAddr())
 	kcpListener := niaucchi4.ListenKCP(obfs)
 	for {

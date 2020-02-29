@@ -218,17 +218,10 @@ func handle(rawClient net.Conn) {
 				atomic.AddUint64(&tunnCount, 1)
 				defer atomic.AddUint64(&tunnCount, ^uint64(0))
 				regConn(remote)
-				defer func() {
-					log.Debugf("<%v> cmd %v closed in %v", atomic.LoadUint64(&tunnCount), command, time.Since(dialStart))
-				}()
 				// measure dial latency
 				dialLatency := time.Since(dialStart)
-				if statClient != nil && singleHop == "" {
+				if statClient != nil && singleHop == "" && reportRL.Allow() {
 					statClient.Timing(hostname+".dialLatency", dialLatency.Milliseconds())
-					statClient.Increment(hostname + ".totalConns")
-					defer func() {
-						statClient.Timing(hostname+".connLifetime", dialLatency.Milliseconds())
-					}()
 				}
 				defer remote.Close()
 				onPacket := func(l int) {

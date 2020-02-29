@@ -22,7 +22,7 @@ func DialKCP(addr string, cookie []byte) (conn net.Conn, err error) {
 		// udpsock.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
 		return fastudp.NewConn(udpsock.(*net.UDPConn))
 	})
-	kcpConn, err := kcp.NewConn(addr, nil, 16, 16, ObfsListen(cookie, socket))
+	kcpConn, err := kcp.NewConn(addr, nil, 16, 16, ObfsListen(cookie, socket, false))
 	if err != nil {
 		socket.Close()
 		return

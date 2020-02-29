@@ -23,8 +23,8 @@ func TestObfs(t *testing.T) {
 	cookie := make([]byte, 32)
 	rand.Read(cookie)
 	// make obfs
-	obfs1 := ObfsListen(cookie, sock1)
-	obfs2 := ObfsListen(cookie, sock2)
+	obfs1 := ObfsListen(cookie, sock1, false)
+	obfs2 := ObfsListen(cookie, sock2, false)
 	// test
 	go func() {
 		p := make([]byte, 1000)

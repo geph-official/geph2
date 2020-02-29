@@ -140,7 +140,7 @@ func listenLoop(deadline time.Duration) {
 			}()
 		}
 	}()
-	e2e := niaucchi4.ObfsListen(cookie, udpsock)
+	e2e := niaucchi4.ObfsListen(cookie, udpsock, false)
 	if err != nil {
 		panic(err)
 	}

@@ -38,6 +38,7 @@ type ObfsSocket struct {
 	wire             net.PacketConn
 	wlock            sync.Mutex
 	rdbuf            [65536]byte
+	replayProtection bool
 }
 
 func newLRU() *simplelru.LRU {
@@ -49,13 +50,14 @@ func newLRU() *simplelru.LRU {
 }
 
 // ObfsListen opens a new obfuscated PacketConn.
-func ObfsListen(cookie []byte, wire net.PacketConn) *ObfsSocket {
+func ObfsListen(cookie []byte, wire net.PacketConn, replayProtection bool) *ObfsSocket {
 	return &ObfsSocket{
-		cookie:  cookie,
-		sscache: newLRU(),
-		tunnels: newLRU(),
-		pending: newLRU(),
-		wire:    wire,
+		cookie:           cookie,
+		sscache:          newLRU(),
+		tunnels:          newLRU(),
+		pending:          newLRU(),
+		wire:             wire,
+		replayProtection: replayProtection,
 	}
 }
 
@@ -151,7 +153,7 @@ func (os *ObfsSocket) hiddenReadFrom(p []byte) (n int, addr net.Addr, err error)
 	// check if the packet belongs to a pending thing
 	if proti, ok := os.pending.Get(addr.String()); ok {
 		prot := proti.(*prototun)
-		ts, e := prot.realize(os.rdbuf[:readBytes], false)
+		ts, e := prot.realize(os.rdbuf[:readBytes], false, os.replayProtection)
 		if e != nil {
 			return
 		}
@@ -186,7 +188,7 @@ func (os *ObfsSocket) hiddenReadFrom(p []byte) (n int, addr net.Addr, err error)
 	// otherwise it has to be some sort of tunnel opener
 	//log.Println("got suspected hello")
 	pt := newproto(os.cookie)
-	ts, e := pt.realize(os.rdbuf[:readBytes], true)
+	ts, e := pt.realize(os.rdbuf[:readBytes], true, os.replayProtection)
 	if e != nil {
 		if doLogging {
 			log.Println("N4: bad hello from", addr.String(), e.Error())
