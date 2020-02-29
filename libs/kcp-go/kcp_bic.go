@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const bicMultiplier = 8
+const bicMultiplier = 1
 
 func (kcp *KCP) cubic_onloss(lost []uint32) {
 	kcp.wmax = kcp.cwnd

@@ -44,8 +44,10 @@ func useStats(f func(sc *stats)) {
 
 func handleKill(w http.ResponseWriter, r *http.Request) {
 	log.Println("dying on command")
-	time.Sleep(time.Millisecond * 100)
-	os.Exit(0)
+	go func() {
+		time.Sleep(time.Millisecond * 100)
+		os.Exit(0)
+	}()
 }
 
 func handleStats(w http.ResponseWriter, r *http.Request) {
