@@ -16,7 +16,7 @@ import (
 )
 
 func listenStats() {
-	log.Infoln("STATS on", httpAddr)
+	log.Infoln("STATS on", statsAddr)
 	// spin up stats server
 	statsMux := http.NewServeMux()
 	statsServ := &http.Server{

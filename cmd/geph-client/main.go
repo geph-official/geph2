@@ -92,10 +92,6 @@ restart:
 }
 
 func main() {
-	if dnsAddr != "" {
-		go doDNS()
-	}
-	go listenStats()
 	debug.SetGCPercent(30)
 	mrand.Seed(time.Now().UnixNano())
 	log.SetFormatter(&log.TextFormatter{
@@ -138,6 +134,10 @@ func main() {
 	flag.BoolVar(&noFEC, "noFEC", false, "disable automatic FEC")
 	flag.BoolVar(&bypassChinese, "bypassChinese", false, "bypass proxy for Chinese domains")
 	iniflags.Parse()
+	if dnsAddr != "" {
+		go doDNS()
+	}
+	go listenStats()
 	if GitVersion == "" {
 		GitVersion = "NOVER"
 	}
