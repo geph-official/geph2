@@ -25,6 +25,7 @@ var pubkey ed25519.PublicKey
 var seckey ed25519.PrivateKey
 var onlyPaid bool
 
+var outbound string
 var singleHop string
 var dualHop bool
 
@@ -51,6 +52,7 @@ func main() {
 	flag.StringVar(&statsdAddr, "statsdAddr", "c2.geph.io:8125", "address of StatsD for gathering statistics")
 	flag.BoolVar(&onlyPaid, "onlyPaid", false, "only allow paying users")
 	flag.IntVar(&speedLimit, "speedLimit", 12500, "per-session speed limit, in KB/s")
+	flag.StringVar(&outbound, "outbound", "", "Outbound SOCKS5 server")
 	flag.StringVar(&singleHop, "singleHop", "", "if supplied, runs in single-hop mode. (for example, -singleHop :5000 would listen on port 5000)")
 	flag.BoolVar(&dualHop, "dualHop", false, "if supplied, runs in dual-hop mode")
 	flag.Parse()

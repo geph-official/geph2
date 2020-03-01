@@ -4,6 +4,8 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strconv"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -105,13 +107,39 @@ func listenSocks() {
 				log.Debugln("Bad SOCKS5 request:", err)
 				return
 			}
-			if cmd != tinysocks.CmdConnect {
+			rmAddr := rmAddrProt.String()
+			host, port, err := net.SplitHostPort(rmAddr)
+			if cmd == tinysocks.CmdBind {
 				log.Debugln("Unsupported command:", cmd)
 				tinysocks.CompleteRequestTCP(7, cl)
 				return
+			} else if cmd == tinysocks.CmdUDPAssociate {
+				if value, err := strconv.Atoi(port); value != 53 || err != nil || interceptDNS {
+					log.Debugln("Unsupported command:", cmd)
+					tinysocks.CompleteRequestTCP(7, cl)
+				} else {
+					listenAddr := tinysocks.ParseAddr(cl.(net.Conn).LocalAddr().String())
+					_, err = cl.Write(append([]byte{5, 0, 0}, listenAddr...)) // SOCKS v5, reply succeeded
+					if err != nil {
+						log.Debugln("Unsupported command:", cmd)
+						return
+					}
+					buf := make([]byte, 1)
+					// block here
+					for {
+						_, err := cl.Read(buf)
+						if err, ok := err.(net.Error); ok && err.Timeout() {
+							continue
+						}
+						//log.Debugln("UDP Associate End.")
+						return
+					}
+				}
+				return
+			} else if cmd != tinysocks.CmdConnect {
+				log.Debugln("Unsupported command:", cmd)
+				tinysocks.CompleteRequestTCP(7, cl)
 			}
-			rmAddr := rmAddrProt.String()
-			host, port, err := net.SplitHostPort(rmAddr)
 			if realName := fakeIPToName(host); realName != "" {
 				rmAddr = net.JoinHostPort(realName, port)
 				host = realName
@@ -135,7 +163,7 @@ func listenSocks() {
 				}
 				defer remote.Close()
 				ping := time.Since(start)
-				log.Debugf("[%v] opened %v in %v", len(semaphore), rmAddr, ping)
+				log.Debugf("[%v] opened tcp %v in %v", len(semaphore), rmAddr, ping)
 				useStats(func(sc *stats) {
 					pmil := ping.Milliseconds()
 					if time.Since(sc.PingTime).Seconds() > 30 || uint64(pmil) < sc.MinPing {
@@ -168,7 +196,131 @@ func listenSocks() {
 	}
 }
 
+const udpBufSize = 64 * 1024
+
+func listenSocksUDP() {
+	c, err := net.ListenPacket("udp", socksAddr)
+	if err != nil {
+		log.Debugf("UDP local listen error: %v", err)
+		return
+	}
+	defer c.Close()
+
+	nm := newNATmap(UDPTimeout)
+	buf := make([]byte, udpBufSize)
+
+	for {
+		n, raddr, err := c.ReadFrom(buf)
+		if err != nil {
+			log.Debugf("UDP local read error: %v", err)
+			continue
+		}
+
+		tgtAddr := tinysocks.SplitAddr(buf[3:n])
+		if tgtAddr == nil {
+			log.Debugf("failed to split target address from packet: %q", buf[:n])
+			continue
+		}
+
+		pc := nm.Get(raddr.String())
+		if pc == nil {
+			pc, err = net.ListenPacket("udp", "")
+			if err != nil {
+				log.Debugf("UDP local listen error: %v", err)
+				continue
+			}
+			nm.Add(raddr, c, pc, tgtAddr.String())
+		}
+
+		tgtUDPAddr, err := net.ResolveUDPAddr("udp", dnsAddr)
+		if err != nil {
+			log.Debugf("failed to resolve target UDP address: %v", err)
+			continue
+		}
+
+		payload := buf[3+len(tgtAddr) : n]
+
+		_, err = pc.WriteTo(payload, tgtUDPAddr) // accept only UDPAddr despite the signature
+		if err != nil {
+			log.Debugf("UDP remote write error: %v", err)
+			continue
+		}
+	}
+}
+
+// Packet NAT table
+type natmap struct {
+	sync.RWMutex
+	m       map[string]net.PacketConn
+	timeout time.Duration
+}
+
+func newNATmap(timeout time.Duration) *natmap {
+	m := &natmap{}
+	m.m = make(map[string]net.PacketConn)
+	m.timeout = timeout
+	return m
+}
+
+func (m *natmap) Get(key string) net.PacketConn {
+	m.RLock()
+	defer m.RUnlock()
+	return m.m[key]
+}
+
+func (m *natmap) Set(key string, pc net.PacketConn) {
+	m.Lock()
+	defer m.Unlock()
+
+	m.m[key] = pc
+}
+
+func (m *natmap) Del(key string) net.PacketConn {
+	m.Lock()
+	defer m.Unlock()
+
+	pc, ok := m.m[key]
+	if ok {
+		delete(m.m, key)
+		return pc
+	}
+	return nil
+}
+
+func (m *natmap) Add(peer net.Addr, dst, src net.PacketConn, tgt string) {
+	m.Set(peer.String(), src)
+
+	go func() {
+		timedCopy(dst, peer, src, m.timeout, tgt)
+		if pc := m.Del(peer.String()); pc != nil {
+			pc.Close()
+		}
+	}()
+}
+
+// copy from src to dst at target with read timeout
+func timedCopy(dst net.PacketConn, target net.Addr, src net.PacketConn, timeout time.Duration, tgt string) error {
+	buf := make([]byte, udpBufSize)
+	for {
+		src.SetReadDeadline(time.Now().Add(timeout))
+		n, _, err := src.ReadFrom(buf)
+		if err != nil {
+			return err
+		}
+		//srcAddr := tinysocks.ParseAddr(raddr.String())
+		srcAddr := tinysocks.ParseAddr(tgt)
+
+		copy(buf[len(srcAddr):], buf[:n])
+		copy(buf, srcAddr)
+		_, err = dst.WriteTo(append([]byte{0, 0, 0}, buf[:len(srcAddr)+n]...), target)
+
+		if err != nil {
+			return err
+		}
+	}
+}
+
 // TODO bypass local domains
 func bypassHost(str string) bool {
-	return bypassChinese && chinalist.IsChinese(str)
+	return chinalist.IsChinese(str)
 }

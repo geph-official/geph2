@@ -45,6 +45,9 @@ var httpAddr string
 var statsAddr string
 var dnsAddr string
 var fakeDNS bool
+var UDPTimeout time.Duration
+var interceptDNS bool
+
 var bypassChinese bool
 
 var useTCP bool
@@ -127,6 +130,8 @@ func main() {
 	flag.StringVar(&statsAddr, "statsAddr", "localhost:9809", "HTTP listener for statistics")
 	flag.StringVar(&dnsAddr, "dnsAddr", "localhost:9983", "local DNS listener")
 	flag.BoolVar(&fakeDNS, "fakeDNS", true, "return fake results for DNS")
+	flag.BoolVar(&interceptDNS, "interceptDNS", false, "intercept all DNS request of port udp:53 and process by Geph-client")
+	flag.DurationVar(&UDPTimeout, "udptimeout", 5*time.Minute, "UDP tunnel timeout")
 	flag.BoolVar(&loginCheck, "loginCheck", false, "do a login check and immediately exit with code 0")
 	flag.StringVar(&binderProxy, "binderProxy", "", "if set, proxy the binder at the given listening address and do nothing else")
 	// flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
@@ -241,6 +246,9 @@ func main() {
 		}
 	}()
 	go listenHTTP()
+	if interceptDNS {
+		go listenSocksUDP()
+	}
 	listenSocks()
 }
 
