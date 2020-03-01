@@ -1,6 +1,6 @@
 package niaucchi4
 
-const rwSize = 1024
+const rwSize = 128
 
 type replayWindow struct {
 	lastBuf []uint64
@@ -15,6 +15,7 @@ func (rw *replayWindow) add(val uint64) {
 	} else {
 		rw.lastBuf[rw.bufPtr] = val
 		rw.bufPtr++
+		rw.bufPtr %= rwSize
 	}
 }
 

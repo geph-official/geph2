@@ -67,7 +67,7 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 		return
 	}
 	leftRaw = fastudp.NewConn(leftRaw.(*net.UDPConn))
-	leftSock := niaucchi4.ObfsListen(cookie, leftRaw)
+	leftSock := niaucchi4.ObfsListen(cookie, leftRaw, true)
 	rightSock, err := net.ListenPacket("udp", "")
 	if err != nil {
 		return
@@ -86,7 +86,7 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 		defer rightSock.Close()
 		bts := malloc(2048)
 		for {
-			dl := time.Now().Add(time.Hour * 2)
+			dl := time.Now().Add(time.Minute * 30)
 			leftSock.SetReadDeadline(dl)
 			n, addr, err := leftSock.ReadFrom(bts)
 			if err != nil {
@@ -114,7 +114,7 @@ func e2enat(dest string, cookie []byte) (port int, err error) {
 		defer rightSock.Close()
 		bts := malloc(2048)
 		for {
-			dl := time.Now().Add(time.Hour * 2)
+			dl := time.Now().Add(time.Minute * 30)
 			rightSock.SetReadDeadline(dl)
 			n, _, e := rightSock.ReadFrom(bts)
 			if e != nil {
