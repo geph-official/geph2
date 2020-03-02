@@ -5,15 +5,17 @@ import (
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 )
 
 var reportRL = rate.NewLimiter(20, 10)
 
-var connlru, _ = lru.NewWithEvict(8000, func(k, v interface{}) {
+var connlru, _ = lru.NewWithEvict(16384, func(k, v interface{}) {
 	if statClient != nil && reportRL.Allow() {
 		statClient.Timing(hostname+".lruLifetime", time.Since(v.(time.Time)).Milliseconds())
 	}
+	log.Println("lasted", time.Since(v.(time.Time)))
 	k.(net.Conn).Close()
 })
 

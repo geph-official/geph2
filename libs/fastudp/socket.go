@@ -12,7 +12,7 @@ import (
 	"gopkg.in/tomb.v1"
 )
 
-const sendQuantum = 16
+const sendQuantum = 64
 
 // Conn wraps an underlying UDPConn and batches stuff to it.
 type Conn struct {
@@ -80,21 +80,19 @@ func (conn *Conn) bkgWrite() {
 				}
 			}
 		out:
-			ptr := towrite
-			for len(ptr) > 0 {
-				n, err := conn.pconn.WriteBatch(ptr, 0)
+			for len(towrite) > 0 {
+				n, err := conn.pconn.WriteBatch(towrite, 0)
 				if err != nil {
 					log.Println("kill", err)
 					conn.death.Kill(err)
 					return
 				}
 				for i := 0; i < n; i++ {
-					free(ptr[i].Buffers[0])
-					ptr[i].Buffers = nil
+					free(towrite[i].Buffers[0])
+					towrite[i].Buffers = nil
 				}
-				ptr = ptr[n:]
+				towrite = towrite[n:]
 			}
-			towrite = towrite[:0]
 		case <-conn.death.Dying():
 			return
 		}
@@ -146,8 +144,8 @@ func (conn *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	case <-conn.death.Dying():
 		err = conn.death.Err()
 		return
-		// default:
-		// 	log.Println("fastudp: write to", addr, "overflowed")
+	default:
+		free(pCopy)
 	}
 	return len(p), nil
 }

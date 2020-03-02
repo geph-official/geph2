@@ -55,7 +55,7 @@ func mainClient(dialto string) {
 	if err != nil {
 		panic(err)
 	}
-	e2e := niaucchi4.NewE2EConn(niaucchi4.ObfsListen(nil, udpsock))
+	e2e := niaucchi4.NewE2EConn(niaucchi4.ObfsListen(nil, udpsock, true))
 	var sid niaucchi4.SessionAddr
 	e2e.SetSessPath(sid, servAddr)
 	kcpremote, err := kcp.NewConn2(sid, nil, 0, 0, e2e)
@@ -64,7 +64,7 @@ func mainClient(dialto string) {
 	}
 	defer kcpremote.Close()
 	kcpremote.SetWindowSize(10000, 10000)
-	kcpremote.SetNoDelay(0, 10, 32, 0)
+	kcpremote.SetNoDelay(0, 100, 3, 0)
 	kcpremote.SetStreamMode(true)
 	kcpremote.SetMtu(1200)
 	kcpremote.Write([]byte("HELLO"))
@@ -99,7 +99,7 @@ func mainServer(listen string, klimit int) {
 	}
 	udpsock.(*net.UDPConn).SetWriteBuffer(10 * 1024 * 1024)
 	udpsock.(*net.UDPConn).SetReadBuffer(10 * 1024 * 1024)
-	obfs := niaucchi4.ObfsListen(nil, fastudp.NewConn(udpsock.(*net.UDPConn)))
+	obfs := niaucchi4.ObfsListen(nil, fastudp.NewConn(udpsock.(*net.UDPConn)), true)
 	if err != nil {
 		panic(err)
 	}
@@ -116,7 +116,7 @@ func mainServer(listen string, klimit int) {
 		}
 		log.Println("Accepted kclient from", kclient.RemoteAddr())
 		kclient.SetWindowSize(10000, 10000)
-		kclient.SetNoDelay(0, 10, 32, 0)
+		kclient.SetNoDelay(0, 100, 3, 0)
 		kclient.SetStreamMode(true)
 		kclient.SetMtu(1200)
 		go func() {
