@@ -16,6 +16,7 @@ import (
 	"github.com/geph-official/geph2/libs/fastudp"
 	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
+	"github.com/geph-official/geph2/libs/tinysocks"
 	log "github.com/sirupsen/logrus"
 	"github.com/xtaci/smux"
 )
@@ -178,9 +179,23 @@ func getdualHop(host string, pk []byte, relays []string) (ss *smux.Session, err 
 func getSingleHop(host string, pk []byte) (ss *smux.Session, err error) {
 	var conn net.Conn
 	if useTCP {
-		conn, err = net.Dial("tcp", host)
-		if err != nil {
-			return
+		if singleHopProxy != "" {
+			conn, err = net.Dial("tcp", singleHopProxy)
+			if err != nil {
+				log.Warnln("failed to connect to singlehop server: %v", err)
+				return
+			}
+			err, _ = tinysocks.Client(conn, tinysocks.ParseAddr(host), tinysocks.CmdConnect)
+			if err != nil {
+				log.Warnln("failed to shakehand with second socks5 server: %v", err)
+				return
+			}
+		} else {
+			conn, err = net.Dial("tcp", host)
+			if err != nil {
+				log.Warnln("failed to connect to outbound: %v", err)
+				return
+			}
 		}
 		conn, err = cshirt2.Client(pk, conn)
 		if err != nil {
@@ -190,10 +205,41 @@ func getSingleHop(host string, pk []byte) (ss *smux.Session, err error) {
 		ss, err = negotiateSmux(nil, conn, pk)
 		return
 	}
-	conn, err = niaucchi4.DialKCP(host, pk)
-	if err != nil {
-		err = fmt.Errorf("plain TCP failed: %w", err)
-		return
+	if singleHopProxy != "" {
+		conn, err = net.Dial("tcp", singleHopProxy)
+		if err != nil {
+			log.Warnln("failed to connect to singlehop server: %v", err)
+			return
+		}
+		var udpadd tinysocks.Addr
+		err, udpadd = tinysocks.Client(conn, tinysocks.ParseAddr(host), tinysocks.CmdUDPAssociate)
+		if err != nil {
+			log.Warnln("failed to shakehand with second socks5 server: %v", err)
+			return
+		}
+		go func() {
+			buf := make([]byte, 1)
+			// block here
+			for {
+				_, err := conn.Read(buf)
+				if err, ok := err.(net.Error); ok && err.Timeout() {
+					continue
+				}
+				log.Debugln("UDP Associate End.")
+				return
+			}
+		}()
+		conn, err = niaucchi4.DialProxyKCP(host, udpadd.String(), pk)
+		if err != nil {
+			err = fmt.Errorf("plain TCP failed: %w", err)
+			return
+		}
+	} else {
+		conn, err = niaucchi4.DialKCP(host, pk)
+		if err != nil {
+			err = fmt.Errorf("plain TCP failed: %w", err)
+			return
+		}
 	}
 	ss, err = negotiateSmux(nil, conn, pk)
 	return

@@ -209,7 +209,7 @@ func handle(rawClient net.Conn) {
 						log.Debugf("failed to connect to outbound: %v", err)
 						return
 					}
-					err = tinysocks.Client(remote, tinysocks.ParseAddr(host))
+					err, _ = tinysocks.Client(remote, tinysocks.ParseAddr(host), tinysocks.CmdConnect)
 					if err != nil {
 						log.Debugf("failed to connect to second socks5 server: %v", err)
 						return

@@ -84,7 +84,7 @@ func main() {
 			panic(err)
 		}
 		log.Println("server started UDP on", udpsock.LocalAddr())
-		e2e := niaucchi4.NewE2EConn(niaucchi4.ObfsListen(nil, udpsock))
+		e2e := niaucchi4.NewE2EConn(niaucchi4.ObfsListen(nil, udpsock, true))
 		go func() {
 			for {
 				e2e.DebugInfo()
@@ -181,7 +181,7 @@ func main() {
 			panic(err)
 		}
 		log.Println("made new udpsock at", udpsock.LocalAddr())
-		e2e := niaucchi4.NewE2EConn(niaucchi4.ObfsListen(nil, udpsock))
+		e2e := niaucchi4.NewE2EConn(niaucchi4.ObfsListen(nil, udpsock, true))
 		go func() {
 			for {
 				e2e.DebugInfo()

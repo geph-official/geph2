@@ -114,7 +114,7 @@ func listenSocks() {
 				tinysocks.CompleteRequestTCP(7, cl)
 				return
 			} else if cmd == tinysocks.CmdUDPAssociate {
-				if value, err := strconv.Atoi(port); value != 53 || err != nil || interceptDNS {
+				if value, err := strconv.Atoi(port); (value != 53 && interceptDNS) || err != nil {
 					log.Debugln("Unsupported command:", cmd)
 					tinysocks.CompleteRequestTCP(7, cl)
 				} else {

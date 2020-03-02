@@ -35,6 +35,26 @@ func DialKCP(addr string, cookie []byte) (conn net.Conn, err error) {
 	return
 }
 
+// DialKCP dials KCP over obfs in one function.
+func DialProxyKCP(addr, proxy string, cookie []byte) (conn net.Conn, err error) {
+	udpsock, err := net.ListenPacket("udp", "")
+	if err != nil {
+		panic(err)
+	}
+	udpsock = NewProxyConn(udpsock, proxy)
+	kcpConn, err := kcp.NewConn(addr, nil, 16, 16, ObfsListen(cookie, udpsock, false))
+	if err != nil {
+		udpsock.Close()
+		return
+	}
+	kcpConn.SetWindowSize(10000, 10000)
+	kcpConn.SetNoDelay(0, 100, 32, 0)
+	kcpConn.SetStreamMode(true)
+	kcpConn.SetMtu(1300)
+	conn = kcpConn
+	return
+}
+
 // KCPListener operates KCP over obfs. Standard caveats about KCP not having proper open and close signaling apply.
 type KCPListener struct {
 	k    *kcp.Listener
