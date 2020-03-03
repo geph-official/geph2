@@ -119,6 +119,8 @@ type (
 
 		updater updateHeap
 
+		fecbuffer [][]byte
+
 		mu sync.Mutex
 	}
 
@@ -545,97 +547,87 @@ func (s *UDPSession) SetWriteBuffer(bytes int) error {
 }
 
 func loss2fecfrac(loss float64) float64 {
-	if loss < 0.03 {
+	if loss < 0 {
 		return 0
+	} else if loss < 0.01 {
+		return 0
+	} else if loss < 0.02 {
+		return 0.0625
+	} else if loss < 0.03 {
+		return 0.0625
 	} else if loss < 0.04 {
 		return 0.0625
 	} else if loss < 0.05 {
-		return 0.0625
+		return 0.125
 	} else if loss < 0.06 {
-		return 0.0625
+		return 0.125
 	} else if loss < 0.07 {
-		return 0.0625
+		return 0.125
 	} else if loss < 0.08 {
-		return 0.0625
+		return 0.1875
 	} else if loss < 0.09 {
-		return 0.125
+		return 0.1875
 	} else if loss < 0.1 {
-		return 0.125
+		return 0.1875
 	} else if loss < 0.11 {
-		return 0.125
+		return 0.1875
 	} else if loss < 0.12 {
-		return 0.125
+		return 0.25
 	} else if loss < 0.13 {
-		return 0.125
+		return 0.25
 	} else if loss < 0.14 {
-		return 0.1875
+		return 0.25
 	} else if loss < 0.15 {
-		return 0.1875
+		return 0.3125
 	} else if loss < 0.16 {
-		return 0.1875
+		return 0.3125
 	} else if loss < 0.17 {
-		return 0.1875
+		return 0.3125
 	} else if loss < 0.18 {
-		return 0.25
+		return 0.375
 	} else if loss < 0.19 {
-		return 0.25
+		return 0.375
 	} else if loss < 0.2 {
-		return 0.25
+		return 0.375
 	} else if loss < 0.21 {
-		return 0.25
+		return 0.4375
 	} else if loss < 0.22 {
-		return 0.3125
+		return 0.4375
 	} else if loss < 0.23 {
-		return 0.3125
+		return 0.4375
 	} else if loss < 0.24 {
-		return 0.3125
+		return 0.5
 	} else if loss < 0.25 {
-		return 0.3125
+		return 0.5
 	} else if loss < 0.26 {
-		return 0.375
+		return 0.5
 	} else if loss < 0.27 {
-		return 0.375
+		return 0.5625
 	} else if loss < 0.28 {
-		return 0.375
+		return 0.5625
 	} else if loss < 0.29 {
-		return 0.4375
+		return 0.625
 	} else if loss < 0.3 {
-		return 0.4375
+		return 0.625
 	} else if loss < 0.31 {
-		return 0.4375
+		return 0.6875
 	} else if loss < 0.32 {
-		return 0.5
+		return 0.6875
 	} else if loss < 0.33 {
-		return 0.5
+		return 0.6875
 	} else if loss < 0.34 {
-		return 0.5
+		return 0.75
 	} else if loss < 0.35 {
-		return 0.5625
+		return 0.75
 	} else if loss < 0.36 {
-		return 0.5625
+		return 0.8125
 	} else if loss < 0.37 {
-		return 0.625
+		return 0.8125
 	} else if loss < 0.38 {
-		return 0.625
-	} else if loss < 0.39 {
-		return 0.625
-	} else if loss < 0.4 {
-		return 0.6875
-	} else if loss < 0.41 {
-		return 0.6875
-	} else if loss < 0.42 {
-		return 0.75
-	} else if loss < 0.43 {
-		return 0.75
-	} else if loss < 0.44 {
-		return 0.8125
-	} else if loss < 0.45 {
-		return 0.8125
-	} else if loss < 0.46 {
 		return 0.875
-	} else if loss < 0.47 {
-		return 0.9375
-	} else if loss < 0.48 {
+	} else if loss < 0.39 {
+		return 0.875
+	} else if loss < 0.4 {
 		return 0.9375
 	}
 	return 1.0
@@ -693,13 +685,18 @@ func (s *UDPSession) output(buf []byte) {
 		}
 	}
 	for k := range ecc {
-		if float64(k) < float64(len(ecc))*fecRate {
+		if float64(k) <= float64(len(ecc))*fecRate {
 			bts := xmitBuf.Get().([]byte)[:len(ecc[k])]
 			copy(bts, ecc[k])
-			msg.Buffers = [][]byte{bts}
-			msg.Addr = s.remote
-			s.txqueue = append(s.txqueue, msg)
+			s.fecbuffer = append(s.fecbuffer, bts)
 		}
+	}
+	if len(s.fecbuffer) > 0 {
+		bts := s.fecbuffer[0]
+		s.fecbuffer = s.fecbuffer[1:]
+		msg.Buffers = [][]byte{bts}
+		msg.Addr = s.remote
+		s.txqueue = append(s.txqueue, msg)
 	}
 }
 

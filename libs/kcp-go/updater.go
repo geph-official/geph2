@@ -102,12 +102,12 @@ func (h *updateHeap) updateTask() {
 			now := time.Now()
 			if !now.Before(entry.ts) {
 				zuru := now.Sub(entry.ts)
-				if zuru.Milliseconds() > 20 {
+				if zuru.Milliseconds() > 50 {
 					log.Printf("WARNING!! %p zuru %v", h, zuru)
 				}
 				interval := entry.s.update()
 				lala := time.Since(now)
-				if lala.Milliseconds() > 5 {
+				if lala.Milliseconds() > 50 {
 					log.Printf("WARNING!! %p overtime %v", h, lala)
 				}
 				if interval != 0 {

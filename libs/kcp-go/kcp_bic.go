@@ -37,13 +37,20 @@ func (kcp *KCP) bic_onloss(lost []uint32) {
 	// if maxRun < int(kcp.cwnd/20) || maxRun < 10 {
 	// 	return
 	// }
-	beta := 0.01 / bicMultiplier
+	beta := 0.02 / bicMultiplier
 	if kcp.cwnd < kcp.wmax {
 		kcp.wmax = kcp.cwnd * (2.0 - beta) / 2.0
 	} else {
 		kcp.wmax = kcp.cwnd
 	}
 	kcp.cwnd = kcp.cwnd * (1.0 - beta)
+	mincwnd := kcp.bdp() / float64(kcp.mss)
+	if kcp.cwnd < mincwnd {
+		kcp.cwnd = mincwnd
+	}
+	if kcp.cwnd < 32 {
+		kcp.cwnd = 32
+	}
 }
 
 const (

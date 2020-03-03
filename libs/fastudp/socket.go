@@ -144,8 +144,8 @@ func (conn *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	case <-conn.death.Dying():
 		err = conn.death.Err()
 		return
-	default:
-		free(pCopy)
+		// default:
+		// 	free(pCopy)
 	}
 	return len(p), nil
 }
