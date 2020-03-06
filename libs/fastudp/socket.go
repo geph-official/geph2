@@ -1,6 +1,7 @@
 package fastudp
 
 import (
+	"context"
 	"io"
 	"log"
 	"net"
@@ -12,7 +13,7 @@ import (
 	"gopkg.in/tomb.v1"
 )
 
-const sendQuantum = 64
+const sendQuantum = 1024
 
 // Conn wraps an underlying UDPConn and batches stuff to it.
 type Conn struct {
@@ -55,8 +56,8 @@ func NewConn(conn *net.UDPConn) net.PacketConn {
 	return c
 }
 
-// 100Hz syscall limiter
-var limiter = rate.NewLimiter(100, 100)
+// 1000Hz syscall limiter
+var limiter = rate.NewLimiter(1000, 100)
 
 var spamLimiter = rate.NewLimiter(1, 10)
 
@@ -67,7 +68,7 @@ func (conn *Conn) bkgWrite() {
 	//log.Println("bkgWrite started")
 	var towrite []ipv4.Message
 	for {
-		//limiter.Wait(context.Background())
+		limiter.Wait(context.Background())
 		select {
 		case first := <-conn.writeBuf:
 			towrite = append(towrite, first)
