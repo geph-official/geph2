@@ -1201,9 +1201,9 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				kcp.cubic_onloss(lostSn)
 			}
 		case "LOL":
-			if sum > 0 {
-				kcp.cwnd = math.Min(kcp.cwnd, kcp.bdp()/float64(kcp.mss))
-			}
+			// if sum > 0 {
+			// 	kcp.cwnd = math.Min(kcp.cwnd, kcp.bdp()/float64(kcp.mss))
+			// }
 		case "VGS":
 		}
 		if sum > 0 {
@@ -1227,7 +1227,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				// if doLogging {
 				// 	log.Println("bdpMultiplier =>", kcp.LOL.bdpMultiplier)
 				// }
-				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.4 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
+				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.2 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
 					if doLogging {
 						log.Printf("[%p] ****** POLICE ******", kcp)
 					}
