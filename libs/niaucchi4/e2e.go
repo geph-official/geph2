@@ -66,13 +66,26 @@ func (e2e *E2EConn) DebugInfo() [][]LinkInfo {
 	return tr
 }
 
+func (e2e *E2EConn) genSendCallback() func(e2ePacket, net.Addr) {
+	return func(toSend e2ePacket, dest net.Addr) {
+		buffer := malloc(2048)
+		defer free(buffer)
+		buf := bytes.NewBuffer(buffer[:0])
+		err := rlp.Encode(buf, toSend)
+		if err != nil {
+			panic(err)
+		}
+		e2e.wire.WriteTo(buf.Bytes(), dest)
+	}
+}
+
 // SetSessPath is used by clients to have certain sessions go along certain paths.
 func (e2e *E2EConn) SetSessPath(sid SessionAddr, host net.Addr) {
 	var sess *e2eSession
 	if sessi, ok := e2e.sidToSess.Get(sid.String()); ok {
 		sess = sessi.(*e2eSession)
 	} else {
-		sess = newSession(sid)
+		sess = newSession(sid, e2e.genSendCallback())
 	}
 	e2e.sidToSess.SetDefault(sid.String(), sess)
 	sess.AddPath(host)
@@ -105,16 +118,7 @@ func (e2e *E2EConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	}
 	sess := sessi.(*e2eSession)
 	e2e.sidToSess.SetDefault(sessid.String(), sess)
-	err = sess.Send(p, func(toSend e2ePacket, dest net.Addr) {
-		buffer := malloc(2048)
-		defer free(buffer)
-		buf := bytes.NewBuffer(buffer[:0])
-		err = rlp.Encode(buf, toSend)
-		if err != nil {
-			panic(err)
-		}
-		e2e.wire.WriteTo(buf.Bytes(), dest)
-	})
+	err = sess.Send(p)
 	if err != nil {
 		return
 	}
@@ -177,7 +181,7 @@ func (e2e *E2EConn) readOnePacket() error {
 	if sessi, ok := e2e.sidToSess.Get(pkt.Session.String()); ok {
 		sess = sessi.(*e2eSession)
 	} else {
-		sess = newSession(pkt.Session)
+		sess = newSession(pkt.Session, e2e.genSendCallback())
 	}
 	e2e.sidToSess.SetDefault(pkt.Session.String(), sess)
 	sess.AddPath(from)

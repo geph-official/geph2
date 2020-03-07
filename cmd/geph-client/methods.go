@@ -131,7 +131,7 @@ func getMultipath(bridges []bdclient.BridgeInfo, legacy bool) (conn net.Conn, er
 	})
 	cookie := make([]byte, 32)
 	rand.Read(cookie)
-	osocket := niaucchi4.ObfsListen(cookie, usocket)
+	osocket := niaucchi4.ObfsListen(cookie, usocket, true)
 	e2esid := niaucchi4.NewSessAddr()
 	e2e := niaucchi4.NewE2EConn(osocket)
 	go func() {

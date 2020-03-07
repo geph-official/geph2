@@ -834,7 +834,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				} else {
 					// vibrate the gain up and down every 50 rtts
 					period := float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt
-					kcp.LOL.gain = math.Sin(period*(2*math.Pi)/10)*0.25 + 1
+					kcp.LOL.gain = math.Sin(period*(2*math.Pi)/4)*0.25 + 1
 					// if period%2 == 0 {
 					// 	kcp.LOL.gain = 1.25
 					// } else if period%2 == 1 {
@@ -903,9 +903,9 @@ func (kcp *KCP) updateSample(appLimited bool) {
 		//avgRate = kcp.DRE.avgAckRate
 		if kcp.DRE.maxAckRate < avgRate || (!appLimited && float64(time.Since(kcp.DRE.maxAckTime).Milliseconds()) > kcp.rttProp()*10) {
 			kcp.DRE.maxAckRate = avgRate
-			if kcp.DRE.maxAckRate < 200*1000 {
-				kcp.DRE.maxAckRate = 200 * 1000
-			}
+			// if kcp.DRE.maxAckRate < 200*1000 {
+			// 	kcp.DRE.maxAckRate = 200 * 1000
+			// }
 			kcp.DRE.maxAckTime = kcp.DRE.delTime
 			if time.Since(kcp.DRE.policeTime).Seconds() < 20 && kcp.DRE.maxAckRate > kcp.DRE.policeRate {
 				kcp.DRE.maxAckRate = kcp.DRE.policeRate
@@ -1110,6 +1110,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			change++
 			fastRetransSegs++
 			lostSn = append(lostSn, segment.sn)
+			//log.Println("fast", segment.sn)
 		} else if (segment.fastack > 0 && newSegsCount == 0) ||
 			(segment.xmit < 2 && len(kcp.snd_buf) == 1) { // early retransmit
 			needsend = true
@@ -1119,6 +1120,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			change++
 			earlyRetransSegs++
 			lostSn = append(lostSn, segment.sn)
+			//log.Println("early", segment.sn)
 		} else if _itimediff(current, segment.resendts) >= 0 { // RTO
 			needsend = true
 			// if kcp.nodelay == 0 {
@@ -1141,6 +1143,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			// 	log.Printf("[%p] RTO on %v %v", kcp, segment.sn, segment.rto)
 			// }
 			lostSn = append(lostSn, segment.sn)
+			//log.Println("rto", segment.sn)
 		}
 
 		if needsend {

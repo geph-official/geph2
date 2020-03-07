@@ -27,7 +27,7 @@ func main() {
 			panic(err)
 		}
 		socket = fastudp.NewConn(socket.(*net.UDPConn))
-		osocket := niaucchi4.ObfsListen(nil, socket)
+		osocket := niaucchi4.ObfsListen(nil, socket, false)
 		go func() {
 			for {
 				osocket.ReadFrom(make([]byte, 10000))
@@ -49,7 +49,7 @@ func main() {
 		panic(err)
 	}
 	socket = fastudp.NewConn(socket.(*net.UDPConn))
-	osocket := niaucchi4.ObfsListen(nil, socket)
+	osocket := niaucchi4.ObfsListen(nil, socket, false)
 	//socket.(*net.UDPConn).SetWriteBuffer(1000 * 1000 * 100)
 	//fastSocket := fastudp.NewConn(socket.(*net.UDPConn))
 
