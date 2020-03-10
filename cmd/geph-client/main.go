@@ -99,7 +99,7 @@ func main() {
 		ForceColors:   true,
 	})
 	log.SetLevel(log.DebugLevel)
-	kcp.CongestionControl = "BIC"
+	kcp.CongestionControl = "LOL"
 
 	// configfile path
 	usr, err := user.Current()
