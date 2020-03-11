@@ -76,8 +76,6 @@ func handle(rawClient net.Conn) {
 		return
 	}
 	defer tssClient.Close()
-	atomic.AddUint64(&sessCount, 1)
-	defer atomic.AddUint64(&sessCount, ^uint64(0))
 	// copy the streams while
 	var counter uint64
 	// HACK: it's bridged if the remote address has a dot in it
@@ -173,6 +171,8 @@ func handle(rawClient net.Conn) {
 		}
 	}
 	rawClient.SetDeadline(time.Now().Add(time.Hour * 24))
+	atomic.AddUint64(&sessCount, 1)
+	defer atomic.AddUint64(&sessCount, ^uint64(0))
 	for {
 		soxclient, err := acceptStream()
 		if err != nil {
