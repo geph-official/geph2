@@ -13,7 +13,7 @@ import (
 func CopyWithLimit(dst Writer, src net.Conn, limiter *rate.Limiter, callback func(int), idleTimeout time.Duration) (n int, err error) {
 	var buf []byte
 	if buf == nil {
-		size := 32 * 1024
+		size := 16 * 1024
 		buf = make([]byte, size)
 	}
 	for {
