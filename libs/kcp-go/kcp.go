@@ -159,7 +159,7 @@ type rateLimiter struct {
 
 func (rl *rateLimiter) fixLimiter(speed float64) {
 	if rl.limiter == nil {
-		rl.limiter = rate.NewLimiter(maxSpeed, maxSpeed/20)
+		rl.limiter = rate.NewLimiter(maxSpeed, maxSpeed/10)
 	}
 }
 
@@ -805,7 +805,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 				bdp := kcp.bdp() / float64(kcp.mss)
 				targetCwnd := bdp*kcp.LOL.bdpMultiplier + 64
 				if targetCwnd > kcp.cwnd+float64(acks) {
-					kcp.cwnd += math.Min(float64(acks), 32*float64(acks)/kcp.cwnd)
+					kcp.cwnd += float64(acks)
 				} else {
 					kcp.cwnd = targetCwnd
 				}
@@ -833,29 +833,15 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 					}
 				} else {
 					// vibrate the gain up and down every 50 rtts
-					period := float64(time.Now().UnixNano()) / 1e6 / kcp.DRE.minRtt
-					kcp.LOL.gain = math.Sin(period*(2*math.Pi)/4)*0.25 + 1
-					// if period%2 == 0 {
-					// 	kcp.LOL.gain = 1.25
-					// } else if period%2 == 1 {
-					// 	kcp.LOL.gain = 0.75
-					// } else {
-					// 	kcp.LOL.gain = 1
-					// }
-					// if period%100 == 0 {
-					// 	kcp.LOL.gain = 0.2
-					// }
-					// if period%3 == 0 {
-					// 	kcp.LOL.gain = 1.5
-					// } else if period%3 == 1 {
-					// 	if float64(len(kcp.snd_buf)) > bdp {
-					// 		kcp.LOL.gain = 0.25
-					// 	} else {
-					// 		kcp.LOL.gain = 0.5
-					// 	}
-					// } else {
-					// 	kcp.LOL.gain = 1
-					// }
+					period := currentMs() / uint32(math.Max(1, kcp.DRE.minRtt))
+					//kcp.LOL.gain = math.Sin(period*(2*math.Pi)/4)*0.25 + 1
+					if period%10 == 0 && kcp.DRE.lastLoss < 0.03 {
+						kcp.LOL.gain = 1.5
+					} else if period%10 == 1 {
+						kcp.LOL.gain = 0.5
+					} else {
+						kcp.LOL.gain = 0.95
+					}
 				}
 
 				if doLogging {
@@ -866,7 +852,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 						int(kcp.cwnd), int(bdp), kcp.LOL.gain,
 						kcp.rttProp(),
 						kcp.rx_rttvar,
-						100*float64(kcp.retrans)/float64(kcp.trans))
+						100*float64(kcp.DRE.lastLoss))
 				}
 			}
 		}
@@ -1227,7 +1213,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				// if doLogging {
 				// 	log.Println("bdpMultiplier =>", kcp.LOL.bdpMultiplier)
 				// }
-				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.2 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
+				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.3 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
 					if doLogging {
 						log.Printf("[%p] ****** POLICE ******", kcp)
 					}

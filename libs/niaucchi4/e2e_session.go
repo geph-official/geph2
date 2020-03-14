@@ -63,8 +63,8 @@ type e2eSession struct {
 func newSession(sessid [16]byte, sendCallback func(e2ePacket, net.Addr)) *e2eSession {
 	cache, _ := lru.New(128)
 	return &e2eSession{
-		dupRateLimit:  rate.NewLimiter(3, 100),
-		infoRateLimit: rate.NewLimiter(10, 100),
+		dupRateLimit:  rate.NewLimiter(10, 100),
+		infoRateLimit: rate.NewLimiter(30, 100),
 		recvDedup:     cache,
 		sendDedup:     newRtTracker(),
 		sessid:        sessid,
@@ -112,8 +112,11 @@ func (el *e2eLinkInfo) getScore() float64 {
 	}
 	pseudoPing := float64(el.lastPing) + math.Max(0, time.Since(el.lastRecvTime).Seconds()*1000-3000)
 	loss := float64(el.rtxCount) / (float64(el.txCount) + 1)
-	if el.remoteLoss > 0.001 {
+	if el.remoteLoss >= 0 {
 		loss = el.remoteLoss
+	}
+	if loss > 1 {
+		loss = 1
 	}
 	return pseudoPing * (1 / (1.01 - math.Min(1, loss))) // intuition: expected retransmissions needed
 	// return el.longLoss
@@ -166,14 +169,19 @@ func (es *e2eSession) AddPath(host net.Addr) {
 		log.Printf("N4: [%p] adding new path %v", es, host)
 	}
 	es.remote = append(es.remote, host)
-	es.info = append(es.info, &e2eLinkInfo{lastPing: 10000000, lastRecvTime: time.Now()})
+	es.info = append(es.info, &e2eLinkInfo{lastPing: 10000000, lastRecvTime: time.Now(), remoteLoss: -1})
 }
 
 func (es *e2eSession) processStats(pkt e2ePacket, remid int) {
 	recvd := binary.LittleEndian.Uint32(pkt.Body[:4])
 	total := binary.LittleEndian.Uint32(pkt.Body[4:])
 	loss := 1 - float64(recvd)/(float64(total)+1)
-	es.info[remid].remoteLoss = loss
+	rid := es.info[remid]
+	if rid.remoteLoss < 0 || (loss < rid.remoteLoss && total > 50) {
+		rid.remoteLoss = loss
+	} else {
+		rid.remoteLoss = 0.9*rid.remoteLoss + 0.1*loss
+	}
 }
 
 // Input processes a packet through the e2e session state.
@@ -296,7 +304,7 @@ func (es *e2eSession) Send(payload []byte) (err error) {
 		}
 	}
 	remid := -1
-	if time.Since(es.lastSend).Seconds() > 1 {
+	if time.Since(es.lastSend).Seconds() > 0.1 {
 		lowPoint := -1.0
 		for i, li := range es.info {
 			if score := li.getScore(); score < lowPoint || lowPoint < 0 {
