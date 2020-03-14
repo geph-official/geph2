@@ -12,8 +12,8 @@ func (kcp *KCP) cubic_onloss(lost []uint32) {
 	kcp.wmax = kcp.cwnd
 	kcp.cwnd *= (2 - cubicB) / 2
 	kcp.lastLoss = time.Now()
-	if kcp.cwnd < 16 {
-		kcp.cwnd = 16
+	if kcp.cwnd < 32 {
+		kcp.cwnd = 32
 	}
 	log.Println("wmax at", int(kcp.cwnd))
 }
@@ -37,7 +37,7 @@ func (kcp *KCP) bic_onloss(lost []uint32) {
 	// if maxRun < int(kcp.cwnd/20) || maxRun < 10 {
 	// 	return
 	// }
-	beta := 0.02 / bicMultiplier
+	beta := 0.15 / bicMultiplier
 	if kcp.cwnd < kcp.wmax {
 		kcp.wmax = kcp.cwnd * (2.0 - beta) / 2.0
 	} else {
@@ -48,8 +48,8 @@ func (kcp *KCP) bic_onloss(lost []uint32) {
 	if kcp.cwnd < mincwnd {
 		kcp.cwnd = mincwnd
 	}
-	if kcp.cwnd < 32 {
-		kcp.cwnd = 32
+	if kcp.cwnd < 128 {
+		kcp.cwnd = 128
 	}
 }
 

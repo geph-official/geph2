@@ -527,7 +527,7 @@ func (kcp *KCP) update_ack(rtt int32) {
 	// if kcp.rx_rto < 500 {
 	// 	kcp.rx_rto = 500
 	// }
-	kcp.rx_rto += 500
+	//kcp.rx_rto += 500
 }
 
 func (kcp *KCP) shrink_buf() {
@@ -1178,7 +1178,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		switch CongestionControl {
 		case "BIC":
 			// congestion control, https://tools.ietf.org/html/rfc5681
-			if sum > 0 {
+			if lostSegs > 0 {
 				kcp.bic_onloss(lostSn)
 			}
 		case "CUBIC":
