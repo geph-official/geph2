@@ -64,7 +64,7 @@ func mainClient(dialto string) {
 	}
 	defer kcpremote.Close()
 	kcpremote.SetWindowSize(10000, 10000)
-	kcpremote.SetNoDelay(0, 100, 32, 0)
+	kcpremote.SetNoDelay(0, 100, 64, 0)
 	kcpremote.SetStreamMode(true)
 	kcpremote.SetMtu(1200)
 	kcpremote.Write([]byte("HELLO"))
@@ -116,7 +116,7 @@ func mainServer(listen string, klimit int) {
 		}
 		log.Println("Accepted kclient from", kclient.RemoteAddr())
 		kclient.SetWindowSize(10000, 10000)
-		kclient.SetNoDelay(0, 100, 32, 0)
+		kclient.SetNoDelay(0, 100, 64, 0)
 		kclient.SetStreamMode(true)
 		kclient.SetMtu(1200)
 		go func() {

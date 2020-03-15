@@ -57,7 +57,7 @@ func main() {
 	}()
 
 	// load the key
-	kcp.CongestionControl = "LOL"
+	kcp.CongestionControl = "BIC"
 	loadKey()
 	if singleHop != "" {
 		mainSingleHop()

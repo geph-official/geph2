@@ -21,7 +21,7 @@ func free(bts []byte) {
 }
 
 // This gives us ample buffer space to deal with CPU spikes and avoid packet loss.
-var e2ejobs = make(chan func(), 100)
+var e2ejobs = make(chan func(), 1000)
 
 func maybeDoJob(f func()) {
 	select {
