@@ -58,7 +58,7 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	log.Println("get-ticket: verified user", r.FormValue("user"), "as expiry", expiry)
+	//log.Println("get-ticket: verified user", r.FormValue("user"), "as expiry", expiry)
 	var tier string
 	if expiry.After(time.Now()) {
 		tier = "paid"
@@ -70,7 +70,7 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	log.Println("get-ticket: user", r.FormValue("user"), "sent us blinded of length", len(blinded))
+	//log.Println("get-ticket: user", r.FormValue("user"), "sent us blinded of length", len(blinded))
 	// get the key
 	key, err := getTicketIdentity(tier)
 	if err != nil {
