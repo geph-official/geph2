@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"fmt"
-	"log"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -110,7 +109,7 @@ func verifyUser(uname, pwd string) (uid int, subExpiry time.Time, paytx map[time
 		return
 	}
 	if v, ok := hashCache.Get(pwd); ok && v.(string) == PwdHash {
-		log.Println("password of", uname, "found in cache")
+		//log.Println("password of", uname, "found in cache")
 	} else {
 		if !natrium.PasswordVerify([]byte(pwd), PwdHash) {
 			uid = -1
