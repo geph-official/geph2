@@ -98,13 +98,13 @@ func handle(rawClient net.Conn) {
 		err = bclient.RedeemTicket("paid", greeting[0], greeting[1])
 		if err != nil {
 			if onlyPaid {
-				log.Printf("%v isn't paid and we only accept paid. Failing!", rawClient.RemoteAddr())
+				log.Printf("%v isn't paid and we only accept paid %v. Failing!", rawClient.RemoteAddr(), err)
 				rlp.Encode(tssClient, "FAIL")
 				return
 			}
 			err = bclient.RedeemTicket("free", greeting[0], greeting[1])
 			if err != nil {
-				log.Printf("%v isn't free either. fail", rawClient.RemoteAddr())
+				log.Printf("%v isn't free either %v. fail", rawClient.RemoteAddr(), err)
 				rlp.Encode(tssClient, "FAIL")
 				return
 			}

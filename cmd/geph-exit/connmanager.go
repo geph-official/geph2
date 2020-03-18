@@ -11,7 +11,7 @@ import (
 
 var reportRL = rate.NewLimiter(20, 10)
 
-var connlru, _ = lru.NewWithEvict(10000, func(k, v interface{}) {
+var connlru, _ = lru.NewWithEvict(5000, func(k, v interface{}) {
 	if statClient != nil && reportRL.Allow() {
 		statClient.Timing(hostname+".lruLifetime", time.Since(v.(time.Time)).Milliseconds())
 	}
@@ -20,5 +20,5 @@ var connlru, _ = lru.NewWithEvict(10000, func(k, v interface{}) {
 })
 
 func regConn(conn net.Conn) {
-	//connlru.Add(conn, time.Now())
+	connlru.Add(conn, time.Now())
 }

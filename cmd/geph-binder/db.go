@@ -9,7 +9,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/hashicorp/golang-lru/simplelru"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/nullchinchilla/natrium"
 	"golang.org/x/crypto/ed25519"
 )
@@ -89,7 +89,7 @@ func getMasterIdentity() (sk ed25519.PrivateKey, err error) {
 	return
 }
 
-var hashCache, _ = simplelru.NewLRU(65536, nil)
+var hashCache, _ = lru.New(65536)
 
 // verifyUser verifies a username/password by looking up the database. uid < 0 means authentication failed.
 func verifyUser(uname, pwd string) (uid int, subExpiry time.Time, paytx map[time.Time]int, err error) {
