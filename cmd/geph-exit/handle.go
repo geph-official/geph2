@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"net"
 	"net/http"
 	"sync/atomic"
@@ -190,7 +191,9 @@ func handle(rawClient net.Conn) {
 				return
 			}
 			soxclient.SetDeadline(time.Time{})
-			log.Debugf("<%v> cmd %v", atomic.LoadUint64(&tunnCount), command)
+			tc := atomic.LoadUint64(&tunnCount)
+			timeout := time.Duration(60*1000*math.Pow(8000.0/float64(tc+100), 3)) * time.Millisecond
+			log.Debugf("<%v> [%v] cmd %v", tc, timeout, command)
 			// match command
 			switch command[0] {
 			case "proxy":
@@ -217,7 +220,6 @@ func handle(rawClient net.Conn) {
 				}
 				atomic.AddUint64(&tunnCount, 1)
 				defer atomic.AddUint64(&tunnCount, ^uint64(0))
-				regConn(remote)
 				// measure dial latency
 				dialLatency := time.Since(dialStart)
 				if statClient != nil && singleHop == "" && reportRL.Allow() {
@@ -225,7 +227,6 @@ func handle(rawClient net.Conn) {
 				}
 				defer remote.Close()
 				onPacket := func(l int) {
-					regConn(remote)
 					if statClient != nil && singleHop == "" {
 						before := atomic.LoadUint64(&counter)
 						atomic.AddUint64(&counter, uint64(l))
@@ -238,9 +239,9 @@ func handle(rawClient net.Conn) {
 				go func() {
 					defer remote.Close()
 					defer soxclient.Close()
-					cwl.CopyWithLimit(remote, soxclient, limiter, onPacket, time.Hour)
+					cwl.CopyWithLimit(remote, soxclient, limiter, onPacket, timeout)
 				}()
-				cwl.CopyWithLimit(soxclient, remote, limiter, onPacket, time.Hour)
+				cwl.CopyWithLimit(soxclient, remote, limiter, onPacket, timeout)
 			case "ip":
 				var ip string
 				if ipi, ok := ipcache.Get("ip"); ok {

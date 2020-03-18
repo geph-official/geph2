@@ -110,7 +110,7 @@ func main() {
 			continue
 		}
 		rc.SetWindowSize(10000, 10000)
-		rc.SetNoDelay(0, 10, 32, 0)
+		rc.SetNoDelay(0, 100, 32, 0)
 		rc.SetStreamMode(true)
 		rc.SetMtu(1300)
 		go handle(rc)
@@ -135,7 +135,7 @@ func e2elisten() {
 			continue
 		}
 		rc.SetWindowSize(10000, 10000)
-		rc.SetNoDelay(0, 100, 8, 0)
+		rc.SetNoDelay(0, 100, 32, 0)
 		rc.SetStreamMode(true)
 		rc.SetMtu(1300)
 		go handle(rc)
