@@ -3,18 +3,22 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"math"
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/geph-official/geph2/libs/backedtcp"
 	"github.com/geph-official/geph2/libs/cwl"
 	"github.com/geph-official/geph2/libs/tinyss"
 	"github.com/hashicorp/yamux"
@@ -67,18 +71,13 @@ func init() {
 }
 
 func handle(rawClient net.Conn) {
-	log.Debugf("[%v] accept", rawClient.RemoteAddr())
-	defer log.Debugf("[%v] close", rawClient.RemoteAddr())
-	defer rawClient.Close()
 	rawClient.SetDeadline(time.Now().Add(time.Second * 30))
 	tssClient, err := tinyss.Handshake(rawClient, 0)
 	if err != nil {
+		rawClient.Close()
 		log.Println("Error doing TinySS from", rawClient.RemoteAddr(), err)
 		return
 	}
-	defer tssClient.Close()
-	// copy the streams while
-	var counter uint64
 	// HACK: it's bridged if the remote address has a dot in it
 	//isBridged := strings.Contains(rawClient.RemoteAddr().String(), ".")
 	// sign the shared secret
@@ -94,6 +93,7 @@ func handle(rawClient net.Conn) {
 		err = rlp.Decode(tssClient, &greeting)
 		if err != nil {
 			log.Println("Error decoding greeting from", rawClient.RemoteAddr(), err)
+			tssClient.Close()
 			return
 		}
 		err = bclient.RedeemTicket("paid", greeting[0], greeting[1])
@@ -101,12 +101,14 @@ func handle(rawClient net.Conn) {
 			if onlyPaid {
 				log.Printf("%v isn't paid and we only accept paid %v. Failing!", rawClient.RemoteAddr(), err)
 				rlp.Encode(tssClient, "FAIL")
+				tssClient.Close()
 				return
 			}
 			err = bclient.RedeemTicket("free", greeting[0], greeting[1])
 			if err != nil {
 				log.Printf("%v isn't free either %v. fail", rawClient.RemoteAddr(), err)
 				rlp.Encode(tssClient, "FAIL")
+				tssClient.Close()
 				return
 			}
 			limiter = rate.NewLimiter(100*1000, 1*1000*1000)
@@ -115,8 +117,10 @@ func handle(rawClient net.Conn) {
 		// IGNORE FOR NOW
 		rlp.Encode(tssClient, "OK")
 	}
+	rawClient.SetDeadline(time.Now().Add(time.Hour * 24))
 	switch tssClient.NextProt() {
 	case 0:
+		defer tssClient.Close()
 		// create smux context
 		muxSrv, err := smux.Server(tssClient, &smux.Config{
 			Version:           1,
@@ -135,6 +139,7 @@ func handle(rawClient net.Conn) {
 			return
 		}
 	case 2:
+		defer tssClient.Close()
 		// create smux context
 		muxSrv, err := smux.Server(tssClient, &smux.Config{
 			Version:           2,
@@ -153,6 +158,7 @@ func handle(rawClient net.Conn) {
 			return
 		}
 	case 'S':
+		defer tssClient.Close()
 		// create smux context
 		muxSrv, err := yamux.Server(tssClient, &yamux.Config{
 			AcceptBacklog:          1000,
@@ -170,10 +176,85 @@ func handle(rawClient net.Conn) {
 			n, e = muxSrv.AcceptStream()
 			return
 		}
+	case 'R':
+		err = handleResumable(limiter, tssClient)
+		log.Println("handleResumable returned with", err)
+		if err != nil {
+			tssClient.Close()
+		}
+		return
 	}
-	rawClient.SetDeadline(time.Now().Add(time.Hour * 24))
 	atomic.AddUint64(&sessCount, 1)
 	defer atomic.AddUint64(&sessCount, ^uint64(0))
+	smuxLoop(limiter, acceptStream)
+}
+
+var sessionCache = make(map[[32]byte]chan net.Conn)
+var sessionCacheLock sync.Mutex
+
+func handleResumable(limiter *rate.Limiter, tssClient net.Conn) (err error) {
+	log.Println("handling resumable from", tssClient.RemoteAddr())
+	tssClient.SetDeadline(time.Now().Add(time.Second * 10))
+	var clientHello struct {
+		MetaSess [32]byte
+		SessID   [32]byte
+	}
+	err = binary.Read(tssClient, binary.BigEndian, &clientHello)
+	if err != nil {
+		return
+	}
+	log.Printf("[%v] M=%x, S=%x", tssClient.RemoteAddr, clientHello.MetaSess, clientHello.SessID)
+	sessionCacheLock.Lock()
+	defer sessionCacheLock.Unlock()
+	if bt := sessionCache[clientHello.SessID]; bt != nil {
+		log.Println("[%v] found session")
+		tssClient.Write([]byte{1})
+		bt <- tssClient
+		return
+	}
+	log.Println("[%v] creating session")
+	tssClient.Write([]byte{0})
+	ch := make(chan net.Conn, 1)
+	ch <- tssClient
+	btcp := backedtcp.NewSocket(func() (net.Conn, error) {
+		select {
+		case c := <-ch:
+			return c, nil
+		case <-time.After(time.Minute * 30):
+			return nil, errors.New("timeout")
+		}
+	})
+	go func() {
+		defer func() {
+			sessionCacheLock.Lock()
+			defer sessionCacheLock.Unlock()
+			log.Printf("deleting sessid %v", clientHello.SessID)
+			delete(sessionCache, clientHello.SessID)
+		}()
+		defer btcp.Close()
+		muxSrv, err := smux.Server(btcp, &smux.Config{
+			Version:           2,
+			KeepAliveInterval: time.Minute * 20,
+			KeepAliveTimeout:  time.Minute * 40,
+			MaxFrameSize:      32768,
+			MaxReceiveBuffer:  100 * 1024 * 1024,
+			MaxStreamBuffer:   100 * 1024 * 1024,
+		})
+		if err != nil {
+			return
+		}
+		acceptStream := func() (n net.Conn, e error) {
+			n, e = muxSrv.AcceptStream()
+			return
+		}
+		smuxLoop(limiter, acceptStream)
+	}()
+	return
+}
+
+func smuxLoop(limiter *rate.Limiter, acceptStream func() (n net.Conn, e error)) {
+	// copy the streams while
+	var counter uint64
 	for {
 		soxclient, err := acceptStream()
 		if err != nil {

@@ -2,10 +2,12 @@ package backedtcp
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"log"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -46,15 +48,29 @@ type Socket struct {
 	getWire func() (net.Conn, error)
 	glock   sync.RWMutex
 	dead    bool
+
+	wDeadline atomic.Value
+	rDeadline atomic.Value
 }
 
-func NewSocket(wire net.Conn) *Socket {
+func NewSocket(getWire func() (net.Conn, error)) *Socket {
 	s := &Socket{
-		wire:   wire,
-		wready: make(chan bool),
+		getWire: getWire,
+		wready:  make(chan bool),
 	}
+	s.SetDeadline(time.Time{})
+	go s.autoReplace()
 	close(s.wready)
 	return s
+}
+
+func (sock *Socket) autoReplace() (err error) {
+	conn, err := sock.getWire()
+	if err != nil {
+		return
+	}
+	sock.Replace(conn)
+	return
 }
 
 func (sock *Socket) Replace(conn net.Conn) (err error) {
@@ -82,6 +98,12 @@ func (sock *Socket) Replace(conn net.Conn) (err error) {
 	log.Println("got their last seen", sock.remsn)
 	sock.wire = conn
 	toFix := sock.bw.since(theirLastSeen)
+	if toFix == nil {
+		log.Println("their last seen is too far back, B A D!")
+		sock.dead = true
+		err = errors.New("synchronization error")
+		return
+	}
 	sock.wready = make(chan bool)
 	go func() {
 		if toFix == nil {
@@ -105,8 +127,16 @@ func (sock *Socket) Close() (err error) {
 	return
 }
 
+var zerotime time.Time
+
 func (sock *Socket) Read(p []byte) (n int, err error) {
-	for i := 1; i < 100; i++ {
+	for {
+		var rd time.Time
+		rd = sock.rDeadline.Load().(time.Time)
+		if rd != zerotime && time.Now().After(rd) {
+			err = errors.New("big timeout")
+			return
+		}
 		sock.glock.RLock()
 		if sock.dead {
 			sock.wire.Close()
@@ -114,7 +144,7 @@ func (sock *Socket) Read(p []byte) (n int, err error) {
 			return
 		}
 		wire := sock.wire
-		wire.SetDeadline(time.Now().Add(time.Minute * 30))
+		wire.SetDeadline(rd)
 		// read lock to make sure stuff doesn't get replaced suddenly
 		n, err = wire.Read(p)
 		if err == nil {
@@ -124,14 +154,20 @@ func (sock *Socket) Read(p []byte) (n int, err error) {
 		}
 		sock.glock.RUnlock()
 		sock.wire.Close()
+		go sock.autoReplace()
 		log.Println("read error is", err)
-		time.Sleep(time.Second * time.Duration(i))
+		time.Sleep(time.Second)
 	}
-	return
 }
 
 func (sock *Socket) Write(p []byte) (n int, err error) {
-	for i := 1; i < 100; i++ {
+	for {
+		var wd time.Time
+		wd = sock.wDeadline.Load().(time.Time)
+		if wd != zerotime && time.Now().After(wd) {
+			err = errors.New("big timeout")
+			return
+		}
 		// read lock to make sure stuff doesn't get replaced suddenly
 		sock.glock.RLock()
 		if sock.dead {
@@ -141,6 +177,7 @@ func (sock *Socket) Write(p []byte) (n int, err error) {
 		}
 		<-sock.wready
 		wire := sock.wire
+		wire.SetWriteDeadline(wd)
 		sock.glock.RUnlock()
 		n, err = wire.Write(p)
 		if err == nil {
@@ -148,10 +185,10 @@ func (sock *Socket) Write(p []byte) (n int, err error) {
 			return
 		}
 		wire.Close()
+		go sock.autoReplace()
 		log.Println("write error is", err)
-		time.Sleep(time.Second * time.Duration(i))
+		time.Sleep(time.Second)
 	}
-	return
 }
 
 func (sock *Socket) LocalAddr() net.Addr {
@@ -162,14 +199,28 @@ func (sock *Socket) RemoteAddr() net.Addr {
 	return dummyAddr("dummy-remote")
 }
 
-func (sock *Socket) SetDeadline(time.Time) error {
+func (sock *Socket) SetDeadline(t time.Time) error {
+	sock.SetReadDeadline(t)
+	sock.SetWriteDeadline(t)
 	return nil
 }
 
-func (sock *Socket) SetReadDeadline(time.Time) error {
+func (sock *Socket) SetReadDeadline(t time.Time) error {
+	sock.rDeadline.Store(t)
 	return nil
 }
 
-func (sock *Socket) SetWriteDeadline(time.Time) error {
+func (sock *Socket) SetWriteDeadline(t time.Time) error {
+	sock.rDeadline.Store(t)
 	return nil
+}
+
+type dummyAddr string
+
+func (da dummyAddr) String() string {
+	return string(da)
+}
+
+func (da dummyAddr) Network() string {
+	return string(da)
 }
