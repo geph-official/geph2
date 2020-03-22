@@ -11,6 +11,7 @@ import (
 	mrand "math/rand"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -88,7 +89,9 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 				if isEphemeral {
 					tval, err := bridgeToEphBridge(val.Host, val.Cookie, exitHost)
 					if err != nil {
-						log.Println("error mapping ephemeral bridge for", val.Host, err)
+						if !strings.Contains(err.Error(), "unspecified") {
+							log.Println("error mapping ephemeral bridge for", val.Host, err)
+						}
 						continue
 					}
 					val.Cookie = tval.Cookie

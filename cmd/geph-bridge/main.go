@@ -38,8 +38,8 @@ var limiter *rate.Limiter
 var statClient *statsd.StatsdClient
 
 func main() {
-	flag.StringVar(&binderFront, "binderFront", "https://ajax.aspnetcdn.com/v2", "binder domain-fronting host")
-	flag.StringVar(&binderReal, "binderReal", "gephbinder.azureedge.net", "real hostname of the binder")
+	flag.StringVar(&binderFront, "binderFront", "https://binder.geph.io/v2", "binder domain-fronting host")
+	flag.StringVar(&binderReal, "binderReal", "binder.geph.io", "real hostname of the binder")
 	flag.StringVar(&exitRegex, "exitRegex", `\.exits\.geph\.io$`, "domain suffix for exit nodes")
 	flag.StringVar(&statsdAddr, "statsdAddr", "c2.geph.io:8125", "address of StatsD for gathering statistics")
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
