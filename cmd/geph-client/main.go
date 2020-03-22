@@ -54,7 +54,7 @@ var singleHop string
 
 var bindClient *bdclient.Client
 
-var sWrap *muxWrap
+var sWrap commandDialer
 
 // GitVersion is the build version
 var GitVersion string
@@ -216,7 +216,7 @@ func main() {
 			direct = false
 		}
 	}
-	sWrap = newSmuxWrapper()
+	sWrap = newMultipool()
 
 	// confirm we are connected
 	func() {

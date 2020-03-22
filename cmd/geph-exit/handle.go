@@ -51,7 +51,6 @@ func isBlack(addr *net.TCPAddr) bool {
 	return false
 }
 
-var sessCount uint64
 var tunnCount uint64
 
 func init() {
@@ -60,8 +59,9 @@ func init() {
 			time.Sleep(time.Second * 10)
 			if statClient != nil {
 				statClient.Send(map[string]string{
-					hostname + ".sessionCount": fmt.Sprintf("%v|g", atomic.LoadUint64(&sessCount)),
+					hostname + ".sessionCount": fmt.Sprintf("%v|g", sesscounter.ItemCount()),
 				}, 1)
+				log.Println("*************", sesscounter.ItemCount(), "sessions active")
 				statClient.Send(map[string]string{
 					hostname + ".tunnelCount": fmt.Sprintf("%v|g", atomic.LoadUint64(&tunnCount)),
 				}, 1)
@@ -71,6 +71,7 @@ func init() {
 }
 
 func handle(rawClient net.Conn) {
+	log.Println("handle called with", rawClient.RemoteAddr())
 	rawClient.SetDeadline(time.Now().Add(time.Second * 30))
 	tssClient, err := tinyss.Handshake(rawClient, 0)
 	if err != nil {
@@ -78,6 +79,7 @@ func handle(rawClient net.Conn) {
 		log.Println("Error doing TinySS from", rawClient.RemoteAddr(), err)
 		return
 	}
+	log.Println("tssClient with prot", tssClient.NextProt())
 	// HACK: it's bridged if the remote address has a dot in it
 	//isBridged := strings.Contains(rawClient.RemoteAddr().String(), ".")
 	// sign the shared secret
@@ -184,9 +186,7 @@ func handle(rawClient net.Conn) {
 		}
 		return
 	}
-	atomic.AddUint64(&sessCount, 1)
-	defer atomic.AddUint64(&sessCount, ^uint64(0))
-	smuxLoop(limiter, acceptStream)
+	smuxLoop(fmt.Sprintf("%p", tssClient), limiter, acceptStream)
 }
 
 var sessionCache = make(map[[32]byte]chan net.Conn)
@@ -203,16 +203,16 @@ func handleResumable(limiter *rate.Limiter, tssClient net.Conn) (err error) {
 	if err != nil {
 		return
 	}
-	log.Printf("[%v] M=%x, S=%x", tssClient.RemoteAddr, clientHello.MetaSess, clientHello.SessID)
+	log.Printf("[%v] M=%x, S=%x", tssClient.RemoteAddr(), clientHello.MetaSess, clientHello.SessID)
 	sessionCacheLock.Lock()
 	defer sessionCacheLock.Unlock()
 	if bt := sessionCache[clientHello.SessID]; bt != nil {
-		log.Println("[%v] found session")
+		log.Printf("[%v] found session", tssClient.RemoteAddr())
 		tssClient.Write([]byte{1})
 		bt <- tssClient
 		return
 	}
-	log.Println("[%v] creating session")
+	log.Printf("[%v] creating session", tssClient.RemoteAddr())
 	tssClient.Write([]byte{0})
 	ch := make(chan net.Conn, 1)
 	ch <- tssClient
@@ -224,6 +224,7 @@ func handleResumable(limiter *rate.Limiter, tssClient net.Conn) (err error) {
 			return nil, errors.New("timeout")
 		}
 	})
+	sessionCache[clientHello.SessID] = ch
 	go func() {
 		defer func() {
 			sessionCacheLock.Lock()
@@ -247,12 +248,12 @@ func handleResumable(limiter *rate.Limiter, tssClient net.Conn) (err error) {
 			n, e = muxSrv.AcceptStream()
 			return
 		}
-		smuxLoop(limiter, acceptStream)
+		smuxLoop(fmt.Sprintf("%x", clientHello.MetaSess), limiter, acceptStream)
 	}()
 	return
 }
 
-func smuxLoop(limiter *rate.Limiter, acceptStream func() (n net.Conn, e error)) {
+func smuxLoop(sessid string, limiter *rate.Limiter, acceptStream func() (n net.Conn, e error)) {
 	// copy the streams while
 	var counter uint64
 	for {
@@ -260,6 +261,7 @@ func smuxLoop(limiter *rate.Limiter, acceptStream func() (n net.Conn, e error)) 
 		if err != nil {
 			return
 		}
+		sesscounter.SetDefault(sessid, true)
 		go func() {
 			defer soxclient.Close()
 			soxclient.SetDeadline(time.Now().Add(time.Minute))

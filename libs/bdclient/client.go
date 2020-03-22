@@ -28,9 +28,10 @@ func NewClient(frontDomain, realDomain string) *Client {
 	return &Client{
 		hclient: &http.Client{
 			Transport: &http.Transport{
-				Proxy: nil,
+				Proxy:           nil,
+				IdleConnTimeout: time.Second,
 			},
-			Timeout: time.Second * 60,
+			Timeout: time.Second * 1,
 		},
 		frontDomain: frontDomain,
 		realDomain:  realDomain,

@@ -62,7 +62,7 @@ func getDirect(greeting [2][]byte, host string, pk []byte) (ss *smux.Session, er
 	return
 }
 
-func getSinglepath(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
+func getSingleTCP(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 	bridgeRace := make(chan net.Conn)
 	bridgeDeadWait := new(sync.WaitGroup)
 	bridgeDeadWait.Add(len(bridges))
@@ -118,7 +118,7 @@ func getSinglepath(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 	return
 }
 
-func getMultipath(bridges []bdclient.BridgeInfo, legacy bool) (conn net.Conn, err error) {
+func getMultiUDP(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 	bridgeRace := make(chan bool)
 	bridgeDeadWait := new(sync.WaitGroup)
 	bridgeDeadWait.Add(len(bridges))
@@ -147,59 +147,15 @@ func getMultipath(bridges []bdclient.BridgeInfo, legacy bool) (conn net.Conn, er
 			return sessions[0]
 		}
 	})
-	if legacy {
-		log.Infoln("LEGACY e2e!")
-		for _, bi := range bridges {
-			bi := bi
-			go func() {
-				defer bridgeDeadWait.Done()
-				bridgeConn, err := dialBridge(bi.Host, bi.Cookie)
-				if err != nil {
-					log.Debugln("dialing to", bi.Host, "failed!", err)
-					return
-				}
-				defer bridgeConn.Close()
-				bridgeConn.SetDeadline(time.Now().Add(time.Second * 30))
-				rlp.Encode(bridgeConn, "conn/e2e")
-				rlp.Encode(bridgeConn, exitName)
-				rlp.Encode(bridgeConn, cookie)
-				var port uint
-				e := rlp.Decode(bridgeConn, &port)
-				if e != nil {
-					log.Warnln("conn/e2e to", bi.Host, "failed:", e)
-					return
-				}
-				complete := fmt.Sprintf("%v:%v", strings.Split(bi.Host, ":")[0], port)
-				compudp, e := net.ResolveUDPAddr("udp", complete)
-				if e != nil {
-					log.Println("cannot resolve udp for", complete, err)
-					return
-				}
-				log.Debugln("adding", complete, "to our e2e")
-				e2e.SetSessPath(e2esid, compudp)
-				select {
-				case bridgeRace <- true:
-				default:
-				}
-			}()
+	log.Infoln("NON-LEGACY e2e!")
+	for _, b := range bridges {
+		host, err := net.ResolveUDPAddr("udp4", b.Host)
+		if err != nil {
+			continue
 		}
-		// get the bridge
-		_, ok := <-bridgeRace
-		if !ok {
-			err = errors.New("e2e did not work")
-			return
-		}
-	} else {
-		log.Infoln("NON-LEGACY e2e!")
-		for _, b := range bridges {
-			host, err := net.ResolveUDPAddr("udp4", b.Host)
-			if err != nil {
-				continue
-			}
-			osocket.AddCookieException(host, b.Cookie)
-			e2e.SetSessPath(e2esid, host)
-			log.Debugln("adding ephemeral", host, "to our e2e")
-		}
+		osocket.AddCookieException(host, b.Cookie)
+		e2e.SetSessPath(e2esid, host)
+		log.Debugln("adding ephemeral", host, "to our e2e")
 	}
 	fecsize := 16
 	if noFEC {

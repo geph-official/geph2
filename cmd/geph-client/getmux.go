@@ -20,9 +20,9 @@ import (
 	"github.com/xtaci/smux"
 )
 
-func negotiateSmux(greeting *[2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Session, err error) {
+func negotiateTinySS(greeting *[2][]byte, rawConn net.Conn, pk []byte, nextProto byte) (cryptConn *tinyss.Socket, err error) {
 	rawConn.SetDeadline(time.Now().Add(time.Second * 20))
-	cryptConn, err := tinyss.Handshake(rawConn, 2)
+	cryptConn, err = tinyss.Handshake(rawConn, nextProto)
 	if err != nil {
 		err = fmt.Errorf("tinyss handshake failed: %w", err)
 		rawConn.Close()
@@ -59,6 +59,11 @@ func negotiateSmux(greeting *[2][]byte, rawConn net.Conn, pk []byte) (ss *smux.S
 			os.Exit(11)
 		}
 	}
+	return
+}
+
+func negotiateSmux(greeting *[2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Session, err error) {
+	cryptConn, err := negotiateTinySS(greeting, rawConn, pk, 2)
 	smuxConf := &smux.Config{
 		Version:           2,
 		KeepAliveInterval: time.Minute * 5,
@@ -95,30 +100,16 @@ func newSmuxWrapper() *muxWrap {
 		defer useStats(func(sc *stats) {
 			sc.Connected = true
 		})
+		realExitKey, err := hex.DecodeString(exitKey)
+		if err != nil {
+			panic(err)
+		}
 	retry:
 		if singleHop == "" {
-			// obtain a ticket
-			ubmsg, ubsig, details, err := bindClient.GetTicket(username, password)
+			ubmsg, ubsig, err := getGreeting()
 			if err != nil {
-				log.Errorln("error authenticating:", err)
-				if errors.Is(err, io.EOF) {
-					os.Exit(11)
-				}
 				time.Sleep(time.Second)
 				goto retry
-			}
-			if loginCheck {
-				os.Exit(0)
-			}
-			useStats(func(sc *stats) {
-				sc.Username = username
-				sc.Expiry = details.PaidExpiry
-				sc.Tier = details.Tier
-				sc.PayTxes = details.Transactions
-			})
-			realExitKey, err := hex.DecodeString(exitKey)
-			if err != nil {
-				panic(err)
 			}
 			if direct {
 				sm, err := getDirect([2][]byte{ubmsg, ubsig}, exitName, realExitKey)
@@ -154,13 +145,13 @@ func newSmuxWrapper() *muxWrap {
 			}
 			var conn net.Conn
 			if useTCP {
-				conn, err = getSinglepath(bridges)
+				conn, err = getSingleTCP(bridges)
 				if err != nil {
 					log.Println("Singlepath failed!")
 					goto retry
 				}
 			} else {
-				conn, err = getMultipath(bridges, false)
+				conn, err = getMultiUDP(bridges)
 				if err != nil {
 					log.Println("Multipath failed!")
 					goto retry
@@ -187,4 +178,26 @@ func newSmuxWrapper() *muxWrap {
 			return lol
 		}
 	}}
+}
+
+func getGreeting() (ubmsg, ubsig []byte, err error) {
+	// obtain a ticket
+	ubmsg, ubsig, details, err := bindClient.GetTicket(username, password)
+	if err != nil {
+		log.Errorln("error authenticating:", err)
+		if errors.Is(err, io.EOF) {
+			os.Exit(11)
+		}
+		return
+	}
+	if loginCheck {
+		os.Exit(0)
+	}
+	useStats(func(sc *stats) {
+		sc.Username = username
+		sc.Expiry = details.PaidExpiry
+		sc.Tier = details.Tier
+		sc.PayTxes = details.Transactions
+	})
+	return
 }

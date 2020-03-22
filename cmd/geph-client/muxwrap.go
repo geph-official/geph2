@@ -11,6 +11,10 @@ import (
 	"github.com/xtaci/smux"
 )
 
+type commandDialer interface {
+	DialCmd(cmds ...string) (conn net.Conn, ok bool)
+}
+
 type muxWrap struct {
 	getSession func() *smux.Session
 
