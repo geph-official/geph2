@@ -1,17 +1,21 @@
 package backedtcp
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
-	"log"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	pool "github.com/libp2p/go-buffer-pool"
+	"gopkg.in/tomb.v1"
 )
 
-const maxBufferSize = 1000 * 1000 * 10
+const maxBufferSize = 1000 * 1000
 
 type backedWriter struct {
 	lastsn uint64
@@ -30,7 +34,6 @@ func (br *backedWriter) addData(ob []byte) {
 }
 
 func (br *backedWriter) since(sn uint64) []byte {
-	log.Println(br.lastsn, "since", sn)
 	if sn == br.lastsn {
 		return make([]byte, 0)
 	}
@@ -40,181 +43,179 @@ func (br *backedWriter) since(sn uint64) []byte {
 	return br.buffer[len(br.buffer)-int(br.lastsn-sn):]
 }
 
+// Socket represents a single BackedTCP connection
 type Socket struct {
-	bw      backedWriter
-	remsn   uint64
-	wire    net.Conn
-	wready  chan bool
-	getWire func() (net.Conn, error)
-	glock   sync.RWMutex
-	dead    bool
+	bw        backedWriter
+	getWire   func() (net.Conn, error)
+	chWrite   chan []byte
+	chRead    chan []byte
+	chReplace chan struct{}
+	readBuf   bytes.Buffer
+	readBytes uint64
+	death     tomb.Tomb
 
-	replaceLock sync.Mutex
-
-	wDeadline atomic.Value
 	rDeadline atomic.Value
+	wDeadline atomic.Value
 }
 
+// NewSocket constructs a new BackedTCP connection.
 func NewSocket(getWire func() (net.Conn, error)) *Socket {
 	s := &Socket{
-		getWire: getWire,
-		wready:  make(chan bool),
+		getWire:   getWire,
+		chWrite:   make(chan []byte),
+		chRead:    make(chan []byte),
+		chReplace: make(chan struct{}),
 	}
 	s.SetDeadline(time.Time{})
-	//go s.AutoReplace()
-	close(s.wready)
+	go s.mainLoop()
 	return s
 }
 
-func (sock *Socket) Reset() {
-	sock.glock.RLock()
-	if sock.wire != nil {
-		sock.wire.Close()
+func (sock *Socket) mainLoop() {
+	for {
+		select {
+		case <-sock.death.Dying():
+			return
+		default:
+		}
+		// first we get a wire
+		wire, err := sock.getWire()
+		if err != nil {
+			// this is fatal
+			sock.death.Kill(err)
+			return
+		}
+		stopWrite := make(chan struct{})
+		// negotiation shouldn't take more than 10 secs
+		wire.SetDeadline(time.Now().Add(time.Second * 10))
+		sent := make(chan bool)
+		// negotiate
+		go func() {
+			defer close(sent)
+			// we write our total bytes read. in a new goroutine to prevent dedlock
+			binary.Write(wire, binary.BigEndian, sock.readBytes)
+		}()
+		// read the remote bytes read
+		var theirReadBytes uint64
+		err = binary.Read(wire, binary.BigEndian, &theirReadBytes)
+		if err != nil {
+			wire.Close()
+			continue
+		}
+		<-sent
+		// get the data that needs to be resent
+		toResend := sock.bw.since(theirReadBytes)
+		if toResend == nil {
+			// out of range
+			sock.death.Kill(errors.New("out of resumption range"))
+			return
+		}
+		wire.SetDeadline(time.Time{})
+		done := make(chan bool)
+		go func() {
+			defer close(done)
+			defer close(stopWrite)
+			sock.readLoop(wire)
+		}()
+		sock.writeLoop(toResend, wire, stopWrite)
+		<-done
 	}
-	sock.glock.RUnlock()
 }
 
-func (sock *Socket) AutoReplace() (err error) {
-	sock.replaceLock.Lock()
-	defer sock.replaceLock.Unlock()
-	conn, err := sock.getWire()
+func (sock *Socket) writeLoop(toResend []byte, wire net.Conn, stopWrite chan struct{}) {
+	defer wire.Close()
+	wire.SetWriteDeadline(sock.wDeadline.Load().(time.Time))
+	_, err := wire.Write(toResend)
 	if err != nil {
 		return
 	}
-	sock.Replace(conn)
-	return
-}
-
-func (sock *Socket) Replace(conn net.Conn) (err error) {
-	// write-lock here. prevent readers and writers from intruding
-	sock.glock.RLock()
-	if sock.wire != nil {
-		sock.wire.Close()
-	}
-	sock.glock.RUnlock()
-	sock.glock.Lock()
-	defer sock.glock.Unlock()
-	if sock.dead {
-		err = io.ErrClosedPipe
-		return
-	}
-	if sock.wire != nil {
-		sock.wire.Close()
-	}
-	// negotiate new stuff
-	dun := make(chan bool)
-	go func() {
-		binary.Write(conn, binary.BigEndian, sock.remsn)
-		log.Println("writing our last seen", sock.remsn)
-		close(dun)
-	}()
-	var theirLastSeen uint64
-	binary.Read(conn, binary.BigEndian, &theirLastSeen)
-	<-dun
-	log.Println("got their last seen", theirLastSeen)
-	sock.wire = conn
-	toFix := sock.bw.since(theirLastSeen)
-	if toFix == nil {
-		log.Println("their last seen is too far back, B A D!")
-		sock.dead = true
-		err = errors.New("synchronization error")
-		return
-	}
-	ch := make(chan bool)
-	sock.wready = ch
-	go func() {
-		if toFix == nil {
-			log.Println("DEATH!")
-		} else {
-			log.Println("writing missing", len(toFix))
-			conn.Write(toFix)
-			close(ch)
+	for {
+		select {
+		case toWrite := <-sock.chWrite:
+			// first we remember this so that we can restore
+			sock.bw.addData(toWrite)
+			wire.SetWriteDeadline(sock.wDeadline.Load().(time.Time))
+			// then we try to write. it's okay if we fail!
+			_, err := wire.Write(toWrite)
+			pool.GlobalPool.Put(toWrite)
+			if err != nil {
+				if strings.Contains(err.Error(), "timeout") {
+					sock.death.Kill(err)
+				}
+				return
+			}
+		case <-stopWrite:
+			//log.Println("writeLoop stopped")
+			return
+		case <-sock.chReplace:
+			//log.Println("writeLoop stopped for replace")
+			return
+		case <-sock.death.Dying():
+			//log.Println("writeLoop forced to die", sock.death.Err())
+			return
 		}
-	}()
-	<-sock.wready
-	return nil
+	}
 }
 
+func (sock *Socket) readLoop(wire net.Conn) {
+	defer wire.Close()
+	// just loop and read and feed into the channel
+	for {
+		wire.SetReadDeadline(sock.rDeadline.Load().(time.Time))
+		buf := pool.GlobalPool.Get(65536)
+		n, err := wire.Read(buf)
+		if err != nil {
+			return
+		}
+		sock.readBytes += uint64(n)
+		sock.chRead <- buf[:n]
+	}
+}
+
+// Reset forces the socket to discard its underlying connection and reconnect.
+func (sock *Socket) Reset() (err error) {
+	select {
+	case sock.chReplace <- struct{}{}:
+		return
+	case <-sock.death.Dying():
+		err = sock.death.Err()
+		return
+	}
+}
+
+// Close closes the socket.
 func (sock *Socket) Close() (err error) {
-	sock.glock.RLock()
-	sock.wire.Close()
-	sock.glock.RUnlock()
-	sock.glock.Lock()
-	sock.dead = true
-	sock.glock.Unlock()
+	sock.death.Kill(io.ErrClosedPipe)
 	return
 }
-
-var zerotime time.Time
 
 func (sock *Socket) Read(p []byte) (n int, err error) {
 	for {
-		var rd time.Time
-		rd = sock.rDeadline.Load().(time.Time)
-		if rd != zerotime && time.Now().After(rd) {
-			err = errors.New("big timeout")
+		if sock.readBuf.Len() > 0 {
+			return sock.readBuf.Read(p)
+		}
+		select {
+		case <-sock.death.Dying():
+			err = sock.death.Err()
 			return
+		case bts := <-sock.chRead:
+			sock.readBuf.Write(bts)
+			pool.GlobalPool.Put(bts)
 		}
-		sock.glock.RLock()
-		if sock.dead {
-			sock.wire.Close()
-			err = io.ErrClosedPipe
-			return
-		}
-		if sock.wire != nil {
-			wire := sock.wire
-			wire.SetDeadline(rd)
-			// read lock to make sure stuff doesn't get replaced suddenly
-			n, err = wire.Read(p)
-			if err == nil {
-				sock.remsn += uint64(n)
-				sock.glock.RUnlock()
-				return
-			}
-			sock.wire.Close()
-		}
-		sock.glock.RUnlock()
-		log.Println("read error is", err)
-		sock.AutoReplace()
-		time.Sleep(time.Second)
 	}
 }
 
 func (sock *Socket) Write(p []byte) (n int, err error) {
-	for i := 0; i < 120; i++ {
-		var wd time.Time
-		wd = sock.wDeadline.Load().(time.Time)
-		if wd != zerotime && time.Now().After(wd) {
-			err = errors.New("big timeout")
-			return
-		}
-		// read lock to make sure stuff doesn't get replaced suddenly
-		sock.glock.RLock()
-		if sock.dead {
-			sock.wire.Close()
-			err = io.ErrClosedPipe
-			return
-		}
-		<-sock.wready
-		wire := sock.wire
-		if wire != nil {
-			wire.SetWriteDeadline(wd)
-		}
-		sock.glock.RUnlock()
-		if wire != nil {
-			n, err = wire.Write(p)
-			if err == nil {
-				sock.bw.addData(p[:n])
-				return
-			}
-			wire.Close()
-		}
-		log.Println("write error is", err, i)
-		//sock.AutoReplace()
-		time.Sleep(time.Second)
+	buf := pool.GlobalPool.Get(len(p))
+	copy(buf, p)
+	select {
+	case sock.chWrite <- buf:
+		n = len(p)
+		return
+	case <-sock.death.Dying():
+		err = sock.death.Err()
+		return
 	}
-	err = errors.New("timeout")
-	return
 }
 
 func (sock *Socket) LocalAddr() net.Addr {

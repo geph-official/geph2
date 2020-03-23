@@ -31,7 +31,7 @@ func NewClient(frontDomain, realDomain string) *Client {
 				Proxy:           nil,
 				IdleConnTimeout: time.Second,
 			},
-			Timeout: time.Second * 1,
+			Timeout: time.Second * 15,
 		},
 		frontDomain: frontDomain,
 		realDomain:  realDomain,

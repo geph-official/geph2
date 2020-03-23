@@ -189,7 +189,13 @@ func handle(rawClient net.Conn) {
 	smuxLoop(fmt.Sprintf("%p", tssClient), limiter, acceptStream)
 }
 
-var sessionCache = make(map[[32]byte]chan net.Conn)
+type scEntry struct {
+	newConns chan net.Conn
+	currConn net.Conn
+	handle   *backedtcp.Socket
+}
+
+var sessionCache = make(map[[32]byte]*scEntry)
 var sessionCacheLock sync.Mutex
 
 func handleResumable(limiter *rate.Limiter, tssClient net.Conn) (err error) {
@@ -206,10 +212,16 @@ func handleResumable(limiter *rate.Limiter, tssClient net.Conn) (err error) {
 	log.Printf("[%v] M=%x, S=%x", tssClient.RemoteAddr(), clientHello.MetaSess, clientHello.SessID)
 	sessionCacheLock.Lock()
 	defer sessionCacheLock.Unlock()
-	if bt := sessionCache[clientHello.SessID]; bt != nil {
+	if bt, ok := sessionCache[clientHello.SessID]; ok {
 		log.Printf("[%v] found session", tssClient.RemoteAddr())
 		tssClient.Write([]byte{1})
-		bt <- tssClient
+		bt.currConn.Close()
+		bt.currConn = tssClient
+		select {
+		case bt.newConns <- tssClient:
+		case <-time.After(time.Second):
+			panic("somehow stuck")
+		}
 		return
 	}
 	log.Printf("[%v] creating session", tssClient.RemoteAddr())
@@ -224,7 +236,11 @@ func handleResumable(limiter *rate.Limiter, tssClient net.Conn) (err error) {
 			return nil, errors.New("timeout")
 		}
 	})
-	sessionCache[clientHello.SessID] = ch
+	sessionCache[clientHello.SessID] = &scEntry{
+		newConns: ch,
+		handle:   btcp,
+		currConn: tssClient,
+	}
 	go func() {
 		defer func() {
 			sessionCacheLock.Lock()
@@ -259,6 +275,7 @@ func smuxLoop(sessid string, limiter *rate.Limiter, acceptStream func() (n net.C
 	for {
 		soxclient, err := acceptStream()
 		if err != nil {
+			log.Println("failed accept stream", err)
 			return
 		}
 		sesscounter.SetDefault(sessid, true)
