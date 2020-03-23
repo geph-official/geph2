@@ -138,6 +138,7 @@ func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 		start := time.Now()
 		stream, err := mem.session.OpenStream()
 		if err != nil {
+			mem.session.Close()
 			log.Println("error while opening stream, throwing away:", err.Error())
 			go mp.fillOne()
 			continue
@@ -146,10 +147,16 @@ func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 		var connected bool
 		stream.SetDeadline(time.Now().Add(time.Millisecond*time.Duration(worst) + time.Second*10))
 		err = rlp.Decode(stream, &connected)
+		if err != nil {
+			mem.session.Close()
+			log.Println("error while waiting for stream, throwing away:", err.Error())
+			go mp.fillOne()
+			continue
+		}
 		stream.SetDeadline(time.Time{})
 		mp.setPing(time.Since(start))
 		mp.members <- mem
-		return stream, err == nil
+		return stream, true
 	}
 }
 
