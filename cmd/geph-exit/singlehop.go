@@ -15,7 +15,7 @@ func mainSingleHop() {
 	log.Infoln("<<< ENTERING SINGLE HOP MODE >>>")
 	log.Infoln("... All other arguments will be ignored!")
 	log.Infof("... PK = %x", pubkey)
-	go shUDP()
+	//go shUDP()
 	shTCP()
 
 }
@@ -33,10 +33,10 @@ func shTCP() {
 		}
 		log.Debugln("SH client [TCP] @", rawClient.RemoteAddr())
 		go func() {
-			defer rawClient.Close()
 			rawClient.SetDeadline(time.Now().Add(time.Second * 10))
 			client, err := cshirt2.Server(pubkey, rawClient)
 			if err != nil {
+				rawClient.Close()
 				return
 			}
 			rawClient.SetDeadline(time.Now().Add(time.Hour * 24))

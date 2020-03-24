@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/backedtcp"
+	"github.com/geph-official/geph2/libs/cshirt2"
 	log "github.com/sirupsen/logrus"
 	"github.com/xtaci/smux"
 )
@@ -163,13 +165,44 @@ func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 
 // get a clean, authenticated channel all the way to the exit
 func getCleanConn() (conn net.Conn, err error) {
+	var rawConn net.Conn
+	if singleHop != "" {
+		splitted := strings.Split(singleHop, "@")
+		if len(splitted) != 2 {
+			panic("-singleHop must be pk@host")
+		}
+		tcpConn, e := net.DialTimeout("tcp4", splitted[1], time.Second*5)
+		if e != nil {
+			log.Warn("cannot connect to singleHop server:", e)
+			err = e
+			return
+		}
+		pk, e := hex.DecodeString(splitted[0])
+		if e != nil {
+			panic(err)
+		}
+		obfsConn, e := cshirt2.Client(pk, tcpConn)
+		if e != nil {
+			log.Warn("cannot negotiate cshirt2 with singleHop server:", e)
+			err = e
+			return
+		}
+		cryptConn, e := negotiateTinySS(nil, obfsConn, pk, 'R')
+		if e != nil {
+			log.Warn("cannot negotiate tinyss with singleHop server:", e)
+			err = e
+			return
+		}
+		conn = cryptConn
+		return
+	}
 	ubsig, ubmsg, err := getGreeting()
 	if err != nil {
 		return
 	}
-	var rawConn net.Conn
+
 	if direct {
-		rawConn, err = net.DialTimeout("tcp4", exitName+":2389", time.Second*2)
+		rawConn, err = net.DialTimeout("tcp4", exitName+":2389", time.Second*5)
 	} else {
 		bridges, e := getBridges(ubmsg, ubsig)
 		if e != nil {
