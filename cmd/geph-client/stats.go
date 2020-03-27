@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/geph-official/geph2/libs/bdclient"
@@ -28,7 +29,7 @@ type stats struct {
 	PayTxes     []bdclient.PaymentTx
 	Expiry      time.Time
 	LogLines    []string
-	Bridges     []niaucchi4.LinkInfo
+	Bridges     map[string]int
 	bridgeThunk func() []niaucchi4.LinkInfo
 
 	lock sync.Mutex
@@ -54,9 +55,15 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Access-Control-Allow-Origin", "*")
 	var bts []byte
 	useStats(func(sc *stats) {
-		if sc.bridgeThunk != nil {
-			sc.Bridges = sc.bridgeThunk()
-		}
+		sc.Bridges = make(map[string]int)
+		// bridges
+		trackerMap.Range(func(key, value interface{}) bool {
+			v := int(atomic.LoadInt64(value.(*int64)))
+			if v > 0 {
+				sc.Bridges[key.(string)] = v
+			}
+			return true
+		})
 		ll := sc.LogLines
 		sc.LogLines = nil
 		var err error

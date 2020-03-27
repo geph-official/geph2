@@ -63,6 +63,8 @@ type Socket struct {
 	readBuf   bytes.Buffer
 	readBytes uint64
 	death     tomb.Tomb
+	remAddr   atomic.Value
+	locAddr   atomic.Value
 
 	rDeadline atomic.Value
 	wDeadline atomic.Value
@@ -95,6 +97,8 @@ func (sock *Socket) mainLoop() {
 			sock.death.Kill(err)
 			return
 		}
+		sock.remAddr.Store(wire.RemoteAddr())
+		sock.locAddr.Store(wire.LocalAddr())
 		stopWrite := make(chan struct{})
 		// negotiation shouldn't take more than 10 secs
 		wire.SetDeadline(time.Now().Add(time.Second * 10))
@@ -235,11 +239,19 @@ func (sock *Socket) Write(p []byte) (n int, err error) {
 }
 
 func (sock *Socket) LocalAddr() net.Addr {
-	return dummyAddr("dummy-local")
+	zz := sock.locAddr.Load()
+	if zz == nil {
+		return dummyAddr("dummy-local")
+	}
+	return zz.(net.Addr)
 }
 
 func (sock *Socket) RemoteAddr() net.Addr {
-	return dummyAddr("dummy-remote")
+	zz := sock.remAddr.Load()
+	if zz == nil {
+		return dummyAddr("dummy-remote")
+	}
+	return zz.(net.Addr)
 }
 
 func (sock *Socket) SetDeadline(t time.Time) error {
