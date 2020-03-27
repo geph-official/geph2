@@ -127,6 +127,7 @@ func main() {
 	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
 	flag.BoolVar(&bypassChinese, "bypassChinese", false, "bypass proxy for Chinese domains")
 	iniflags.Parse()
+	hackDNS()
 	if dnsAddr != "" {
 		go doDNS()
 	}
