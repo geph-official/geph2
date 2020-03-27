@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"time"
 
@@ -31,7 +32,7 @@ func mac128(m, k []byte) []byte {
 }
 
 var (
-	globCache = cache.New(time.Minute*10, time.Minute*10)
+	globCache = cache.New(time.Hour*3, time.Minute*30)
 )
 
 func readPK(secret []byte, transport net.Conn) (dhPK, int64, error) {
@@ -54,9 +55,10 @@ func readPK(secret []byte, transport net.Conn) (dhPK, int64, error) {
 	}
 	macOK := false
 	epoch := time.Now().Unix() / 30
-	for e := epoch - 10; e < epoch+10; e++ {
+	for e := epoch - 100; e < epoch+100; e++ {
 		macKey := mac256(secret, []byte(fmt.Sprintf("%v", e)))
 		if subtle.ConstantTimeCompare(theirPublicMAC, mac256(theirPublic, macKey)) == 1 {
+			log.Printf("*** ΔE = %v sec ***", (e-epoch)*30)
 			macOK = true
 			epoch = e
 			break

@@ -17,7 +17,7 @@ import (
 	"github.com/xtaci/smux"
 )
 
-const mpSize = 6
+const mpSize = 3
 
 type mpMember struct {
 	session *smux.Session
@@ -54,15 +54,11 @@ func newMultipool() *multipool {
 	tr := &multipool{}
 	tr.members = make(chan mpMember, mpSize)
 	rand.Read(tr.metasess[:])
-	wg := new(sync.WaitGroup)
-	wg.Add(mpSize)
-	for i := 0; i < mpSize; i++ {
-		go func() {
-			defer wg.Done()
+	go func() {
+		for i := 0; i < mpSize; i++ {
 			tr.fillOne()
-		}()
-	}
-	wg.Wait()
+		}
+	}()
 	tr.worstPing = time.Second * 5
 	return tr
 }
@@ -203,6 +199,7 @@ func getCleanConn() (conn net.Conn, err error) {
 
 	if direct {
 		rawConn, err = net.DialTimeout("tcp4", exitName+":2389", time.Second*5)
+		rawConn.(*net.TCPConn).SetKeepAlive(false)
 	} else {
 		bridges, e := getBridges(ubmsg, ubsig)
 		if e != nil {

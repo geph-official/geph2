@@ -66,6 +66,7 @@ func dialBridge(host string, cookie []byte) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	conn.(*net.TCPConn).SetKeepAlive(false)
 	return cshirt2.Client(cookie, conn)
 }
 
@@ -127,6 +128,6 @@ func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
 	for _, b := range bridges {
 		log.Infof(".... %v %x", b.Host, b.Cookie)
 	}
-	bridgesCache.bridges, bridgesCache.expires = bridges, time.Now().Add(time.Hour)
+	bridgesCache.bridges, bridgesCache.expires = bridges, time.Now().Add(time.Minute*5)
 	return bridges, nil
 }

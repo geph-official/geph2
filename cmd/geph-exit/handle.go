@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/ed25519"
 	"encoding/binary"
 	"errors"
@@ -87,6 +86,7 @@ func handle(rawClient net.Conn) {
 	rlp.Encode(tssClient, &ssSignature)
 	var limiter *rate.Limiter
 	limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), speedLimit*1024)
+	slowLimit := false
 	// "generic" stuff
 	var acceptStream func() (net.Conn, error)
 	if singleHop == "" {
@@ -113,8 +113,7 @@ func handle(rawClient net.Conn) {
 				tssClient.Close()
 				return
 			}
-			limiter = rate.NewLimiter(100*1000, 1*1000*1000)
-			limiter.WaitN(context.Background(), 1*1000*1000-500)
+			slowLimit = true
 		}
 		// IGNORE FOR NOW
 		rlp.Encode(tssClient, "OK")
@@ -179,12 +178,15 @@ func handle(rawClient net.Conn) {
 			return
 		}
 	case 'R':
-		err = handleResumable(limiter, tssClient)
+		err = handleResumable(limiter, slowLimit, tssClient)
 		log.Println("handleResumable returned with", err)
 		if err != nil {
 			tssClient.Close()
 		}
 		return
+	}
+	if slowLimit {
+		limiter = rate.NewLimiter(100*1000, 1000*1000)
 	}
 	smuxLoop(fmt.Sprintf("%p", tssClient), limiter, acceptStream)
 }
@@ -198,7 +200,7 @@ type scEntry struct {
 var sessionCache = make(map[[32]byte]*scEntry)
 var sessionCacheLock sync.Mutex
 
-func handleResumable(limiter *rate.Limiter, tssClient net.Conn) (err error) {
+func handleResumable(limiter *rate.Limiter, slowLimit bool, tssClient net.Conn) (err error) {
 	log.Println("handling resumable from", tssClient.RemoteAddr())
 	tssClient.SetDeadline(time.Now().Add(time.Second * 10))
 	var clientHello struct {
@@ -214,13 +216,13 @@ func handleResumable(limiter *rate.Limiter, tssClient net.Conn) (err error) {
 	defer sessionCacheLock.Unlock()
 	if bt, ok := sessionCache[clientHello.SessID]; ok {
 		log.Printf("[%v] found session", tssClient.RemoteAddr())
-		tssClient.Write([]byte{1})
 		bt.currConn.Close()
 		bt.currConn = tssClient
 		select {
 		case bt.newConns <- tssClient:
-		case <-time.After(time.Second):
-			panic("somehow stuck")
+			tssClient.Write([]byte{1})
+		case <-time.After(time.Millisecond * 100):
+			log.Printf("******** somehow stuck **********")
 		}
 		return
 	}
@@ -240,6 +242,10 @@ func handleResumable(limiter *rate.Limiter, tssClient net.Conn) (err error) {
 		newConns: ch,
 		handle:   btcp,
 		currConn: tssClient,
+	}
+	if slowLimit {
+		log.Printf("[%v] slow limit", tssClient.RemoteAddr())
+		limiter = getLimiter(clientHello.MetaSess)
 	}
 	go func() {
 		defer func() {

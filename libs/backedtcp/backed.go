@@ -15,7 +15,7 @@ import (
 	"gopkg.in/tomb.v1"
 )
 
-const maxBufferSize = 1000 * 1000
+const maxBufferSize = 10 * 1000 * 1000
 
 type backedWriter struct {
 	lastsn uint64
@@ -28,8 +28,18 @@ func (br *backedWriter) addData(ob []byte) {
 	copy(b, ob)
 	br.lastsn += uint64(len(b))
 	br.buffer = append(br.buffer, b...)
+	//log.Println("addData buffer size now", cap(br.buffer))
 	if len(br.buffer) >= maxBufferSize {
 		br.buffer = br.buffer[len(br.buffer)-maxBufferSize:]
+	}
+}
+
+func (br *backedWriter) reset() {
+	if len(br.buffer) > 100*1000 {
+		newlen := len(br.buffer) / 2
+		nbuf := make([]byte, newlen)
+		copy(nbuf, br.buffer[len(br.buffer)-newlen:])
+		br.buffer = nbuf
 	}
 }
 
@@ -130,6 +140,10 @@ func (sock *Socket) writeLoop(toResend []byte, wire net.Conn, stopWrite chan str
 		return
 	}
 	for {
+		var timeout <-chan time.Time
+		if sock.bw.buffer != nil {
+			timeout = time.After(time.Second * 10)
+		}
 		select {
 		case toWrite := <-sock.chWrite:
 			// first we remember this so that we can restore
@@ -144,6 +158,8 @@ func (sock *Socket) writeLoop(toResend []byte, wire net.Conn, stopWrite chan str
 				}
 				return
 			}
+		case <-timeout:
+			sock.bw.reset()
 		case <-stopWrite:
 			//log.Println("writeLoop stopped")
 			return
