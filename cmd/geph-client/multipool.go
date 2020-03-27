@@ -167,7 +167,7 @@ func getCleanConn() (conn net.Conn, err error) {
 		if len(splitted) != 2 {
 			panic("-singleHop must be pk@host")
 		}
-		tcpConn, e := net.DialTimeout("tcp4", splitted[1], time.Second*5)
+		tcpConn, e := net.DialTimeout("tcp", splitted[1], time.Second*5)
 		if e != nil {
 			log.Warn("cannot connect to singleHop server:", e)
 			err = e
@@ -198,7 +198,7 @@ func getCleanConn() (conn net.Conn, err error) {
 	}
 
 	if direct {
-		rawConn, err = net.DialTimeout("tcp4", exitName+":2389", time.Second*5)
+		rawConn, err = net.DialTimeout("tcp", exitName+":2389", time.Second*5)
 		rawConn.(*net.TCPConn).SetKeepAlive(false)
 	} else {
 		bridges, e := getBridges(ubmsg, ubsig)
