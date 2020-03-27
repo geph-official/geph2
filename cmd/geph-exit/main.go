@@ -16,6 +16,7 @@ import (
 	"github.com/geph-official/geph2/libs/fastudp"
 	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
+	"github.com/geph-official/geph2/libs/pseudotcp"
 	"github.com/patrickmn/go-cache"
 	log "github.com/sirupsen/logrus"
 )
@@ -89,6 +90,23 @@ func main() {
 		for {
 			rawClient, err := tcpListener.Accept()
 			if err != nil {
+				log.Println(err)
+				continue
+			}
+			rawClient.(*net.TCPConn).SetKeepAlive(false)
+			go handle(rawClient)
+		}
+	}()
+	go func() {
+		tcpListener, err := pseudotcp.Listen(":12389")
+		if err != nil {
+			panic(err)
+		}
+		log.Infof("Listen on PTCP 12389")
+		for {
+			rawClient, err := tcpListener.Accept()
+			if err != nil {
+				log.Println(err)
 				continue
 			}
 			go handle(rawClient)

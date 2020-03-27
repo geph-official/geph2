@@ -31,6 +31,7 @@ var binderKey string
 var statsdAddr string
 var allocGroup string
 var speedLimit int
+var noLegacyUDP bool
 var bclient *bdclient.Client
 
 var limiter *rate.Limiter
@@ -44,6 +45,7 @@ func main() {
 	flag.StringVar(&statsdAddr, "statsdAddr", "c2.geph.io:8125", "address of StatsD for gathering statistics")
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
+	flag.BoolVar(&noLegacyUDP, "noLegacyUDP", false, "reject legacy UDP (e2enat) attempts")
 	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")
 	flag.Parse()
 	if speedLimit > 0 {
@@ -135,6 +137,7 @@ func listenLoop(deadline time.Duration) {
 					log.Println("cshirt2 failed", err, rawClient.RemoteAddr())
 					return
 				}
+				rawClient.(*net.TCPConn).SetKeepAlive(false)
 				//log.Println("Accepted TCP from", rawClient.RemoteAddr())
 				handle(client)
 			}()

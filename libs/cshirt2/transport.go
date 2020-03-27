@@ -1,6 +1,7 @@
 package cshirt2
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/cipher"
 	"crypto/subtle"
@@ -28,6 +29,7 @@ type transport struct {
 	readCrypt  cipher.Stream
 	writeMAC   []byte
 	writeCrypt cipher.Stream
+	wireBuf    *bufio.Reader
 	wire       net.Conn
 	readbuf    bytes.Buffer
 }
@@ -36,13 +38,13 @@ func (tp *transport) Read(b []byte) (n int, err error) {
 	for tp.readbuf.Len() == 0 {
 		// read the mac
 		macBts := make([]byte, 16)
-		_, err = io.ReadFull(tp.wire, macBts)
+		_, err = io.ReadFull(tp.wireBuf, macBts)
 		if err != nil {
 			return
 		}
 		// read the *encrypted* payload length
 		cryptPayloadLenBts := make([]byte, 2)
-		_, err = io.ReadFull(tp.wire, cryptPayloadLenBts)
+		_, err = io.ReadFull(tp.wireBuf, cryptPayloadLenBts)
 		if err != nil {
 			return
 		}
@@ -50,7 +52,7 @@ func (tp *transport) Read(b []byte) (n int, err error) {
 		tp.readCrypt.XORKeyStream(plainPayloadLenBts, cryptPayloadLenBts)
 		// read the encrypted payload
 		cryptInnerPayloadBts := make([]byte, int(binary.BigEndian.Uint16(plainPayloadLenBts)))
-		_, err = io.ReadFull(tp.wire, cryptInnerPayloadBts)
+		_, err = io.ReadFull(tp.wireBuf, cryptInnerPayloadBts)
 		if err != nil {
 			return
 		}
@@ -147,5 +149,6 @@ func newTransport(wire net.Conn, ss []byte, isServer bool) *transport {
 		panic(err)
 	}
 	tp.wire = wire
+	tp.wireBuf = bufio.NewReader(wire)
 	return tp
 }

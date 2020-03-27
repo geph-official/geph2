@@ -1213,7 +1213,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				// if doLogging {
 				// 	log.Println("bdpMultiplier =>", kcp.LOL.bdpMultiplier)
 				// }
-				if rate > 1000*1000 && loss+kcp.DRE.lastLoss > 0.3 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
+				if rate > 400*1000 && loss+kcp.DRE.lastLoss > 0.3 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
 					if doLogging {
 						log.Printf("[%p] ****** POLICE ******", kcp)
 					}

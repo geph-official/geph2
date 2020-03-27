@@ -2,13 +2,12 @@ package main
 
 import (
 	"crypto/ed25519"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
-	"strings"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -17,12 +16,11 @@ import (
 	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/cshirt2"
 	"github.com/geph-official/geph2/libs/tinyss"
-	"github.com/xtaci/smux"
 )
 
-func negotiateSmux(greeting *[2][]byte, rawConn net.Conn, pk []byte) (ss *smux.Session, err error) {
+func negotiateTinySS(greeting *[2][]byte, rawConn net.Conn, pk []byte, nextProto byte) (cryptConn *tinyss.Socket, err error) {
 	rawConn.SetDeadline(time.Now().Add(time.Second * 20))
-	cryptConn, err := tinyss.Handshake(rawConn, 2)
+	cryptConn, err = tinyss.Handshake(rawConn, nextProto)
 	if err != nil {
 		err = fmt.Errorf("tinyss handshake failed: %w", err)
 		rawConn.Close()
@@ -59,21 +57,6 @@ func negotiateSmux(greeting *[2][]byte, rawConn net.Conn, pk []byte) (ss *smux.S
 			os.Exit(11)
 		}
 	}
-	smuxConf := &smux.Config{
-		Version:           2,
-		KeepAliveInterval: time.Minute * 5,
-		KeepAliveTimeout:  time.Minute * 30,
-		MaxFrameSize:      32768,
-		MaxReceiveBuffer:  100 * 1024 * 1024,
-		MaxStreamBuffer:   100 * 1024 * 1024,
-	}
-	ss, err = smux.Client(cryptConn, smuxConf)
-	if err != nil {
-		rawConn.Close()
-		err = fmt.Errorf("smux error: %w", err)
-		return
-	}
-	rawConn.SetDeadline(time.Now().Add(time.Hour * 24))
 	return
 }
 
@@ -83,108 +66,68 @@ func dialBridge(host string, cookie []byte) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	conn.(*net.TCPConn).SetKeepAlive(false)
 	return cshirt2.Client(cookie, conn)
 }
 
-func newSmuxWrapper() *muxWrap {
-	return &muxWrap{getSession: func() *smux.Session {
-		useStats(func(sc *stats) {
-			sc.Connected = false
-			sc.bridgeThunk = nil
-		})
-		defer useStats(func(sc *stats) {
-			sc.Connected = true
-		})
-	retry:
-		if singleHop == "" {
-			// obtain a ticket
-			ubmsg, ubsig, details, err := bindClient.GetTicket(username, password)
-			if err != nil {
-				log.Errorln("error authenticating:", err)
-				if errors.Is(err, io.EOF) {
-					os.Exit(11)
-				}
-				time.Sleep(time.Second)
-				goto retry
-			}
-			if loginCheck {
-				os.Exit(0)
-			}
-			useStats(func(sc *stats) {
-				sc.Username = username
-				sc.Expiry = details.PaidExpiry
-				sc.Tier = details.Tier
-				sc.PayTxes = details.Transactions
-			})
-			realExitKey, err := hex.DecodeString(exitKey)
-			if err != nil {
-				panic(err)
-			}
-			if direct {
-				sm, err := getDirect([2][]byte{ubmsg, ubsig}, exitName, realExitKey)
-				if err != nil {
-					log.Warnln("direct conn retrying", err)
-					time.Sleep(time.Second)
-					goto retry
-				}
-				useStats(func(sc *stats) {
-					sc.Connected = true
-				})
-				return sm
-			}
-			var bridges []bdclient.BridgeInfo
-			if useTCP {
-				bridges, err = bindClient.GetBridges(ubmsg, ubsig)
-				if err != nil {
-					log.Warnln("getting bridges failed, retrying", err)
-					time.Sleep(time.Second)
-					goto retry
-				}
-			} else {
-				bridges, err = bindClient.GetEphBridges(ubmsg, ubsig, exitName)
-				if err != nil {
-					log.Warnln("getting ephemeral bridges failed, retrying", err)
-					time.Sleep(time.Second)
-					goto retry
-				}
-			}
-			log.Infoln("Obtained", len(bridges), "bridges")
-			for _, b := range bridges {
-				log.Infof(".... %v %x", b.Host, b.Cookie)
-			}
-			var conn net.Conn
-			if useTCP {
-				conn, err = getSinglepath(bridges)
-				if err != nil {
-					log.Println("Singlepath failed!")
-					goto retry
-				}
-			} else {
-				conn, err = getMultipath(bridges, false)
-				if err != nil {
-					log.Println("Multipath failed!")
-					goto retry
-				}
-			}
-			sm, err := negotiateSmux(&[2][]byte{ubmsg, ubsig}, conn, realExitKey)
-			if err != nil {
-				log.Println("Failed negotiating smux:", err)
-				conn.Close()
-				goto retry
-			}
-			conn.SetDeadline(time.Now().Add(time.Hour * 24))
-			return sm
-		} else {
-			splitted := strings.Split(singleHop, "@")
-			lel, err := hex.DecodeString(splitted[0])
-			if err != nil {
-				panic(err)
-			}
-			lol, err := getSingleHop(splitted[1], lel)
-			if err != nil {
-				goto retry
-			}
-			return lol
+var greetingCache struct {
+	ubmsg   []byte
+	ubsig   []byte
+	expires time.Time
+	lock    sync.Mutex
+}
+
+func getGreeting() (ubmsg, ubsig []byte, err error) {
+	greetingCache.lock.Lock()
+	defer greetingCache.lock.Unlock()
+	if time.Now().Before(greetingCache.expires) {
+		ubmsg, ubsig = greetingCache.ubmsg, greetingCache.ubsig
+		return
+	}
+	// obtain a ticket
+	ubmsg, ubsig, details, err := bindClient.GetTicket(username, password)
+	if err != nil {
+		log.Errorln("error authenticating:", err)
+		if errors.Is(err, io.EOF) {
+			os.Exit(11)
 		}
-	}}
+		return
+	}
+	if loginCheck {
+		os.Exit(0)
+	}
+	useStats(func(sc *stats) {
+		sc.Username = username
+		sc.Expiry = details.PaidExpiry
+		sc.Tier = details.Tier
+		sc.PayTxes = details.Transactions
+	})
+	greetingCache.ubmsg = ubmsg
+	greetingCache.ubsig = ubsig
+	greetingCache.expires = time.Now().Add(time.Second * 30)
+	return
+}
+
+var bridgesCache struct {
+	bridges []bdclient.BridgeInfo
+	expires time.Time
+	lock    sync.Mutex
+}
+
+func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
+	bridgesCache.lock.Lock()
+	defer bridgesCache.lock.Unlock()
+	if time.Now().Before(bridgesCache.expires) {
+		return bridgesCache.bridges, nil
+	}
+	bridges, e := bindClient.GetBridges(ubmsg, ubsig)
+	if e != nil {
+		return nil, e
+	}
+	log.Infoln("Obtained", len(bridges), "bridges")
+	for _, b := range bridges {
+		log.Infof(".... %v %x", b.Host, b.Cookie)
+	}
+	bridgesCache.bridges, bridgesCache.expires = bridges, time.Now().Add(time.Minute*5)
+	return bridges, nil
 }

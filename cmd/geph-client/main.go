@@ -47,14 +47,11 @@ var dnsAddr string
 var fakeDNS bool
 var bypassChinese bool
 
-var useTCP bool
-var noFEC bool
-
 var singleHop string
 
 var bindClient *bdclient.Client
 
-var sWrap *muxWrap
+var sWrap commandDialer
 
 // GitVersion is the build version
 var GitVersion string
@@ -116,8 +113,8 @@ func main() {
 	flag.StringVar(&username, "username", "", "username")
 	flag.StringVar(&password, "password", "", "password")
 	flag.StringVar(&ticketFile, "ticketFile", "", "location for caching auth tickets")
-	flag.StringVar(&binderFront, "binderFront", "https://www.cdn77.com/v2,https://netlify.com/front/v2,https://ajax.aspnetcdn.com/v2", "binder domain-fronting hosts, comma separated")
-	flag.StringVar(&binderHost, "binderHost", "1680337695.rsc.cdn77.org,gracious-payne-f3e2ed.netlify.com,gephbinder.azureedge.net", "real hostname of the binder, comma separated")
+	flag.StringVar(&binderFront, "binderFront", "https://www.cdn77.com/v2,https://netlify.com/v2,https://ajax.aspnetcdn.com/v2", "binder domain-fronting hosts, comma separated")
+	flag.StringVar(&binderHost, "binderHost", "1680337695.rsc.cdn77.org,loving-bell-981479.netlify.com,gephbinder-vzn.azureedge.net", "real hostname of the binder, comma separated")
 	flag.StringVar(&exitName, "exitName", "us-sfo-01.exits.geph.io", "qualified name of the exit node selected")
 	flag.StringVar(&exitKey, "exitKey", "2f8571e4795032433098af285c0ce9e43c973ac3ad71bf178e4f2aaa39794aec", "ed25519 pubkey of the selected exit")
 	flag.BoolVar(&forceBridges, "forceBridges", false, "force the use of obfuscated bridges")
@@ -130,8 +127,6 @@ func main() {
 	flag.StringVar(&binderProxy, "binderProxy", "", "if set, proxy the binder at the given listening address and do nothing else")
 	// flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
 	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
-	flag.BoolVar(&useTCP, "useTCP", false, "use TCP to connect to bridges")
-	flag.BoolVar(&noFEC, "noFEC", false, "disable automatic FEC")
 	flag.BoolVar(&bypassChinese, "bypassChinese", false, "bypass proxy for Chinese domains")
 	iniflags.Parse()
 	if dnsAddr != "" {
@@ -216,12 +211,17 @@ func main() {
 			direct = false
 		}
 	}
-	sWrap = newSmuxWrapper()
+	sWrap = newMultipool()
 
 	// confirm we are connected
 	func() {
 		for {
-			rm, _ := sWrap.DialCmd("ip")
+			rm, ok := sWrap.DialCmd("ip")
+			if !ok {
+				log.Println("FAILED to get IP, retrying...")
+				time.Sleep(time.Second)
+				continue
+			}
 			defer rm.Close()
 			var ip string
 			err := rlp.Decode(rm, &ip)

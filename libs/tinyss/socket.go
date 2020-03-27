@@ -1,6 +1,7 @@
 package tinyss
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -25,8 +26,9 @@ type Socket struct {
 	txctr   uint64
 	txcrypt cipher.AEAD
 
-	plain     net.Conn
-	sharedsec []byte
+	plain         net.Conn
+	plainBuffered *bufio.Reader
+	sharedsec     []byte
 
 	nextprot byte
 }
@@ -66,10 +68,11 @@ func newSocket(plain net.Conn, repk, lesk [32]byte) (sok *Socket) {
 	}
 	// create socket
 	sok = &Socket{
-		rxcrypt:   aead(rxkey),
-		txcrypt:   aead(txkey),
-		plain:     plain,
-		sharedsec: sharedsec[:],
+		rxcrypt:       aead(rxkey),
+		txcrypt:       aead(txkey),
+		plain:         plain,
+		sharedsec:     sharedsec[:],
+		plainBuffered: bufio.NewReader(plain),
 	}
 
 	return
@@ -95,13 +98,13 @@ func (sk *Socket) Read(p []byte) (n int, err error) {
 	}
 	// otherwise wait for record
 	lenbts := make([]byte, 2)
-	_, err = io.ReadFull(sk.plain, lenbts)
+	_, err = io.ReadFull(sk.plainBuffered, lenbts)
 	if err != nil {
 		sk.rxerr = err
 		return
 	}
 	ciph := make([]byte, binary.BigEndian.Uint16(lenbts))
-	_, err = io.ReadFull(sk.plain, ciph)
+	_, err = io.ReadFull(sk.plainBuffered, ciph)
 	if err != nil {
 		sk.rxerr = err
 		return

@@ -14,6 +14,7 @@ import (
 	"github.com/geph-official/geph2/libs/cwl"
 	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/geph-official/geph2/libs/niaucchi4"
+	"github.com/geph-official/geph2/libs/pseudotcp"
 	//"github.com/geph-official/geph2/libs/niaucchi4/backedtcp"
 )
 
@@ -38,6 +39,9 @@ func handle(client net.Conn) {
 		log.Println("Client", client.RemoteAddr(), "requested", command)
 		switch command {
 		case "conn/e2e":
+			if noLegacyUDP {
+				return
+			}
 			var host string
 			err = dec.Decode(&host)
 			if err != nil {
@@ -107,10 +111,11 @@ func handle(client net.Conn) {
 				err = fmt.Errorf("bad pattern: %v", host)
 				return
 			}
-			remoteAddr := fmt.Sprintf("%v:2389", host)
+			remoteAddr := fmt.Sprintf("%v:12389", host)
 			var remote net.Conn
-			remote, err = net.Dial("tcp", remoteAddr)
+			remote, err = pseudotcp.Dial(remoteAddr)
 			if err != nil {
+				log.Println("failed connecting to", remoteAddr, err)
 				return
 			}
 			log.Println("connected to", remoteAddr)

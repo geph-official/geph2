@@ -16,13 +16,14 @@ require (
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/google/gops v0.3.7
 	github.com/gorilla/mux v1.7.3
-	github.com/hashicorp/golang-lru v0.5.3
+	github.com/hashicorp/golang-lru v0.5.4
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/kavu/go_reuseport v1.4.0 // indirect
 	github.com/klauspost/cpuid v1.2.1 // indirect
 	github.com/klauspost/reedsolomon v1.9.2
 	github.com/lib/pq v1.2.0
+	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/lucas-clemente/quic-go v0.12.0
 	github.com/miekg/dns v1.1.27
 	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1
