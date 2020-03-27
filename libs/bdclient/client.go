@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -140,6 +141,9 @@ type PaymentTx struct {
 	Amount int
 }
 
+// ErrBadAuth indicates incorrect credentials
+var ErrBadAuth = errors.New("access denied")
+
 // GetTicket obtains an authentication ticket.
 func (cl *Client) GetTicket(username, password string) (ubmsg, ubsig []byte, details TicketResp, err error) {
 	// First get ticket key
@@ -181,6 +185,10 @@ func (cl *Client) GetTicket(username, password string) (ubmsg, ubsig []byte, det
 		return
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusForbidden {
+		err = ErrBadAuth
+		return
+	}
 	var respDec TicketResp
 	err = json.NewDecoder(resp.Body).Decode(&respDec)
 	if err != nil {

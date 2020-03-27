@@ -4,7 +4,6 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"sync"
@@ -88,7 +87,7 @@ func getGreeting() (ubmsg, ubsig []byte, err error) {
 	ubmsg, ubsig, details, err := bindClient.GetTicket(username, password)
 	if err != nil {
 		log.Errorln("error authenticating:", err)
-		if errors.Is(err, io.EOF) {
+		if errors.Is(err, bdclient.ErrBadAuth) && loginCheck {
 			os.Exit(11)
 		}
 		return

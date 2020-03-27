@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/bdclient"
+	log "github.com/sirupsen/logrus"
 )
 
 func getSingleTCP(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
@@ -29,7 +30,7 @@ func getSingleTCP(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 			defer bridgeDeadWait.Done()
 			bridgeConn, err := dialBridge(bi.Host, bi.Cookie)
 			if err != nil {
-				//log.Debugln("dialing to", bi.Host, "failed!", err)
+				log.Debugln("dialing to", bi.Host, "failed!", err)
 				return
 			}
 			bridgeConn.SetDeadline(time.Now().Add(time.Second * 30))
