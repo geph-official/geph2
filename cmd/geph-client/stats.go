@@ -13,24 +13,23 @@ import (
 	"time"
 
 	"github.com/geph-official/geph2/libs/bdclient"
-	"github.com/geph-official/geph2/libs/niaucchi4"
 	log "github.com/sirupsen/logrus"
 )
 
 type stats struct {
-	Connected   bool
-	PublicIP    string
-	UpBytes     uint64
-	DownBytes   uint64
-	MinPing     uint64
-	PingTime    time.Time
-	Username    string
-	Tier        string
-	PayTxes     []bdclient.PaymentTx
-	Expiry      time.Time
-	LogLines    []string
-	Bridges     map[string]int
-	bridgeThunk func() []niaucchi4.LinkInfo
+	Connected bool
+	PublicIP  string
+	UpBytes   uint64
+	DownBytes uint64
+	MinPing   uint64
+	PingTime  time.Time
+	Username  string
+	Tier      string
+	PayTxes   []bdclient.PaymentTx
+	Expiry    time.Time
+	LogLines  []string
+	Bridges   map[string]int
+	//bridgeThunk func() []niaucchi4.LinkInfo
 
 	lock sync.Mutex
 }
