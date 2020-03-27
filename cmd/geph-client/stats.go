@@ -57,13 +57,15 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 	useStats(func(sc *stats) {
 		sc.Bridges = make(map[string]int)
 		// bridges
-		trackerMap.Range(func(key, value interface{}) bool {
-			v := int(atomic.LoadInt64(value.(*int64)))
-			if v > 0 {
-				sc.Bridges[key.(string)] = v
-			}
-			return true
-		})
+		if !direct {
+			trackerMap.Range(func(key, value interface{}) bool {
+				v := int(atomic.LoadInt64(value.(*int64)))
+				if v > 0 {
+					sc.Bridges[key.(string)] = v
+				}
+				return true
+			})
+		}
 		ll := sc.LogLines
 		sc.LogLines = nil
 		var err error
