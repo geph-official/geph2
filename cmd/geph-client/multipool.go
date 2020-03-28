@@ -199,7 +199,9 @@ func getCleanConn() (conn net.Conn, err error) {
 
 	if direct {
 		rawConn, err = net.DialTimeout("tcp", exitName+":2389", time.Second*5)
-		rawConn.(*net.TCPConn).SetKeepAlive(false)
+		if err != nil {
+			rawConn.(*net.TCPConn).SetKeepAlive(false)
+		}
 	} else {
 		bridges, e := getBridges(ubmsg, ubsig)
 		if e != nil {

@@ -15,7 +15,7 @@ import (
 	"gopkg.in/tomb.v1"
 )
 
-const maxBufferSize = 10 * 1000 * 1000
+const maxBufferSize = 1000 * 1000
 
 type backedWriter struct {
 	lastsn uint64

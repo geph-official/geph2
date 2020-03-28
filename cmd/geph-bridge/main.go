@@ -126,7 +126,9 @@ func listenLoop(deadline time.Duration) {
 		for {
 			rawClient, err := listener.Accept()
 			if err != nil {
-				return
+				log.Println("CANNOT ACCEPT!", err)
+				time.Sleep(time.Millisecond * 100)
+				continue
 			}
 			go func() {
 				defer rawClient.Close()
@@ -159,7 +161,9 @@ func listenLoop(deadline time.Duration) {
 	for {
 		client, err := listener.Accept()
 		if err != nil {
-			return
+			log.Println("CANNOT ACCEPT!", err)
+			time.Sleep(time.Millisecond * 100)
+			continue
 		}
 		//log.Println("Accepted UDP client", client.RemoteAddr())
 		go handle(client)

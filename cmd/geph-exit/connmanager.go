@@ -20,5 +20,5 @@ var connlru, _ = lru.NewWithEvict(5000, func(k, v interface{}) {
 })
 
 func regConn(conn net.Conn) {
-	connlru.Add(conn, time.Now())
+	//connlru.Add(conn, time.Now())
 }

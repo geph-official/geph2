@@ -12,6 +12,7 @@ import (
 	"net"
 	"time"
 
+	pool "github.com/libp2p/go-buffer-pool"
 	"golang.org/x/crypto/chacha20"
 )
 
@@ -32,39 +33,46 @@ type transport struct {
 	wireBuf    *bufio.Reader
 	wire       net.Conn
 	readbuf    bytes.Buffer
+
+	buf [128]byte
 }
 
 func (tp *transport) Read(b []byte) (n int, err error) {
 	for tp.readbuf.Len() == 0 {
 		// read the mac
-		macBts := make([]byte, 16)
+		macBts := tp.buf[0:16]
 		_, err = io.ReadFull(tp.wireBuf, macBts)
 		if err != nil {
 			return
 		}
 		// read the *encrypted* payload length
-		cryptPayloadLenBts := make([]byte, 2)
+		cryptPayloadLenBts := tp.buf[16:][:2]
 		_, err = io.ReadFull(tp.wireBuf, cryptPayloadLenBts)
 		if err != nil {
 			return
 		}
-		plainPayloadLenBts := make([]byte, 2)
+		plainPayloadLenBts := tp.buf[18:][:2]
 		tp.readCrypt.XORKeyStream(plainPayloadLenBts, cryptPayloadLenBts)
 		// read the encrypted payload
-		cryptInnerPayloadBts := make([]byte, int(binary.BigEndian.Uint16(plainPayloadLenBts)))
+		cryptInnerPayloadBts := pool.GlobalPool.Get(int(binary.BigEndian.Uint16(plainPayloadLenBts)))
+		defer pool.GlobalPool.Put(cryptInnerPayloadBts)
 		_, err = io.ReadFull(tp.wireBuf, cryptInnerPayloadBts)
 		if err != nil {
 			return
 		}
 		// verify the MAC
-		toMAC := append(cryptPayloadLenBts, cryptInnerPayloadBts...)
+		toMAC := pool.GlobalPool.Get(len(cryptPayloadLenBts) + len(cryptInnerPayloadBts))
+		defer pool.GlobalPool.Put(toMAC)
+		copy(toMAC, cryptPayloadLenBts)
+		copy(toMAC[len(cryptPayloadLenBts):], cryptInnerPayloadBts)
 		if subtle.ConstantTimeCompare(macBts, mac128(toMAC, tp.readMAC)) != 1 {
 			err = errors.New("MAC error")
 			return
 		}
 		tp.readMAC = mac256(tp.readMAC, nil)
 		// decrypt the payload itself
-		plainInnerPayloadBts := make([]byte, len(cryptInnerPayloadBts))
+		plainInnerPayloadBts := pool.GlobalPool.Get(len(cryptInnerPayloadBts))
+		defer pool.GlobalPool.Put(plainInnerPayloadBts)
 		tp.readCrypt.XORKeyStream(plainInnerPayloadBts, cryptInnerPayloadBts)
 		if len(plainInnerPayloadBts) < 2 {
 			err = errors.New("truncated payload")
@@ -97,8 +105,12 @@ func (tp *transport) Write(b []byte) (n int, err error) {
 	// then we compute the MAC and ratchet forward the key
 	mac := mac128(cryptPayload, tp.writeMAC)
 	tp.writeMAC = mac256(tp.writeMAC, nil)
+	toWrite := pool.GlobalPool.Get(len(mac) + len(cryptPayload))
+	defer pool.GlobalPool.Put(toWrite)
+	copy(toWrite, mac)
+	copy(toWrite[len(mac):], cryptPayload)
 	// then we assemble everything
-	_, err = tp.wire.Write(append(mac, cryptPayload...))
+	_, err = tp.wire.Write(toWrite)
 	if err != nil {
 		return
 	}
