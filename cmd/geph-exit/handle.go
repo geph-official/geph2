@@ -178,7 +178,7 @@ func handle(rawClient net.Conn) {
 			return
 		}
 	case 'R':
-		err = handleResumable(limiter, slowLimit, tssClient)
+		err = handleResumable(slowLimit, tssClient)
 		log.Println("handleResumable returned with", err)
 		if err != nil {
 			tssClient.Close()
@@ -200,7 +200,7 @@ type scEntry struct {
 var sessionCache = make(map[[32]byte]*scEntry)
 var sessionCacheLock sync.Mutex
 
-func handleResumable(limiter *rate.Limiter, slowLimit bool, tssClient net.Conn) (err error) {
+func handleResumable(slowLimit bool, tssClient net.Conn) (err error) {
 	log.Println("handling resumable from", tssClient.RemoteAddr())
 	tssClient.SetDeadline(time.Now().Add(time.Second * 10))
 	var clientHello struct {
@@ -243,10 +243,6 @@ func handleResumable(limiter *rate.Limiter, slowLimit bool, tssClient net.Conn) 
 		handle:   btcp,
 		currConn: tssClient,
 	}
-	if slowLimit {
-		log.Printf("[%v] slow limit", tssClient.RemoteAddr())
-		limiter = getLimiter(clientHello.MetaSess)
-	}
 	go func() {
 		defer func() {
 			sessionCacheLock.Lock()
@@ -260,8 +256,8 @@ func handleResumable(limiter *rate.Limiter, slowLimit bool, tssClient net.Conn) 
 			KeepAliveInterval: time.Minute * 20,
 			KeepAliveTimeout:  time.Minute * 40,
 			MaxFrameSize:      32768,
-			MaxReceiveBuffer:  100 * 1024 * 1024,
-			MaxStreamBuffer:   100 * 1024 * 1024,
+			MaxReceiveBuffer:  10 * 1024 * 1024,
+			MaxStreamBuffer:   10 * 1024 * 1024,
 		})
 		if err != nil {
 			return
@@ -269,6 +265,12 @@ func handleResumable(limiter *rate.Limiter, slowLimit bool, tssClient net.Conn) 
 		acceptStream := func() (n net.Conn, e error) {
 			n, e = muxSrv.AcceptStream()
 			return
+		}
+		var limiter *rate.Limiter
+		if slowLimit {
+			limiter = slowLimitFactory.getLimiter(clientHello.MetaSess)
+		} else {
+			limiter = fastLimitFactory.getLimiter(clientHello.MetaSess)
 		}
 		smuxLoop(fmt.Sprintf("%x", clientHello.MetaSess), limiter, acceptStream)
 	}()

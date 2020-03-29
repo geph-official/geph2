@@ -3,13 +3,12 @@ package main
 import (
 	"errors"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/bdclient"
-	"github.com/geph-official/geph2/libs/niaucchi4"
+	log "github.com/sirupsen/logrus"
 )
 
 func getSingleTCP(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
@@ -31,7 +30,7 @@ func getSingleTCP(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 			defer bridgeDeadWait.Done()
 			bridgeConn, err := dialBridge(bi.Host, bi.Cookie)
 			if err != nil {
-				//log.Debugln("dialing to", bi.Host, "failed!", err)
+				log.Debugln("dialing to", bi.Host, "failed!", err)
 				return
 			}
 			bridgeConn.SetDeadline(time.Now().Add(time.Second * 30))
@@ -55,14 +54,6 @@ func getSingleTCP(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 		err = errors.New("singlepath timed out")
 		return
 	}
-	useStats(func(sc *stats) {
-		sc.bridgeThunk = func() []niaucchi4.LinkInfo {
-			sessions := make([]niaucchi4.LinkInfo, 1)
-			sessions[0].RemoteIP = strings.Split(zz.RemoteAddr().String(), ":")[0]
-			sessions[0].RecvCnt = -1
-			return sessions
-		}
-	})
 	conn = zz
 	return
 }

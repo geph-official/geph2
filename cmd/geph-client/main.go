@@ -20,7 +20,6 @@ import (
 	"github.com/acarl005/stripansi"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/bdclient"
-	"github.com/geph-official/geph2/libs/kcp-go"
 	"golang.org/x/net/proxy"
 
 	log "github.com/sirupsen/logrus"
@@ -96,7 +95,6 @@ func main() {
 		ForceColors:   true,
 	})
 	log.SetLevel(log.DebugLevel)
-	kcp.CongestionControl = "LOL"
 
 	// configfile path
 	usr, err := user.Current()
@@ -129,6 +127,7 @@ func main() {
 	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
 	flag.BoolVar(&bypassChinese, "bypassChinese", false, "bypass proxy for Chinese domains")
 	iniflags.Parse()
+	hackDNS()
 	if dnsAddr != "" {
 		go doDNS()
 	}

@@ -19,6 +19,7 @@ import (
 	"github.com/geph-official/geph2/libs/pseudotcp"
 	"github.com/patrickmn/go-cache"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/time/rate"
 )
 
 var keyfile string
@@ -53,6 +54,7 @@ func main() {
 	flag.IntVar(&speedLimit, "speedLimit", 12500, "per-session speed limit, in KB/s")
 	flag.StringVar(&singleHop, "singleHop", "", "if supplied, runs in single-hop mode. (for example, -singleHop :5000 would listen on port 5000)")
 	flag.Parse()
+	fastLimitFactory = newLimitFactory(rate.Limit(speedLimit * 1024))
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
