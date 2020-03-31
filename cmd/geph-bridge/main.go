@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"flag"
 	"fmt"
@@ -49,9 +50,9 @@ func main() {
 	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")
 	flag.Parse()
 	if speedLimit > 0 {
-		limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 1000*1000)
+		limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 10*1000*1000)
 	} else {
-		limiter = rate.NewLimiter(rate.Inf, 1000*1000)
+		limiter = rate.NewLimiter(rate.Inf, 10*1000*1000)
 	}
 	go func() {
 		if err := agent.Listen(agent.Options{}); err != nil {
@@ -132,6 +133,14 @@ func listenLoop(deadline time.Duration) {
 			}
 			go func() {
 				defer rawClient.Close()
+				if !limiter.AllowN(time.Now(), 100*1024) {
+					log.Println("rejecting connection because we are already pretty full")
+					return
+				}
+				// intentionally wait in order to deter connections when we're full
+				start := time.Now()
+				limiter.WaitN(context.Background(), 1000*1000)
+				log.Println("delayed opening by", time.Since(start))
 				rawClient.SetDeadline(time.Now().Add(time.Second * 10))
 				client, err := cshirt2.Server(cookie, rawClient)
 				rawClient.SetDeadline(time.Now().Add(time.Hour * 24))

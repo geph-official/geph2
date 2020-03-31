@@ -17,7 +17,7 @@ import (
 	"github.com/xtaci/smux"
 )
 
-const mpSize = 3
+const mpSize = 4
 
 type mpMember struct {
 	session *smux.Session
@@ -102,8 +102,8 @@ func (mp *multipool) fillOne() {
 		KeepAliveInterval: time.Minute * 20,
 		KeepAliveTimeout:  time.Minute * 40,
 		MaxFrameSize:      32768,
-		MaxReceiveBuffer:  100 * 1024 * 1024,
-		MaxStreamBuffer:   100 * 1024 * 1024,
+		MaxReceiveBuffer:  3 * 1024 * 1024,
+		MaxStreamBuffer:   3 * 1024 * 1024,
 	})
 	if err != nil {
 		panic(err)
@@ -124,7 +124,7 @@ func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 		go func() {
 			for {
 				select {
-				case <-time.After(worst + time.Second*10):
+				case <-time.After(time.Second * 30):
 					log.Println("forcing replacement!")
 					go mem.btcp.Reset()
 				case <-success:
