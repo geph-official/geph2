@@ -47,6 +47,7 @@ var fakeDNS bool
 var bypassChinese bool
 
 var singleHop string
+var frontProxy string
 
 var bindClient *bdclient.Client
 
@@ -124,6 +125,7 @@ func main() {
 	flag.BoolVar(&loginCheck, "loginCheck", false, "do a login check and immediately exit with code 0")
 	flag.StringVar(&binderProxy, "binderProxy", "", "if set, proxy the binder at the given listening address and do nothing else")
 	// flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
+	flag.StringVar(&frontProxy, "frontProxy", "", "front SOCKS5 proxy for connecting to servers")
 	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
 	flag.BoolVar(&bypassChinese, "bypassChinese", false, "bypass proxy for Chinese domains")
 	iniflags.Parse()
@@ -193,7 +195,10 @@ func main() {
 		// connect to bridge
 		bindClient = bdclient.NewClient(binderFront, binderHost)
 		// automatically pick mode
-		if !forceBridges {
+		if frontProxy != "" {
+			log.Println("front proxy enabled, no bridges")
+			direct = true
+		} else if !forceBridges {
 			country, err := bindClient.GetClientInfo()
 			if err != nil {
 				log.Println("cannot get country, conservatively using bridges", err)
