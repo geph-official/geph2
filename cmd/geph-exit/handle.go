@@ -256,8 +256,8 @@ func handleResumable(slowLimit bool, tssClient net.Conn) (err error) {
 			KeepAliveInterval: time.Minute * 20,
 			KeepAliveTimeout:  time.Minute * 40,
 			MaxFrameSize:      32768,
-			MaxReceiveBuffer:  10 * 1024 * 1024,
-			MaxStreamBuffer:   10 * 1024 * 1024,
+			MaxReceiveBuffer:  1 * 1024 * 1024,
+			MaxStreamBuffer:   256 * 1024,
 		})
 		if err != nil {
 			return
