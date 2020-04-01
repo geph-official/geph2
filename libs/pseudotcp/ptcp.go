@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/geph-official/geph2/libs/buffconn"
 	"github.com/xtaci/smux"
 	"gopkg.in/tomb.v1"
 )
@@ -70,7 +71,7 @@ func (dl *dialer) Dial(host string) (conn net.Conn, err error) {
 	if err != nil {
 		return
 	}
-	ssess, err := smux.Client(rawConn, smuxConf)
+	ssess, err := smux.Client(buffconn.New(rawConn), smuxConf)
 	if err != nil {
 		rawConn.Close()
 		return
@@ -107,7 +108,7 @@ func Listen(addr string) (listener net.Listener, err error) {
 			}
 			go func() {
 				defer rawConn.Close()
-				srv, err := smux.Server(rawConn, smuxConf)
+				srv, err := smux.Server(buffconn.New(rawConn), smuxConf)
 				if err != nil {
 					log.Println("smux create:", err)
 					return
