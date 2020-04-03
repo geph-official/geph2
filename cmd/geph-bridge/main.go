@@ -61,10 +61,6 @@ func main() {
 			log.Fatal(err)
 		}
 	}()
-	if wfAddr != "" {
-		log.Println("*** WARPFRONT MODE ***")
-		wfLoop()
-	}
 	if allocGroup == "" {
 		log.Fatal("must specify an allocation group")
 	}
@@ -74,6 +70,10 @@ func main() {
 			panic(e)
 		}
 		statClient = statsd.New(z.IP.String(), z.Port)
+	}
+	if wfAddr != "" {
+		log.Println("*** WARPFRONT MODE ***")
+		wfLoop()
 	}
 	generateCookie()
 	bclient = bdclient.NewClient(binderFront, binderReal)
