@@ -48,6 +48,7 @@ var bypassChinese bool
 
 var singleHop string
 var frontProxy string
+var forcefrontdomain bool
 
 var bindClient *bdclient.Client
 
@@ -128,6 +129,7 @@ func main() {
 	flag.StringVar(&frontProxy, "frontProxy", "", "front SOCKS5 proxy for connecting to servers")
 	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
 	flag.BoolVar(&bypassChinese, "bypassChinese", false, "bypass proxy for Chinese domains")
+	flag.BoolVar(&forcefrontdomain, "forcefrontdomain", false, "all connection through cdn")
 	iniflags.Parse()
 	hackDNS()
 	if dnsAddr != "" {

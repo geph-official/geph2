@@ -247,15 +247,7 @@ func getCleanConn() (conn net.Conn, err error) {
 			rawConn.(*net.TCPConn).SetKeepAlive(false)
 		}
 	} else {
-		bridges, e := getBridges(ubmsg, ubsig)
-		if e != nil {
-			err = e
-			log.Warnln("getting bridges failed, retrying", err)
-			return
-		}
-		rawConn, err = getSingleTCP(bridges)
-		if err != nil {
-			log.Warnf("can't connect to bridges (%v); time to W A R P F R O N T", err)
+		if forcefrontdomain {
 			var wfstuff map[string]string
 			wfstuff, err = bindClient.GetWarpfronts()
 			if err != nil {
@@ -264,6 +256,19 @@ func getCleanConn() (conn net.Conn, err error) {
 			}
 			rawConn, err = getWarpfront(wfstuff)
 			if err != nil {
+				log.Warnf("can't connect to CDN bridges", err)
+				return
+			}
+		} else {
+			bridges, e := getBridges(ubmsg, ubsig)
+			if e != nil {
+				err = e
+				log.Warnln("getting bridges failed, retrying", err)
+				return
+			}
+			rawConn, err = getSingleTCP(bridges)
+			if err != nil {
+				log.Warnf("can't connect to bridges", err)
 				return
 			}
 		}
