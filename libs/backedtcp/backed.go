@@ -97,8 +97,10 @@ func (sock *Socket) mainLoop() {
 			sock.death.Kill(err)
 			return
 		}
-		sock.remAddr.Store(wire.RemoteAddr())
-		sock.locAddr.Store(wire.LocalAddr())
+		wra := wire.RemoteAddr()
+		wla := wire.LocalAddr()
+		sock.remAddr.Store(&wra)
+		sock.locAddr.Store(&wla)
 		stopWrite := make(chan struct{})
 		// negotiation shouldn't take more than 10 secs
 		wire.SetDeadline(time.Now().Add(time.Second * 10))
@@ -243,7 +245,7 @@ func (sock *Socket) LocalAddr() net.Addr {
 	if zz == nil {
 		return dummyAddr("dummy-local")
 	}
-	return zz.(net.Addr)
+	return *(zz.(*net.Addr))
 }
 
 func (sock *Socket) RemoteAddr() net.Addr {
@@ -251,7 +253,7 @@ func (sock *Socket) RemoteAddr() net.Addr {
 	if zz == nil {
 		return dummyAddr("dummy-remote")
 	}
-	return zz.(net.Addr)
+	return *(zz.(*net.Addr))
 }
 
 func (sock *Socket) SetDeadline(t time.Time) error {
