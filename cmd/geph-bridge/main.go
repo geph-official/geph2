@@ -33,6 +33,7 @@ var statsdAddr string
 var allocGroup string
 var speedLimit int
 var noLegacyUDP bool
+var wfAddr string
 var bclient *bdclient.Client
 
 var limiter *rate.Limiter
@@ -47,6 +48,7 @@ func main() {
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
 	flag.BoolVar(&noLegacyUDP, "noLegacyUDP", false, "reject legacy UDP (e2enat) attempts")
+	flag.StringVar(&wfAddr, "wfAddr", "", "if set, listen for plain HTTP warpfront connections on this port. Prevents contacting the binder --- warpfront bridges are manually provisioned!")
 	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")
 	flag.Parse()
 	if speedLimit > 0 {
@@ -68,6 +70,10 @@ func main() {
 			panic(e)
 		}
 		statClient = statsd.New(z.IP.String(), z.Port)
+	}
+	if wfAddr != "" {
+		log.Println("*** WARPFRONT MODE ***")
+		wfLoop()
 	}
 	generateCookie()
 	bclient = bdclient.NewClient(binderFront, binderReal)
