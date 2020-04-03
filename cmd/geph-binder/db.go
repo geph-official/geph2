@@ -15,8 +15,47 @@ import (
 
 var pgDB *sql.DB
 
+var semaphore = make(chan struct{}, 16)
+
+func lockSem() {
+	semaphore <- struct{}{}
+}
+
+func unlockSem() {
+	<-semaphore
+}
+
+// getWarpfronts gets all the warpfront-based bridges registered in the database.
+func getWarpfronts() (host2front map[string]string, err error) {
+	lockSem()
+	defer unlockSem()
+	tx, err := pgDB.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+	rows, err := tx.Query("select front,host from warpfronts")
+	if err != nil {
+		return
+	}
+	host2front = make(map[string]string)
+	for rows.Next() {
+		front := ""
+		host := ""
+		err = rows.Scan(&front, &host)
+		if err != nil {
+			return
+		}
+		host2front[host] = front
+	}
+	tx.Commit()
+	return
+}
+
 // checkBridgeKey checks whether a bridge cookie is allowed.
 func checkBridgeKey(key string) (ok bool, err error) {
+	lockSem()
+	defer unlockSem()
 	tx, err := pgDB.Begin()
 	if err != nil {
 		return
@@ -35,6 +74,8 @@ func checkBridgeKey(key string) (ok bool, err error) {
 
 // getTicketIdentity returns the RSA ticket identity for a particular account class.
 func getTicketIdentity(tier string) (sk *rsa.PrivateKey, err error) {
+	lockSem()
+	defer unlockSem()
 	tx, err := pgDB.Begin()
 	if err != nil {
 		return
@@ -68,6 +109,8 @@ func getTicketIdentity(tier string) (sk *rsa.PrivateKey, err error) {
 
 // getMasterIdentity returns the ed25519 master identity.
 func getMasterIdentity() (sk ed25519.PrivateKey, err error) {
+	lockSem()
+	defer unlockSem()
 	tx, err := pgDB.Begin()
 	if err != nil {
 		return
@@ -92,6 +135,8 @@ var hashCache, _ = lru.New(65536)
 
 // verifyUser verifies a username/password by looking up the database. uid < 0 means authentication failed.
 func verifyUser(uname, pwd string) (uid int, subExpiry time.Time, paytx map[time.Time]int, err error) {
+	lockSem()
+	defer unlockSem()
 	tx, err := pgDB.Begin()
 	if err != nil {
 		return
@@ -148,6 +193,8 @@ func verifyUser(uname, pwd string) (uid int, subExpiry time.Time, paytx map[time
 
 // createUser creates a username/password pair.
 func createUser(uname, pwd string) (err error) {
+	lockSem()
+	defer unlockSem()
 	tx, err := pgDB.Begin()
 	if err != nil {
 		return

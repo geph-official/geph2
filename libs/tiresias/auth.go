@@ -1,3 +1,0 @@
-package tiresias
-
-func IssueTicket()
