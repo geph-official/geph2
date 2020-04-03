@@ -180,7 +180,7 @@ func getCleanConn() (conn net.Conn, err error) {
 		var tcpConn net.Conn
 		var e error
 		if frontProxy != "" {
-			tcpConn, e = net.Dial("tcp", frontProxy)
+			tcpConn, e = net.DialTimeout("tcp", frontProxy, time.Second*5)
 			if e != nil {
 				log.Warnln("failed to connect to SOCKS5 font proxy server:", e)
 				err = e
@@ -226,7 +226,7 @@ func getCleanConn() (conn net.Conn, err error) {
 
 	if direct {
 		if frontProxy != "" {
-			rawConn, err = net.Dial("tcp", frontProxy)
+			rawConn, err = net.DialTimeout("tcp", frontProxy, time.Second*5)
 			if err != nil {
 				log.Warnln("failed to connect to singlehop server:", err)
 				return
