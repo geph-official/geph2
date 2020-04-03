@@ -1,3 +1,16 @@
+## 更改
+
+命令行指令加入前置代理支持，可以通过机场连接迷雾通出口服务器。
+是否走紧急通道由用户指定，否则不走。
+
+正常使用（未指定节点则为美国节点）：
+geph-client.exe -forcefrontdomain -username *** -password ***
+紧急通道（日内瓦节点）：
+geph-client.exe -username *** -password *** -exitName ch-gva-01.exits.geph.io -exitKey c1b74b5d47286d97dd6a56ec574488775210ca7e44da506c011b17764660a34a -forcefrontdomain
+走前置代理（机场代理为本机1080端口，未指定节点则为美国节点）：
+geph-client.exe -username *** -password *** -frontProxy 127.0.0.1:1080
+
+
 ## Download mirror / 免「翻牆」下載鏡像
 
 https://waa.ai/getmiwutong
