@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -33,7 +34,7 @@ func addBridge(nfo bridgeInfo) {
 }
 
 // cache of bridge *mappings*. string => []string
-var bridgeMapCache = cache.New(time.Hour*48, time.Hour)
+var bridgeMapCache = cache.New(time.Hour, time.Hour)
 
 func getBridges(id string) []string {
 	if mapping, ok := bridgeMapCache.Get(id); ok {
@@ -84,21 +85,30 @@ func handleGetWarpfronts(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(host2front)
 }
 
+var counterCache = cache.New(time.Minute*5, time.Hour)
+
 func handleGetBridges(w http.ResponseWriter, r *http.Request) {
+	id := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
+	counterCache.Add(id, new(uint64), time.Hour)
+	ctr, _ := counterCache.Get(id)
+	current := atomic.AddUint64(ctr.(*uint64), 1)
+	log.Println(id, "count", current)
+	if current < 10 {
+		log.Println("DYING to force client retry")
+		return
+	}
+
 	isEphemeral := r.FormValue("type") == "ephemeral"
 	exitHost := r.FormValue("exit")
-	id := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
 	// TODO validate the ticket
 	bridges := getBridges(id)
 	w.Header().Set("content-type", "application/json")
 	idhash := sha256.Sum256([]byte(id))
 	w.Header().Set("X-Requestor-ID", hex.EncodeToString(idhash[:]))
-	log.Println("** bridge request", id, r.Header.Get("user-agent"))
 	seenAGs := make(map[string]bool)
 	var laboo []bridgeInfo
 	vacate := func() {
 		bridgeMapCache.Delete(id)
-		log.Println("** VACATING BRIDGE CACHE DUE TO INVALIDITY", id)
 	}
 	if len(bridges) == 0 {
 		vacate()
@@ -157,11 +167,11 @@ func handleAddBridge(w http.ResponseWriter, r *http.Request) {
 		LastSeen:   time.Now(),
 		AllocGroup: r.FormValue("allocGroup"),
 	}
-	if !testBridge(bi) {
-		log.Println("can't add bridge (bad bridge test)")
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
+	// if !testBridge(bi) {
+	// 	log.Println("can't add bridge (bad bridge test)")
+	// 	w.WriteHeader(http.StatusForbidden)
+	// 	return
+	// }
 	// add the bridge
 	addBridge(bi)
 }

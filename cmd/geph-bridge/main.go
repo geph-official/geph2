@@ -17,7 +17,6 @@ import (
 	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/cshirt2"
 	"github.com/geph-official/geph2/libs/kcp-go"
-	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/google/gops/agent"
 	"golang.org/x/time/rate"
 )
@@ -116,7 +115,7 @@ func listenLoop(deadline time.Duration) {
 			time.Sleep(time.Minute)
 		}
 	}()
-	go func() {
+	func() {
 		listener, err := net.Listen("tcp", udpsock.LocalAddr().String())
 		if err != nil {
 			panic(err)
@@ -160,29 +159,29 @@ func listenLoop(deadline time.Duration) {
 			}()
 		}
 	}()
-	e2e := niaucchi4.ObfsListen(cookie, udpsock, false)
-	if err != nil {
-		panic(err)
-	}
-	listener := niaucchi4.ListenKCP(e2e)
-	log.Println("N4/UDP listener spinned up")
-	if deadline > 0 {
-		go func() {
-			time.Sleep(deadline)
-			listener.Close()
-		}()
-	}
-	defer listener.Close()
-	for {
-		client, err := listener.Accept()
-		if err != nil {
-			log.Println("CANNOT ACCEPT!", err)
-			time.Sleep(time.Millisecond * 100)
-			continue
-		}
-		//log.Println("Accepted UDP client", client.RemoteAddr())
-		go handle(client)
-	}
+	// e2e := niaucchi4.ObfsListen(cookie, udpsock, false)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// listener := niaucchi4.ListenKCP(e2e)
+	// log.Println("N4/UDP listener spinned up")
+	// if deadline > 0 {
+	// 	go func() {
+	// 		time.Sleep(deadline)
+	// 		listener.Close()
+	// 	}()
+	// }
+	// defer listener.Close()
+	// for {
+	// 	client, err := listener.Accept()
+	// 	if err != nil {
+	// 		log.Println("CANNOT ACCEPT!", err)
+	// 		time.Sleep(time.Millisecond * 100)
+	// 		continue
+	// 	}
+	// 	//log.Println("Accepted UDP client", client.RemoteAddr())
+	// 	go handle(client)
+	// }
 }
 
 func guessIP() string {
