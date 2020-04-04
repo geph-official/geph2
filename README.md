@@ -19,8 +19,29 @@ geph-client.exe -username *** -password *** -exitName ch-gva-01.exits.geph.io -e
 geph-client.exe -username *** -password *** -frontProxy 127.0.0.1:1080 -exitName hk-hkg-01.exits.geph.io -exitKey 816802fd21f8689897c2abf33a95db23cc2a8d4f5cb996a29a3d85a4919c86b8
 
 通过机场连接自建服务器（机场代理为本机SOCKS5 1080端口）：
+
 geph-client -singleHop server_key@ip:port -frontProxy 127.0.0.1:1080
 
+注意，非自建模式中，如果要指定出口节点，请指定exitName exitKey两个参数，每两个参数之间需要有一个空格
+以下是迷雾通各个出口服务器的name和key：
+
+新加坡
+sg-sgp-01.exits.geph.io 2f1d296bcc56cdd84e7276ebea91f131d64a4021a385ee0f6f0ecbdffe8b2342
+
+香港
+hk-hkg-01.exits.geph.io 816802fd21f8689897c2abf33a95db23cc2a8d4f5cb996a29a3d85a4919c86b8
+
+日本
+jp-tyo-01.exits.geph.io 107b64be61eef80a863362b84c7ebc730f81e903697c6e632f2908a62a60163d
+
+瑞士
+ch-gva-01.exits.geph.io c1b74b5d47286d97dd6a56ec574488775210ca7e44da506c011b17764660a34a
+
+加拿大
+ca-mtl-01.exits.geph.io 8d848fe736ead2f0b78cd13e81293944936fe840ea449b8f87438340ecdaaaf6
+
+美国
+us-sfo-01.exits.geph.io 2f8571e4795032433098af285c0ce9e43c973ac3ad71bf178e4f2aaa39794aec
 
 
 ## Download mirror / 免「翻牆」下載鏡像
