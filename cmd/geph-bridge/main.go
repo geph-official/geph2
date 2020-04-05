@@ -33,6 +33,7 @@ var allocGroup string
 var speedLimit int
 var noLegacyUDP bool
 var wfAddr string
+var listenAddr string
 var bclient *bdclient.Client
 
 var limiter *rate.Limiter
@@ -46,6 +47,7 @@ func main() {
 	flag.StringVar(&statsdAddr, "statsdAddr", "c2.geph.io:8125", "address of StatsD for gathering statistics")
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
+	flag.StringVar(&listenAddr, "listenAddr", ":", "listen address")
 	flag.BoolVar(&noLegacyUDP, "noLegacyUDP", false, "reject legacy UDP (e2enat) attempts")
 	flag.StringVar(&wfAddr, "wfAddr", "", "if set, listen for plain HTTP warpfront connections on this port. Prevents contacting the binder --- warpfront bridges are manually provisioned!")
 	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")
@@ -99,7 +101,7 @@ func generateCookie() {
 }
 
 func listenLoop(deadline time.Duration) {
-	udpsock, err := net.ListenPacket("udp", ":")
+	udpsock, err := net.ListenPacket("udp", listenAddr)
 	if err != nil {
 		panic(err)
 	}

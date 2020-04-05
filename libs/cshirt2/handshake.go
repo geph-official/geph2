@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"sync"
 
 	"net"
@@ -60,8 +59,8 @@ func readPK(secret []byte, transport net.Conn) (dhPK, int64, int, error) {
 	for i := 0; i < 1024+(erand.Int(1024)); i++ {
 		for e := epoch - 10; e < epoch+10; e++ {
 			macKey := mac256(secret, []byte(fmt.Sprintf("%v", e)))
-			if subtle.ConstantTimeCompare(theirPublicMAC, mac256(theirPublic, macKey)) == 1 {
-				log.Printf("*** ΔE = %v sec, shift = %v ***", (e-epoch)*30, i)
+			if i > 0 && subtle.ConstantTimeCompare(theirPublicMAC, mac256(theirPublic, macKey)) == 1 {
+				//log.Printf("*** ΔE = %v sec, shift = %v ***", (e-epoch)*30, i)
 				macOK = true
 				epoch = e
 				shift = i
@@ -76,6 +75,7 @@ func readPK(secret []byte, transport net.Conn) (dhPK, int64, int, error) {
 		}
 		theirPublicMAC = append(theirPublicMAC, oneBytes...)[1:]
 	}
+	return nil, 0, 0, errors.New("zero shift")
 out:
 	globCacheLock.Lock()
 	defer globCacheLock.Unlock()

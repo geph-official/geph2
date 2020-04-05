@@ -49,6 +49,7 @@ func getSingleTCP(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 				log.Debugln("dialing to", bi.Host, "failed!", err)
 				return
 			}
+			<-syncer
 			realConn, err := connThroughBridge(bridgeConn)
 			if err != nil {
 				bridgeConn.Close()

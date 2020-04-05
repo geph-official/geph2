@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"runtime"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/cryptoballot/rsablind"
 	"github.com/geph-official/geph2/libs/bdclient"
+	"golang.org/x/time/rate"
 )
 
 func handleGetTicketKey(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +47,8 @@ func init() {
 	cpuSemaphore = make(chan bool, runtime.GOMAXPROCS(0)*2)
 }
 
+var limiterCache sync.Map
+
 func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 	// first authenticate
 	uid, expiry, paytx, err := verifyUser(r.FormValue("user"), r.FormValue("pwd"))
@@ -57,6 +61,15 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 		log.Println("cannot log in user:", r.FormValue("user"))
 		w.WriteHeader(http.StatusForbidden)
 		return
+	}
+	ticketLimiter, _ := limiterCache.LoadOrStore(uid, rate.NewLimiter(rate.Every(time.Minute*30), 100))
+	if !ticketLimiter.(*rate.Limiter).Allow() {
+		log.Println("*** VIOLATED LIMIT ", r.FormValue("user"))
+		time.Sleep(time.Second * 10)
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	} else {
+		log.Println("verified", r.FormValue("user"))
 	}
 	//log.Println("get-ticket: verified user", r.FormValue("user"), "as expiry", expiry)
 	var tier string

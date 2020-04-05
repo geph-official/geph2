@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -38,10 +37,8 @@ var bridgeMapCache = cache.New(time.Hour, time.Hour)
 
 func getBridges(id string) []string {
 	if mapping, ok := bridgeMapCache.Get(id); ok {
-		log.Println("HIT bridge", id)
 		return mapping.([]string)
 	}
-	log.Println("MISS bridge", id)
 	itms := bridgeCache.Items()
 	seed := fmt.Sprintf("%v-%v", id, time.Now())
 	probability := 10.0 / float64(len(itms))
@@ -89,14 +86,13 @@ var counterCache = cache.New(time.Minute*5, time.Hour)
 
 func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 	id := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
-	counterCache.Add(id, new(uint64), time.Hour)
-	ctr, _ := counterCache.Get(id)
-	current := atomic.AddUint64(ctr.(*uint64), 1)
-	log.Println(id, "count", current)
-	if current < 10 {
-		log.Println("DYING to force client retry")
-		return
-	}
+	// counterCache.Add(id, new(uint64), time.Hour)
+	// ctr, _ := counterCache.Get(id)
+	// current := atomic.AddUint64(ctr.(*uint64), 1)
+	// if current < 10 {
+	// 	log.Println("DYING to force client retry")
+	// 	return
+	// }
 
 	isEphemeral := r.FormValue("type") == "ephemeral"
 	exitHost := r.FormValue("exit")
