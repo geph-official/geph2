@@ -65,6 +65,22 @@ func (cl *Client) GetClientInfo() (ui ClientInfo, err error) {
 	return
 }
 
+// GetWarpfronts gets warpfront bridges
+func (cl *Client) GetWarpfronts() (host2front map[string]string, err error) {
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%v/warpfronts", cl.frontDomain), bytes.NewReader(nil))
+	req.Host = cl.realDomain
+	resp, err := cl.hclient.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		err = badStatusCode(resp.StatusCode)
+	}
+	err = json.NewDecoder(resp.Body).Decode(&host2front)
+	return
+}
+
 // AddBridge uploads some bridge info.
 func (cl *Client) AddBridge(secret string, cookie []byte, host string, allocGroup string) (err error) {
 	req, _ := http.NewRequest("GET", fmt.Sprintf("%v/add-bridge?cookie=%x&host=%v&allocGroup=%v", cl.frontDomain, cookie, host, allocGroup), bytes.NewReader(nil))

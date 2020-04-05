@@ -61,7 +61,7 @@ func negotiateTinySS(greeting *[2][]byte, rawConn net.Conn, pk []byte, nextProto
 
 func dialBridge(host string, cookie []byte) (net.Conn, error) {
 	// return niaucchi4.DialKCP(host, cookie)
-	conn, err := net.Dial("tcp", host)
+	conn, err := net.DialTimeout("tcp", host, time.Second*5)
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +127,6 @@ func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
 	for _, b := range bridges {
 		log.Infof(".... %v %x", b.Host, b.Cookie)
 	}
-	bridgesCache.bridges, bridgesCache.expires = bridges, time.Now().Add(time.Minute*5)
+	bridgesCache.bridges, bridgesCache.expires = bridges, time.Now().Add(time.Minute)
 	return bridges, nil
 }

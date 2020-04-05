@@ -30,8 +30,8 @@ func handleClientInfo(w http.ResponseWriter, r *http.Request) {
 
 	country, _ := db.GetCountry(addr)
 	cinfo.Country = country
-	if cinfo.Country == "IR" {
-		cinfo.Country = "CN" // HACK to put iranian users on bridges
-	}
+	// if cinfo.Country == "IR" {
+	// 	cinfo.Country = "CN" // HACK to put iranian users on bridges
+	// }
 	json.NewEncoder(w).Encode(cinfo)
 }

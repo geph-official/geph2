@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -102,8 +103,8 @@ func (mp *multipool) fillOne() {
 		KeepAliveInterval: time.Minute * 20,
 		KeepAliveTimeout:  time.Minute * 40,
 		MaxFrameSize:      32768,
-		MaxReceiveBuffer:  3 * 1024 * 1024,
-		MaxStreamBuffer:   3 * 1024 * 1024,
+		MaxReceiveBuffer:  4 * 1024 * 1024,
+		MaxStreamBuffer:   2 * 1024 * 1024,
 	})
 	if err != nil {
 		panic(err)
@@ -159,6 +160,14 @@ func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 	}
 }
 
+var cleanHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		Proxy:           nil,
+		IdleConnTimeout: time.Second * 120,
+	},
+	Timeout: time.Second * 120,
+}
+
 // get a clean, authenticated channel all the way to the exit
 func getCleanConn() (conn net.Conn, err error) {
 	var rawConn net.Conn
@@ -210,9 +219,19 @@ func getCleanConn() (conn net.Conn, err error) {
 			return
 		}
 		rawConn, err = getSingleTCP(bridges)
-	}
-	if err != nil {
-		return
+		if err != nil {
+			log.Warnf("can't connect to bridges (%v); time to W A R P F R O N T", err)
+			var wfstuff map[string]string
+			wfstuff, err = bindClient.GetWarpfronts()
+			if err != nil {
+				log.Warnln("can't warpfront:", err)
+				return
+			}
+			rawConn, err = getWarpfront(wfstuff)
+			if err != nil {
+				return
+			}
+		}
 	}
 	rawConn.SetDeadline(time.Now().Add(time.Second * 10))
 	cryptConn, err := negotiateTinySS(&[2][]byte{ubsig, ubmsg}, rawConn, exitPK(), 'R')

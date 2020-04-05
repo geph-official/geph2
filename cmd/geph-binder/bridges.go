@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	mrand "math/rand"
 	"net"
 	"net/http"
 	"strings"
@@ -37,9 +36,11 @@ func addBridge(nfo bridgeInfo) {
 var bridgeMapCache = cache.New(time.Hour*48, time.Hour)
 
 func getBridges(id string) []string {
-	// if mapping, ok := bridgeMapCache.Get(id); ok {
-	// 	return mapping.([]string)
-	// }
+	if mapping, ok := bridgeMapCache.Get(id); ok {
+		log.Println("HIT bridge", id)
+		return mapping.([]string)
+	}
+	log.Println("MISS bridge", id)
 	itms := bridgeCache.Items()
 	seed := fmt.Sprintf("%v-%v", id, time.Now())
 	probability := 10.0 / float64(len(itms))
@@ -65,25 +66,46 @@ func getBridges(id string) []string {
 			toret = candidates[i]
 		}
 	}
-	//bridgeMapCache.SetDefault(id, toret)
-
 	// shuffle
 	rand.Shuffle(len(toret), func(i, j int) {
 		toret[i], toret[j] = toret[j], toret[i]
 	})
+	bridgeMapCache.SetDefault(id, toret)
 	return toret
+}
+
+func handleGetWarpfronts(w http.ResponseWriter, r *http.Request) {
+	host2front, err := getWarpfronts()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("content-type", "application/json")
+	json.NewEncoder(w).Encode(host2front)
 }
 
 func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 	isEphemeral := r.FormValue("type") == "ephemeral"
 	exitHost := r.FormValue("exit")
+	id := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
 	// TODO validate the ticket
-	bridges := getBridges(fmt.Sprintf("%v", mrand.Int()))
+	bridges := getBridges(id)
 	w.Header().Set("content-type", "application/json")
+	idhash := sha256.Sum256([]byte(id))
+	w.Header().Set("X-Requestor-ID", hex.EncodeToString(idhash[:]))
+	log.Println("** bridge request", id, r.Header.Get("user-agent"))
 	seenAGs := make(map[string]bool)
 	var laboo []bridgeInfo
+	vacate := func() {
+		bridgeMapCache.Delete(id)
+		log.Println("** VACATING BRIDGE CACHE DUE TO INVALIDITY", id)
+	}
+	if len(bridges) == 0 {
+		vacate()
+	}
 	for _, str := range bridges {
-		if vali, ok := bridgeCache.Get(str); ok {
+		vali, ok := bridgeCache.Get(str)
+		if ok {
 			val := vali.(bridgeInfo)
 			if !seenAGs[val.AllocGroup] {
 				if isEphemeral {
@@ -100,6 +122,9 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 				seenAGs[val.AllocGroup] = true
 				laboo = append(laboo, val)
 			}
+		} else {
+			vacate()
+			return
 		}
 	}
 	json.NewEncoder(w).Encode(laboo)

@@ -1,14 +1,17 @@
 package cshirt2
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+
 	"net"
 	"time"
 
+	"github.com/geph-official/geph2/libs/erand"
 	"github.com/minio/blake2b-simd"
 	"github.com/patrickmn/go-cache"
 )
@@ -35,52 +38,63 @@ var (
 	globCache = cache.New(time.Hour*3, time.Minute*30)
 )
 
-func readPK(secret []byte, transport net.Conn) (dhPK, int64, error) {
+func readPK(secret []byte, transport net.Conn) (dhPK, int64, int, error) {
 	// Read their public key
 	theirPublic := make([]byte, 1536/8)
 	_, err := io.ReadFull(transport, theirPublic)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
-	// Reject if bad
-	if _, ok := globCache.Get(string(theirPublic)); ok {
-		return nil, 0, ErrAttackDetected
-	}
-	globCache.SetDefault(string(theirPublic), true)
 	// Read their public key MAC
 	theirPublicMAC := make([]byte, 32)
 	_, err = io.ReadFull(transport, theirPublicMAC)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
 	macOK := false
 	epoch := time.Now().Unix() / 30
-	for e := epoch - 100; e < epoch+100; e++ {
-		macKey := mac256(secret, []byte(fmt.Sprintf("%v", e)))
-		if subtle.ConstantTimeCompare(theirPublicMAC, mac256(theirPublic, macKey)) == 1 {
-			log.Printf("*** ΔE = %v sec ***", (e-epoch)*30)
-			macOK = true
-			epoch = e
-			break
+	shift := 0
+	// shift one byte at a time until we find the mac
+	for i := 0; i < 1024+(erand.Int(1024)); i++ {
+		for e := epoch - 10; e < epoch+10; e++ {
+			macKey := mac256(secret, []byte(fmt.Sprintf("%v", e)))
+			if subtle.ConstantTimeCompare(theirPublicMAC, mac256(theirPublic, macKey)) == 1 {
+				log.Printf("*** ΔE = %v sec, shift = %v ***", (e-epoch)*30, i)
+				macOK = true
+				epoch = e
+				shift = i
+				goto out
+			}
 		}
+		// read another byte
+		oneBytes := make([]byte, 1)
+		_, err = io.ReadFull(transport, oneBytes)
+		if err != nil {
+			return nil, 0, 0, err
+		}
+		theirPublicMAC = append(theirPublicMAC, oneBytes...)[1:]
 	}
+out:
+	if _, ok := globCache.Get(string(theirPublic)); ok {
+		return nil, 0, 0, ErrAttackDetected
+	}
+	// Reject if bad
+	globCache.SetDefault(string(theirPublic), true)
 	if !macOK {
-		return nil, 0, ErrBadHandshakeMAC
+		return nil, 0, 0, ErrBadHandshakeMAC
 	}
-	return theirPublic, epoch, nil
+	return theirPublic, epoch, shift, nil
 }
 
-func writePK(epoch int64, secret []byte, myPublic dhPK, transport net.Conn) error {
+func writePK(epoch int64, shift int, secret []byte, myPublic dhPK, transport net.Conn) error {
 	if epoch == 0 {
 		epoch = time.Now().Unix() / 30
 	}
 	macKey := mac256(secret, []byte(fmt.Sprintf("%v", epoch)))
 	myPublicMAC := mac256(myPublic, macKey)
-	_, err := transport.Write(myPublic)
-	if err != nil {
-		return err
-	}
-	_, err = transport.Write(myPublicMAC)
+	padding := make([]byte, shift)
+	rand.Read(padding)
+	_, err := transport.Write(append(append(myPublic, padding...), myPublicMAC...))
 	if err != nil {
 		return err
 	}
@@ -89,12 +103,15 @@ func writePK(epoch int64, secret []byte, myPublic dhPK, transport net.Conn) erro
 
 // Server negotiates obfuscation on a network connection, acting as the server. The secret must be provided.
 func Server(secret []byte, transport net.Conn) (net.Conn, error) {
-	theirPK, epoch, err := readPK(secret, transport)
+	theirPK, epoch, shift, err := readPK(secret, transport)
 	if err != nil {
 		return nil, err
 	}
 	myPK, mySK := dhGenKey()
-	err = writePK(epoch, secret, myPK, transport)
+	if shift > 0 {
+		shift = erand.Int(1024)
+	}
+	err = writePK(epoch, shift, secret, myPK, transport)
 	if err != nil {
 		return nil, err
 	}
@@ -107,11 +124,11 @@ func Server(secret []byte, transport net.Conn) (net.Conn, error) {
 // secret must be given so that the client can prove knowledge.
 func Client(secret []byte, transport net.Conn) (net.Conn, error) {
 	myPK, mySK := dhGenKey()
-	err := writePK(0, secret, myPK, transport)
+	err := writePK(0, erand.Int(1024), secret, myPK, transport)
 	if err != nil {
 		return nil, err
 	}
-	theirPK, _, err := readPK(secret, transport)
+	theirPK, _, _, err := readPK(secret, transport)
 	if err != nil {
 		return nil, err
 	}

@@ -55,6 +55,7 @@ func main() {
 	r.HandleFunc("/client-info", handleClientInfo)
 	r.HandleFunc("/captcha", handleCaptcha)
 	r.HandleFunc("/register", handleRegister)
+	r.HandleFunc("/warpfronts", handleGetWarpfronts)
 	//r.HandleFunc("/cryptrr", handleCryptrr)
 	if err := http.ListenAndServe(":9080", r); err != nil {
 		panic(err)

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"runtime"
 	"sync"
 )
@@ -33,13 +32,9 @@ func maybeDoJob(f func()) {
 
 func init() {
 	for i := 0; i < runtime.GOMAXPROCS(0); i++ {
-		workerID := i
-		log.Println("spawning worker thread", workerID)
+		//log.Println("spawning worker thread", workerID)
 		go func() {
 			for i := 0; ; i++ {
-				if i%1000 == 0 {
-					log.Println("worker", workerID, "forwarded", i, "packets")
-				}
 				(<-e2ejobs)()
 			}
 		}()
