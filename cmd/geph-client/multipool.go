@@ -59,6 +59,7 @@ func newMultipool() *multipool {
 	go func() {
 		for i := 0; i < mpSize; i++ {
 			tr.fillOne()
+			time.Sleep(time.Second * 5)
 		}
 	}()
 	tr.worstPing = time.Second * 5

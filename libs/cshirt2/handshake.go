@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"sync"
 
 	"net"
 	"time"
@@ -35,7 +35,8 @@ func mac128(m, k []byte) []byte {
 }
 
 var (
-	globCache = cache.New(time.Hour*3, time.Minute*30)
+	globCache     = cache.New(time.Hour*3, time.Minute*30)
+	globCacheLock sync.Mutex
 )
 
 func readPK(secret []byte, transport net.Conn) (dhPK, int64, int, error) {
@@ -58,8 +59,8 @@ func readPK(secret []byte, transport net.Conn) (dhPK, int64, int, error) {
 	for i := 0; i < 1024+(erand.Int(1024)); i++ {
 		for e := epoch - 10; e < epoch+10; e++ {
 			macKey := mac256(secret, []byte(fmt.Sprintf("%v", e)))
-			if subtle.ConstantTimeCompare(theirPublicMAC, mac256(theirPublic, macKey)) == 1 {
-				log.Printf("*** ΔE = %v sec, shift = %v ***", (e-epoch)*30, i)
+			if i > 0 && subtle.ConstantTimeCompare(theirPublicMAC, mac256(theirPublic, macKey)) == 1 {
+				//log.Printf("*** ΔE = %v sec, shift = %v ***", (e-epoch)*30, i)
 				macOK = true
 				epoch = e
 				shift = i
@@ -74,7 +75,10 @@ func readPK(secret []byte, transport net.Conn) (dhPK, int64, int, error) {
 		}
 		theirPublicMAC = append(theirPublicMAC, oneBytes...)[1:]
 	}
+	return nil, 0, 0, errors.New("zero shift")
 out:
+	globCacheLock.Lock()
+	defer globCacheLock.Unlock()
 	if _, ok := globCache.Get(string(theirPublic)); ok {
 		return nil, 0, 0, ErrAttackDetected
 	}
@@ -103,15 +107,15 @@ func writePK(epoch int64, shift int, secret []byte, myPublic dhPK, transport net
 
 // Server negotiates obfuscation on a network connection, acting as the server. The secret must be provided.
 func Server(secret []byte, transport net.Conn) (net.Conn, error) {
-	theirPK, epoch, shift, err := readPK(secret, transport)
+	theirPK, epoch, _, err := readPK(secret, transport)
 	if err != nil {
 		return nil, err
 	}
 	myPK, mySK := dhGenKey()
-	if shift > 0 {
-		shift = erand.Int(1024)
-	}
-	err = writePK(epoch, shift, secret, myPK, transport)
+	// if shift > 0 {
+	// 	shift = erand.Int(1024)
+	// }
+	err = writePK(epoch, erand.Int(1024), secret, myPK, transport)
 	if err != nil {
 		return nil, err
 	}

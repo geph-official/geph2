@@ -17,7 +17,6 @@ import (
 	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/cshirt2"
 	"github.com/geph-official/geph2/libs/kcp-go"
-	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/google/gops/agent"
 	"golang.org/x/time/rate"
 )
@@ -34,6 +33,7 @@ var allocGroup string
 var speedLimit int
 var noLegacyUDP bool
 var wfAddr string
+var listenAddr string
 var bclient *bdclient.Client
 
 var limiter *rate.Limiter
@@ -47,6 +47,7 @@ func main() {
 	flag.StringVar(&statsdAddr, "statsdAddr", "c2.geph.io:8125", "address of StatsD for gathering statistics")
 	flag.StringVar(&binderKey, "binderKey", "", "binder API key")
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
+	flag.StringVar(&listenAddr, "listenAddr", ":", "listen address")
 	flag.BoolVar(&noLegacyUDP, "noLegacyUDP", false, "reject legacy UDP (e2enat) attempts")
 	flag.StringVar(&wfAddr, "wfAddr", "", "if set, listen for plain HTTP warpfront connections on this port. Prevents contacting the binder --- warpfront bridges are manually provisioned!")
 	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")
@@ -100,7 +101,7 @@ func generateCookie() {
 }
 
 func listenLoop(deadline time.Duration) {
-	udpsock, err := net.ListenPacket("udp", ":")
+	udpsock, err := net.ListenPacket("udp", listenAddr)
 	if err != nil {
 		panic(err)
 	}
@@ -116,7 +117,7 @@ func listenLoop(deadline time.Duration) {
 			time.Sleep(time.Minute)
 		}
 	}()
-	go func() {
+	func() {
 		listener, err := net.Listen("tcp", udpsock.LocalAddr().String())
 		if err != nil {
 			panic(err)
@@ -160,29 +161,29 @@ func listenLoop(deadline time.Duration) {
 			}()
 		}
 	}()
-	e2e := niaucchi4.ObfsListen(cookie, udpsock, false)
-	if err != nil {
-		panic(err)
-	}
-	listener := niaucchi4.ListenKCP(e2e)
-	log.Println("N4/UDP listener spinned up")
-	if deadline > 0 {
-		go func() {
-			time.Sleep(deadline)
-			listener.Close()
-		}()
-	}
-	defer listener.Close()
-	for {
-		client, err := listener.Accept()
-		if err != nil {
-			log.Println("CANNOT ACCEPT!", err)
-			time.Sleep(time.Millisecond * 100)
-			continue
-		}
-		//log.Println("Accepted UDP client", client.RemoteAddr())
-		go handle(client)
-	}
+	// e2e := niaucchi4.ObfsListen(cookie, udpsock, false)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// listener := niaucchi4.ListenKCP(e2e)
+	// log.Println("N4/UDP listener spinned up")
+	// if deadline > 0 {
+	// 	go func() {
+	// 		time.Sleep(deadline)
+	// 		listener.Close()
+	// 	}()
+	// }
+	// defer listener.Close()
+	// for {
+	// 	client, err := listener.Accept()
+	// 	if err != nil {
+	// 		log.Println("CANNOT ACCEPT!", err)
+	// 		time.Sleep(time.Millisecond * 100)
+	// 		continue
+	// 	}
+	// 	//log.Println("Accepted UDP client", client.RemoteAddr())
+	// 	go handle(client)
+	// }
 }
 
 func guessIP() string {

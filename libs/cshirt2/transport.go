@@ -8,10 +8,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	mrand "math/rand"
+	"math"
 	"net"
 	"time"
 
+	"github.com/geph-official/geph2/libs/erand"
 	pool "github.com/libp2p/go-buffer-pool"
 	"golang.org/x/crypto/chacha20"
 )
@@ -22,7 +23,7 @@ func generatePadding(wsize int) []byte {
 	if wsize > 3000 {
 		return nil
 	}
-	return make([]byte, mrand.Int()%512)
+	return make([]byte, erand.Int(512))
 }
 
 type transport struct {
@@ -35,6 +36,11 @@ type transport struct {
 	readbuf    bytes.Buffer
 
 	buf [128]byte
+}
+
+func confusinglySleep() {
+	expo := -math.Log(float64(erand.Int(10000)) / 10000)
+	time.Sleep(time.Duration(expo*10000) * time.Millisecond)
 }
 
 func (tp *transport) Read(b []byte) (n int, err error) {
@@ -56,16 +62,21 @@ func (tp *transport) Read(b []byte) (n int, err error) {
 		// read the encrypted payload
 		cryptInnerPayloadBts := pool.GlobalPool.Get(int(binary.BigEndian.Uint16(plainPayloadLenBts)))
 		defer pool.GlobalPool.Put(cryptInnerPayloadBts)
+		// short timeout
+		tp.wire.SetReadDeadline(time.Now().Add(time.Second * 10))
 		_, err = io.ReadFull(tp.wireBuf, cryptInnerPayloadBts)
 		if err != nil {
+			confusinglySleep()
 			return
 		}
+		tp.wire.SetReadDeadline(time.Time{})
 		// verify the MAC
 		toMAC := pool.GlobalPool.Get(len(cryptPayloadLenBts) + len(cryptInnerPayloadBts))
 		defer pool.GlobalPool.Put(toMAC)
 		copy(toMAC, cryptPayloadLenBts)
 		copy(toMAC[len(cryptPayloadLenBts):], cryptInnerPayloadBts)
 		if subtle.ConstantTimeCompare(macBts, mac128(toMAC, tp.readMAC)) != 1 {
+			confusinglySleep()
 			err = errors.New("MAC error")
 			return
 		}
@@ -75,6 +86,7 @@ func (tp *transport) Read(b []byte) (n int, err error) {
 		defer pool.GlobalPool.Put(plainInnerPayloadBts)
 		tp.readCrypt.XORKeyStream(plainInnerPayloadBts, cryptInnerPayloadBts)
 		if len(plainInnerPayloadBts) < 2 {
+			confusinglySleep()
 			err = errors.New("truncated payload")
 			return
 		}

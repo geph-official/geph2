@@ -19,6 +19,9 @@ import (
 )
 
 func handle(client net.Conn) {
+	// log.Println("***DUMMY***")
+	// time.Sleep(time.Minute)
+	// return
 	client.SetDeadline(time.Now().Add(time.Minute * 5))
 	var err error
 	defer func() {
