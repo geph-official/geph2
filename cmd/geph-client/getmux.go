@@ -129,12 +129,12 @@ func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
 	for _, b := range bridges {
 		log.Infof(".... %v %x", b.Host, b.Cookie)
 	}
-	if privatebridge != "" {
-		relays := strings.Split(privatebridge, ";")
+	if additionalBridges != "" {
+		relays := strings.Split(additionalBridges, ";")
 		for _, str := range relays {
 			splitted := strings.Split(str, "@")
 			if len(splitted) != 2 {
-				panic("-privatebridge must be pk@host;XX;XX")
+				panic("-additionalBridges must be cookie@host;XX;XX")
 			}
 			cookie, err := hex.DecodeString(splitted[0])
 			if err != nil {
