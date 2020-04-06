@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/backedtcp"
 	"github.com/geph-official/geph2/libs/cshirt2"
+	"github.com/geph-official/geph2/libs/tinysocks"
 	log "github.com/sirupsen/logrus"
 	"github.com/xtaci/smux"
 )
@@ -177,15 +178,32 @@ func getCleanConn() (conn net.Conn, err error) {
 		if len(splitted) != 2 {
 			panic("-singleHop must be pk@host")
 		}
-		tcpConn, e := net.DialTimeout("tcp", splitted[1], time.Second*5)
-		if e != nil {
-			log.Warn("cannot connect to singleHop server:", e)
-			err = e
-			return
+		var tcpConn net.Conn
+		var e error
+		if frontProxy != "" {
+			tcpConn, e = net.DialTimeout("tcp", frontProxy, time.Second*5)
+			if e != nil {
+				log.Warnln("failed to connect to SOCKS5 font proxy server:", e)
+				err = e
+				return
+			}
+			e, _ = tinysocks.Client(tcpConn, tinysocks.ParseAddr(splitted[1]), tinysocks.CmdConnect)
+			if e != nil {
+				log.Warnln("failed to shakehand with second socks5 server:", e)
+				err = e
+				return
+			}
+		} else {
+			tcpConn, e = net.DialTimeout("tcp", splitted[1], time.Second*5)
+			if e != nil {
+				log.Warn("cannot connect to singleHop server:", e)
+				err = e
+				return
+			}
 		}
 		pk, e := hex.DecodeString(splitted[0])
 		if e != nil {
-			panic(err)
+			panic(e)
 		}
 		obfsConn, e := cshirt2.Client(pk, tcpConn)
 		if e != nil {
@@ -208,7 +226,24 @@ func getCleanConn() (conn net.Conn, err error) {
 	}
 
 	if direct {
-		rawConn, err = net.DialTimeout("tcp", exitName+":2389", time.Second*5)
+		if frontProxy != "" {
+			rawConn, err = net.DialTimeout("tcp", frontProxy, time.Second*5)
+			if err != nil {
+				log.Warnln("failed to connect to singlehop server:", err)
+				return
+			}
+			err, _ = tinysocks.Client(rawConn, tinysocks.ParseAddr(exitName+":2389"), tinysocks.CmdConnect)
+			if err != nil {
+				log.Warnln("failed to shakehand with second socks5 server:", err)
+				return
+			}
+		} else {
+			rawConn, err = net.DialTimeout("tcp", exitName+":2389", time.Second*5)
+			if err != nil {
+				log.Warnln("failed to connect to exit server: %v", err)
+				return
+			}
+		}
 		if err == nil {
 			rawConn.(*net.TCPConn).SetKeepAlive(false)
 		}

@@ -2,10 +2,12 @@ package main
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -126,6 +128,20 @@ func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
 	log.Infoln("Obtained", len(bridges), "bridges")
 	for _, b := range bridges {
 		log.Infof(".... %v %x", b.Host, b.Cookie)
+	}
+	if privatebridge != "" {
+		relays := strings.Split(privatebridge, ";")
+		for _, str := range relays {
+			splitted := strings.Split(str, "@")
+			if len(splitted) != 2 {
+				panic("-privatebridge must be pk@host;XX;XX")
+			}
+			cookie, err := hex.DecodeString(splitted[0])
+			if err != nil {
+				panic(err)
+			}
+			bridges = append(bridges, bdclient.BridgeInfo{Cookie: cookie, Host: splitted[1]})
+		}
 	}
 	bridgesCache.bridges, bridgesCache.expires = bridges, time.Now().Add(time.Minute)
 	return bridges, nil
