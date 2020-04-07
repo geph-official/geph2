@@ -42,7 +42,7 @@ func main() {
 	}()
 
 	if generatecookie {
-		cookie = make([]byte, 32)
+		cookie = make([]byte, 16)
 		rand.Read(cookie)
 		log.Println(hex.EncodeToString(cookie))
 		return
