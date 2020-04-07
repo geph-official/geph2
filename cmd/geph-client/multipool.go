@@ -180,8 +180,8 @@ func getCleanConn() (conn net.Conn, err error) {
 		}
 		var tcpConn net.Conn
 		var e error
-		if frontProxy != "" {
-			tcpConn, e = net.DialTimeout("tcp", frontProxy, time.Second*5)
+		if upstreamProxy != "" {
+			tcpConn, e = net.DialTimeout("tcp", upstreamProxy, time.Second*5)
 			if e != nil {
 				log.Warnln("failed to connect to SOCKS5 font proxy server:", e)
 				err = e
@@ -189,7 +189,7 @@ func getCleanConn() (conn net.Conn, err error) {
 			}
 			e, _ = tinysocks.Client(tcpConn, tinysocks.ParseAddr(splitted[1]), tinysocks.CmdConnect)
 			if e != nil {
-				log.Warnln("failed to shakehand with second socks5 server:", e)
+				log.Warnln("failed handshake with second SOCKS5 server:", e)
 				err = e
 				return
 			}
@@ -226,15 +226,15 @@ func getCleanConn() (conn net.Conn, err error) {
 	}
 
 	if direct {
-		if frontProxy != "" {
-			rawConn, err = net.DialTimeout("tcp", frontProxy, time.Second*5)
+		if upstreamProxy != "" {
+			rawConn, err = net.DialTimeout("tcp", upstreamProxy, time.Second*5)
 			if err != nil {
 				log.Warnln("failed to connect to singlehop server:", err)
 				return
 			}
 			err, _ = tinysocks.Client(rawConn, tinysocks.ParseAddr(exitName+":2389"), tinysocks.CmdConnect)
 			if err != nil {
-				log.Warnln("failed to shakehand with second socks5 server:", err)
+				log.Warnln("failed handshake with second SOCKS5 server:", err)
 				return
 			}
 		} else {

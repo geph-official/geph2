@@ -47,9 +47,9 @@ var fakeDNS bool
 var bypassChinese bool
 
 var singleHop string
-var frontProxy string
-var privatebridge string
-var forcefrontdomain bool
+var upstreamProxy string
+var additionalBridges string
+var forceWarpfront bool
 
 var bindClient *bdclient.Client
 
@@ -127,11 +127,11 @@ func main() {
 	flag.BoolVar(&loginCheck, "loginCheck", false, "do a login check and immediately exit with code 0")
 	flag.StringVar(&binderProxy, "binderProxy", "", "if set, proxy the binder at the given listening address and do nothing else")
 	// flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
-	flag.StringVar(&frontProxy, "frontProxy", "", "front SOCKS5 proxy for connecting to servers")
-	flag.StringVar(&privatebridge, "privatebridge", "", "private bridge")
+	flag.StringVar(&upstreamProxy, "upstreamProxy", "", "upstream SOCKS5 proxy")
+	flag.StringVar(&additionalBridges, "additionalBridges", "", "additional bridges, in the form of cookie1@host1;cookie2@host2 etc")
 	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
 	flag.BoolVar(&bypassChinese, "bypassChinese", false, "bypass proxy for Chinese domains")
-	flag.BoolVar(&forcefrontdomain, "forcefrontdomain", false, "all connection through cdn")
+	flag.BoolVar(&forceWarpfront, "forceWarpfront", false, "force use of warpfront")
 	iniflags.Parse()
 	hackDNS()
 	if dnsAddr != "" {
@@ -199,8 +199,8 @@ func main() {
 		// connect to bridge
 		bindClient = bdclient.NewClient(binderFront, binderHost)
 		// automatically pick mode
-		if frontProxy != "" {
-			log.Println("front proxy enabled, no bridges")
+		if upstreamProxy != "" {
+			log.Println("upstream proxy enabled, no bridges")
 			direct = true
 		} else if !forceBridges {
 			country, err := bindClient.GetClientInfo()
