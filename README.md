@@ -85,6 +85,28 @@ geph-privatebridge.exe -bridgeKey *** -listenAddr 127.0.0.1:32541 -backproxy 127
 
 geph-client.exe -username *** -password *** -exitName jp-tyo-01.exits.geph.io -exitKey 107b64be61eef80a863362b84c7ebc730f81e903697c6e632f2908a62a60163d -privatebridge ***@127.0.0.1:32541
 
+示例2：
+你是迷雾通用户，同时拥有3个机场，这些机场不太安全，你希望利用机场提高迷雾通的可靠性。即使迷雾通遭受GFW攻击影响速度或无法连接，只要有一个机场可以用，你依然可以通过此机场快速连接迷雾通服务。
+
+你的机器运行着3个SSR客户端，监听1080，1081，1082端口。
+
+在这种情况下，私有网桥充当迷雾通客户端与机场连接的媒介，迷雾通客户端、私有网桥、机场客户端运行在同一台机器上。
+
+运行私有网桥，下面三个命令各执行一次：
+
+geph-privatebridge.exe -bridgeKey *** -listenAddr 127.0.0.1:32541 -backproxy 127.0.0.1:1080
+geph-privatebridge.exe -bridgeKey *** -listenAddr 127.0.0.1:32542 -backproxy 127.0.0.1:1081
+geph-privatebridge.exe -bridgeKey *** -listenAddr 127.0.0.1:32543 -backproxy 127.0.0.1:1082
+
+*** 是网桥密钥，若要连接此网桥，客户端必须拥有此密钥。是十六进制数，形如fcada3e2033e188f4f99b3c3db12495b8b8cc7af41755742810c71e95b4bd1e8
+
+该密钥可以用 geph-privatebridge -generatecookie 生成。
+
+运行客户端并连接至日本服务器：
+
+geph-client.exe -username *** -password *** -exitName jp-tyo-01.exits.geph.io -exitKey 107b64be61eef80a863362b84c7ebc730f81e903697c6e632f2908a62a60163d -privatebridge ***@127.0.0.1:32541;***@127.0.0.1:32542;***@127.0.0.1:32543
+
+
 ***疑问：既然迷雾通自带的网桥无法使用时可以使用前置代理连接出口服务器，为何还需要私有网桥？***
 
 
