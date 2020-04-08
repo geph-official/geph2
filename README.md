@@ -95,7 +95,9 @@ geph-client.exe -username *** -password *** -exitName jp-tyo-01.exits.geph.io -e
 运行私有网桥，下面三个命令各执行一次：
 
 geph-privatebridge.exe -bridgeKey *** -listenAddr 127.0.0.1:32541 -backproxy 127.0.0.1:1080
+
 geph-privatebridge.exe -bridgeKey *** -listenAddr 127.0.0.1:32542 -backproxy 127.0.0.1:1081
+
 geph-privatebridge.exe -bridgeKey *** -listenAddr 127.0.0.1:32543 -backproxy 127.0.0.1:1082
 
 *** 是网桥密钥，若要连接此网桥，客户端必须拥有此密钥。是十六进制数，形如fcada3e2033e188f4f99b3c3db12495b8b8cc7af41755742810c71e95b4bd1e8
