@@ -51,11 +51,16 @@ func negotiateTinySS(greeting *[2][]byte, rawConn net.Conn, pk []byte, nextProto
 			rawConn.Close()
 			return
 		}
-		if reply != "OK" {
+		if reply == "OK" {
+			return
+		} else if reply == "FAIL" {
 			err = errors.New("authentication failed")
 			rawConn.Close()
-			log.Println("authentication failed", reply)
-			os.Exit(11)
+			log.Println("authentication failed, refresh ticket")
+			greetingCache.lock.Lock()
+			defer greetingCache.lock.Unlock()
+			greetingCache.expires = time.Now().Truncate(time.Hour)
+			return
 		}
 	}
 	return
@@ -105,7 +110,7 @@ func getGreeting() (ubmsg, ubsig []byte, err error) {
 	})
 	greetingCache.ubmsg = ubmsg
 	greetingCache.ubsig = ubsig
-	greetingCache.expires = time.Now().Add(time.Second * 30)
+	greetingCache.expires = time.Now().Truncate(time.Hour * 24).Add(time.Hour * 23)
 	return
 }
 
@@ -125,16 +130,12 @@ func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
 	if e != nil {
 		return nil, e
 	}
-	log.Infoln("Obtained", len(bridges), "bridges")
-	for _, b := range bridges {
-		log.Infof(".... %v %x", b.Host, b.Cookie)
-	}
 	if additionalBridges != "" {
 		relays := strings.Split(additionalBridges, ";")
 		for _, str := range relays {
 			splitted := strings.Split(str, "@")
 			if len(splitted) != 2 {
-				panic("-additionalBridges must be cookie@host;XX;XX")
+				panic("-additionalBridges must be cookie1@host1;cookie2@host2 etc")
 			}
 			cookie, err := hex.DecodeString(splitted[0])
 			if err != nil {
@@ -143,6 +144,10 @@ func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
 			bridges = append(bridges, bdclient.BridgeInfo{Cookie: cookie, Host: splitted[1]})
 		}
 	}
-	bridgesCache.bridges, bridgesCache.expires = bridges, time.Now().Add(time.Minute)
+	log.Infoln("Obtained", len(bridges), "bridges")
+	for _, b := range bridges {
+		log.Infof(".... %v %x", b.Host, b.Cookie)
+	}
+	bridgesCache.bridges, bridgesCache.expires = bridges, time.Now().Add(time.Minute*6)
 	return bridges, nil
 }

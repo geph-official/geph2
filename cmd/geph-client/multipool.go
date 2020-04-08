@@ -248,12 +248,6 @@ func getCleanConn() (conn net.Conn, err error) {
 			rawConn.(*net.TCPConn).SetKeepAlive(false)
 		}
 	} else {
-		bridges, e := getBridges(ubmsg, ubsig)
-		if e != nil {
-			err = e
-			log.Warnln("getting bridges failed, retrying", err)
-			return
-		}
 		getWarpfrontCon := func() (warpConn net.Conn, err error) {
 			var wfstuff map[string]string
 			wfstuff, err = bindClient.GetWarpfronts()
@@ -264,12 +258,18 @@ func getCleanConn() (conn net.Conn, err error) {
 			warpConn, err = getWarpfront(wfstuff)
 			return
 		}
-		if !forceWarpfront {
+		if forceWarpfront {
 			rawConn, err = getWarpfrontCon()
 			if err != nil {
 				return
 			}
 		} else {
+			bridges, e := getBridges(ubmsg, ubsig)
+			if e != nil {
+				err = e
+				log.Warnln("getting bridges failed, retrying", err)
+				return
+			}
 			rawConn, err = getSingleTCP(bridges)
 			if err != nil {
 				log.Warnf("can't connect to bridges (%v); time to W A R P F R O N T", err)
