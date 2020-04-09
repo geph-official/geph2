@@ -16,6 +16,7 @@ import (
 
 var generatecookie bool
 var cookie []byte
+var exitRegex string
 var bridgeKey string
 var backproxy string
 var speedLimit int
@@ -26,6 +27,7 @@ var limiter *rate.Limiter
 func main() {
 	flag.BoolVar(&generatecookie, "generatecookie", false, "generate a cookie")
 	flag.StringVar(&listenAddr, "listenAddr", ":", "listen address")
+	flag.StringVar(&exitRegex, "exitRegex", `\.exits\.geph\.io$`, "domain suffix for exit nodes")
 	flag.StringVar(&bridgeKey, "bridgeKey", "", "bridge key")
 	flag.StringVar(&backproxy, "backproxy", "", "back proxy SOCKS5 server")
 	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")

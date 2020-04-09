@@ -8,34 +8,37 @@
 
 3.允许添加额外网桥(additional bridge)的支持。用户可以在命令行中添加网桥。
 
-4.允许私有网桥，该选项目前只在使用官方服务器时起效。公开网桥通过迷雾通授权服务器(binder)获得，对所有迷雾通用户公开，可能被GFW获取并屏蔽（GFW运营人员注册一个账号就可以获得）。私有网桥是私有的，不能被GFW通过穷举检测到并封锁。目前程序支持两种类型的私有网桥，一种是迷雾通网桥，通过运行geph-privatebridge提供，其运行与通信方式与公开网桥相同，作为额外网桥添加至命令列表中。另一种是SOCKS5网桥，其通信方式与主流SOCKS5代理兼容，可以由SS/SSR/V2Ray等代理软件提供，使用时作为SOCKS网桥添加到命令列表。迷雾通网桥可以运行在不可靠的境外服务器上，如阿里云香港；也可以运行在境内某台电脑上，程序支持通过SS/SSR等SOCKS5代理连接出口服务器。SOCKS5网桥可以通过相对不可靠的机场提供。
+4.允许私有网桥。当您使用官方出口服务器时，程序将从迷雾通授权服务器(binder)获得公开网桥，通过网桥连接出口服务器，公开网桥对所有迷雾通用户公开，可能被GFW获取并屏蔽（GFW运营人员注册一个账号就可以获得）。私有网桥是私有的，不能被GFW通过穷举检测到并封锁。目前程序支持两种类型的私有网桥，一种是迷雾通网桥，通过运行geph-privatebridge提供，其运行与通信方式与公开网桥相同，作为额外网桥添加至命令列表中，这种类型的网桥可以运行在不可靠的境外服务器上，如阿里云香港；也可以运行在境内某台电脑上，程序支持通过SS/SSR等SOCKS5代理连接出口服务器。另一种是SOCKS5网桥，其通信方式与主流SOCKS5代理兼容，可以由SS/SSR/V2Ray等代理软件提供，使用时作为SOCKS网桥添加到命令列表。SOCKS5网桥可以通过相对不可靠的机场提供。当您使用自建模式时，也可以使用网桥提升上网速度，增强可靠性。提升速度的原因是您自建的服务器线路往往一般，直连中国大陆速度缓慢，只要您的网桥有一个可以用那么您的连接就不受影响，所以可靠性大幅提高。
 
-自建模式下，暂时此选项无效，若要通过代理连接自建服务器，请使用前置代理(upstream proxy)。
+疑问：为什么要引入网桥的概念，既然网桥服务器在境外为何不直接用它作为代理服务器，而是将流量转发出口服务器？
+回答：网桥服务器是不可靠的，可能随时会被墙，与中国大陆连接速度较快。通过不断变化的网桥可以增大被墙的难度，因为被墙了客户端可以随时换其他网桥，客户端自动完成所有操作，用户甚至无法感知到其存在。由于流量在转发到出口服务器的过程中是加密的，因此网桥看不到您的真实上网内容，所以可以选用不可靠的服务商所提供的服务器，极大方便了线路的运营同时保障您的隐私。
 
+
+**使用命令：**
 
 **请将下面的 星号 改成你的用户名和密码。**
 
 正常使用（未指定exitName exitKey参数，此时使用美国出口服务器）：
 
-geph-client.exe -username *** -password ***
+geph-client -username *** -password ***
 
 正常使用（指定加拿大出口服务器）：
 
-geph-client.exe -username *** -password *** -exitName ca-mtl-01.exits.geph.io -exitKey 8d848fe736ead2f0b78cd13e81293944936fe840ea449b8f87438340ecdaaaf6
+geph-client -username *** -password *** -exitName ca-mtl-01.exits.geph.io -exitKey 8d848fe736ead2f0b78cd13e81293944936fe840ea449b8f87438340ecdaaaf6
 
 强制打开紧急通道（日内瓦服务器）：
 
-geph-client.exe -username *** -password *** -exitName ch-gva-01.exits.geph.io -exitKey c1b74b5d47286d97dd6a56ec574488775210ca7e44da506c011b17764660a34a -forceWarpfront
+geph-client -username *** -password *** -exitName ch-gva-01.exits.geph.io -exitKey c1b74b5d47286d97dd6a56ec574488775210ca7e44da506c011b17764660a34a -forceWarpfront
 
 **前置代理的使用方法：**
 
 启用前置代理，通过机场连接迷雾通香港服务器（SS/SSR代理为本机SOCKS5 1080端口）：
 
-geph-client.exe -username *** -password *** -upstreamProxy 127.0.0.1:1080 -exitName hk-hkg-01.exits.geph.io -exitKey 816802fd21f8689897c2abf33a95db23cc2a8d4f5cb996a29a3d85a4919c86b8
+geph-client -username *** -password *** -upstreamProxy 127.0.0.1:1080 -exitName hk-hkg-01.exits.geph.io -exitKey 816802fd21f8689897c2abf33a95db23cc2a8d4f5cb996a29a3d85a4919c86b8
 
 启用前置代理，通过机场连接迷雾通日本服务器（SS/SSR代理为本机SOCKS5 1080端口）：
 
-geph-client.exe -username *** -password *** -upstreamProxy 127.0.0.1:1080 -exitName jp-tyo-01.exits.geph.io -exitKey 107b64be61eef80a863362b84c7ebc730f81e903697c6e632f2908a62a60163d
+geph-client -username *** -password *** -upstreamProxy 127.0.0.1:1080 -exitName jp-tyo-01.exits.geph.io -exitKey 107b64be61eef80a863362b84c7ebc730f81e903697c6e632f2908a62a60163d
 
 启用前置代理，通过机场连接自建服务器（机场代理为本机SOCKS5 1080端口）：
 
@@ -79,11 +82,11 @@ us-sfo-01.exits.geph.io 2f8571e4795032433098af285c0ce9e43c973ac3ad71bf178e4f2aaa
 
 运行客户端并连接至日本服务器，把本机1080端口作为私有网桥：
 
-geph-client.exe -username *** -password *** -exitName jp-tyo-01.exits.geph.io -exitKey 107b64be61eef80a863362b84c7ebc730f81e903697c6e632f2908a62a60163d -socksBridges 127.0.0.1:1080
+geph-client -username *** -password *** -exitName jp-tyo-01.exits.geph.io -exitKey 107b64be61eef80a863362b84c7ebc730f81e903697c6e632f2908a62a60163d -socksBridges 127.0.0.1:1080
 
 **示例2：**
 
-**请注意，SS/SSR中，一个监听端口只对应一个服务器节点，客户端通过某一端口连接互联网，实质是通过此端口对应的那台服务器联网，所以若该服务器失效，则通过此端口无法连接境外网站。**
+**请注意，SS/SSR中，一个监听端口只对应一个服务器节点，客户端通过某一端口连接互联网，实质是通过此端口对应的那台服务器联网，所以若该服务器被墙或关机跑路，则通过此端口无法连接境外网站。**
 
 示例1中，SS/SSR只提供了一个端口，一个端口只对应一个服务器，若该服务器失效，则通过此监听端口无法连接境外服务器。可以把1个变多个，提高可靠性，只要有一个可以用，你依然可以通过此机场快速连接迷雾通服务。
 
@@ -97,7 +100,7 @@ geph-client.exe -username *** -password *** -exitName jp-tyo-01.exits.geph.io -e
 
 然后运行迷雾通客户端，假设你想连接日本服务器，通过上文SSR客户端提供的500，501，502端口连接迷雾通出口服务器：
 
-geph-client.exe -username *** -password *** -exitName jp-tyo-01.exits.geph.io -exitKey 107b64be61eef80a863362b84c7ebc730f81e903697c6e632f2908a62a60163d -socksBridges 127.0.0.1:500;127.0.0.1:501;127.0.0.1:502
+geph-client -username *** -password *** -exitName jp-tyo-01.exits.geph.io -exitKey 107b64be61eef80a863362b84c7ebc730f81e903697c6e632f2908a62a60163d -socksBridges 127.0.0.1:500;127.0.0.1:501;127.0.0.1:502
 
 上文已经说明，本地端口分别为500，501，502，对应的服务器为A,B,C  ，因此迷雾通将把服务器A/B/C作为网桥。
 
@@ -107,7 +110,7 @@ geph-client.exe -username *** -password *** -exitName jp-tyo-01.exits.geph.io -e
 ***疑问：既然迷雾通自带的网桥无法使用时可以使用前置代理连接出口服务器，为何还需要私有网桥？***
 
 
-***回答：私有网桥主要是针对部分特殊情况，最典型的是在软路由上使用迷雾通，搭建透明代理局域网共享翻墙，此时当然希望连接尽可能稳定，尽可能减少维护的次数，甚至不便于维护，例如你在外地求学/工作，父母在老家不懂怎么弄。除此以外，私有网桥允许多个机场同时作为网桥大大提高了可靠性。而前置代理模式所有流量都走同一个代理，如果这个机场失效了，那所有流量都走不通。***
+***回答：私有网桥主要是针对部分特殊情况，最典型的是在软路由上使用迷雾通，搭建透明代理局域网共享翻墙，此时当然希望连接尽可能稳定，尽可能减少维护的次数，甚至不便于维护，例如你在外地求学/工作，父母在老家不懂怎么弄。除此以外，私有网桥允许多个机场的多台服务器同时作为网桥大大提高了可靠性。而前置代理模式所有流量都走同一个SOCKS5代理，如果该服务器被墙，那所有流量都走不通，而私有网桥允许八九个SSR服务器同时提供给您作为网桥，大大提高了可靠性。***
 
 
 **示例3：**
@@ -115,7 +118,7 @@ geph-client.exe -username *** -password *** -exitName jp-tyo-01.exits.geph.io -e
 
 假设VPS的IP为1.2.3.4。在VPS上运行geph-privatebridge，监听1578端口。
 
-geph-privatebridge.exe -bridgeKey *** -listenAddr :1578
+geph-privatebridge -bridgeKey *** -listenAddr :1578
 
 *** 是网桥密钥，若要连接此网桥，客户端必须拥有此密钥。是十六进制数，形如fcada3e2033e188f4f99b3c3db12495b8b8cc7af41755742810c71e95b4bd1e8
 
@@ -123,7 +126,7 @@ geph-privatebridge.exe -bridgeKey *** -listenAddr :1578
 
 客户端使用方法：
 
-geph-client.exe -username *** -password *** -exitName jp-tyo-01.exits.geph.io -exitKey 107b64be61eef80a863362b84c7ebc730f81e903697c6e632f2908a62a60163d -privatebridge ***@1.2.3.4:1578
+geph-client -username *** -password *** -exitName jp-tyo-01.exits.geph.io -exitKey 107b64be61eef80a863362b84c7ebc730f81e903697c6e632f2908a62a60163d -privatebridge ***@1.2.3.4:1578
 
 
 ## Download mirror / 免「翻牆」下載鏡像

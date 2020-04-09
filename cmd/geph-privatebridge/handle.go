@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"regexp"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -19,6 +20,10 @@ func handle(client net.Conn) {
 		log.Println("Closed client", client.RemoteAddr(), "reason", err)
 	}()
 	defer client.Close()
+	exitMatcher, err := regexp.Compile(exitRegex)
+	if err != nil {
+		panic(err)
+	}
 	dec := rlp.NewStream(client, 100000)
 	for {
 		var command string
@@ -36,9 +41,12 @@ func handle(client net.Conn) {
 			if err != nil {
 				return
 			}
+			if exitMatcher.MatchString(host) {
+				host = fmt.Sprintf("%v:2389", host)
+			}
+
 			log.Println("host is", host)
 
-			remoteAddr := fmt.Sprintf("%v:2389", host)
 			var remote net.Conn
 
 			if backproxy != "" {
@@ -47,21 +55,21 @@ func handle(client net.Conn) {
 					log.Println("failed to connect to SOCKS5 front proxy server:", err)
 					return
 				}
-				err, _ = tinysocks.Client(remote, tinysocks.ParseAddr(remoteAddr), tinysocks.CmdConnect)
+				err, _ = tinysocks.Client(remote, tinysocks.ParseAddr(host), tinysocks.CmdConnect)
 				if err != nil {
 					remote.Close()
 					log.Println("failed to shakehand with second socks5 server:", err)
 					return
 				}
 			} else {
-				remote, err = net.DialTimeout("tcp", remoteAddr, time.Second*5)
+				remote, err = net.DialTimeout("tcp", host, time.Second*5)
 				if err != nil {
-					log.Println("failed connecting to", remoteAddr, err)
+					log.Println("failed connecting to", host, err)
 					return
 				}
 			}
 
-			log.Println("connected to", remoteAddr, "from", client.RemoteAddr().String())
+			log.Println("connected to", host, "from", client.RemoteAddr().String())
 
 			err = rlp.Encode(client, uint(0))
 			if err != nil {
