@@ -110,17 +110,17 @@ func getGreeting() (ubmsg, ubsig []byte, err error) {
 	})
 	greetingCache.ubmsg = ubmsg
 	greetingCache.ubsig = ubsig
-	greetingCache.expires = time.Now().Truncate(time.Hour * 24).Add(time.Hour * 23)
+	greetingCache.expires = time.Now().Truncate(time.Hour * 24).Add(time.Hour * 8)
 	return
 }
 
 var bridgesCache struct {
-	bridges []bdclient.BridgeInfo
+	bridges []Bridge
 	expires time.Time
 	lock    sync.Mutex
 }
 
-func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
+func getBridges(ubmsg, ubsig []byte) ([]Bridge, error) {
 	bridgesCache.lock.Lock()
 	defer bridgesCache.lock.Unlock()
 	if time.Now().Before(bridgesCache.expires) {
@@ -144,10 +144,28 @@ func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
 			bridges = append(bridges, bdclient.BridgeInfo{Cookie: cookie, Host: splitted[1]})
 		}
 	}
-	log.Infoln("Obtained", len(bridges), "bridges")
-	for _, b := range bridges {
-		log.Infof(".... %v %x", b.Host, b.Cookie)
+	var Allbridges []Bridge
+	for _, bi := range bridges {
+		var bri Bridge
+		bri.SetGephBridge(bi.Host, bi.Cookie)
+		Allbridges = append(Allbridges, bri)
 	}
-	bridgesCache.bridges, bridgesCache.expires = bridges, time.Now().Add(time.Minute*6)
-	return bridges, nil
+	if socksBridges != "" {
+		relays := strings.Split(socksBridges, ";")
+		for _, str := range relays {
+			splitted := strings.Split(str, ":")
+			if len(splitted) != 2 {
+				panic("-socksBridges must be host1:port1;host2:port2 etc")
+			}
+			var bri Bridge
+			bri.SetSOCKS5Bridge(str)
+			Allbridges = append(Allbridges, bri)
+		}
+	}
+	log.Infoln("Obtained", len(Allbridges), "bridges")
+	for _, b := range Allbridges {
+		b.ShowInfo()
+	}
+	bridgesCache.bridges, bridgesCache.expires = Allbridges, time.Now().Add(time.Minute*6)
+	return Allbridges, nil
 }

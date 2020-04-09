@@ -59,7 +59,7 @@ func newMultipool() *multipool {
 	go func() {
 		for i := 0; i < mpSize; i++ {
 			tr.fillOne()
-			time.Sleep(time.Second * 5)
+			time.Sleep(time.Second * 2)
 		}
 	}()
 	tr.worstPing = time.Second * 5
@@ -189,6 +189,7 @@ func getCleanConn() (conn net.Conn, err error) {
 			}
 			e, _ = tinysocks.Client(tcpConn, tinysocks.ParseAddr(splitted[1]), tinysocks.CmdConnect)
 			if e != nil {
+				tcpConn.Close()
 				log.Warnln("failed handshake with second SOCKS5 server:", e)
 				err = e
 				return
@@ -234,6 +235,7 @@ func getCleanConn() (conn net.Conn, err error) {
 			}
 			err, _ = tinysocks.Client(rawConn, tinysocks.ParseAddr(exitName+":2389"), tinysocks.CmdConnect)
 			if err != nil {
+				rawConn.Close()
 				log.Warnln("failed handshake with second SOCKS5 server:", err)
 				return
 			}

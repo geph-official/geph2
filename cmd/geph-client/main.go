@@ -49,6 +49,7 @@ var bypassChinese bool
 var singleHop string
 var upstreamProxy string
 var additionalBridges string
+var socksBridges string
 var forceWarpfront bool
 
 var bindClient *bdclient.Client
@@ -129,6 +130,7 @@ func main() {
 	// flag.StringVar(&cachePath, "cachePath", os.TempDir()+"/geph-cache.db", "location of state cache")
 	flag.StringVar(&upstreamProxy, "upstreamProxy", "", "upstream SOCKS5 proxy")
 	flag.StringVar(&additionalBridges, "additionalBridges", "", "additional bridges, in the form of cookie1@host1;cookie2@host2 etc")
+	flag.StringVar(&socksBridges, "socksBridges", "", "SOCKS5 bridges")
 	flag.StringVar(&singleHop, "singleHop", "", "if set in form pk@host:port, location of a single-hop server. OVERRIDES BINDER AND AUTHENTICATION!")
 	flag.BoolVar(&bypassChinese, "bypassChinese", false, "bypass proxy for Chinese domains")
 	flag.BoolVar(&forceWarpfront, "forceWarpfront", false, "force use of warpfront")

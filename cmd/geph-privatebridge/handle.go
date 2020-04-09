@@ -49,6 +49,7 @@ func handle(client net.Conn) {
 				}
 				err, _ = tinysocks.Client(remote, tinysocks.ParseAddr(remoteAddr), tinysocks.CmdConnect)
 				if err != nil {
+					remote.Close()
 					log.Println("failed to shakehand with second socks5 server:", err)
 					return
 				}
