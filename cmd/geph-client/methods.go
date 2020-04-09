@@ -45,7 +45,11 @@ func (b *Bridge) Conn() (net.Conn, error) {
 			log.Println("failed connect to second socks5 server:", err)
 			return nil, err
 		}
-		err, _ = tinysocks.Client(rawconn, tinysocks.ParseAddr(fmt.Sprintf("%v:2389", exitName)), tinysocks.CmdConnect)
+		target := exitName
+		if singleHop == "" {
+			target = fmt.Sprintf("%v:2389", exitName)
+		}
+		err, _ = tinysocks.Client(rawconn, tinysocks.ParseAddr(target), tinysocks.CmdConnect)
 		if err != nil {
 			log.Println("failed shakehand with second socks5 server:", err)
 			rawconn.Close()
@@ -61,7 +65,7 @@ func (b *Bridge) Conn() (net.Conn, error) {
 		realConn, err := connThroughBridge(bridgeConn)
 		if err != nil {
 			bridgeConn.Close()
-			//log.Debugln("conn in", bi.Host, "failed!", err)
+			log.Debugln("conn in", b.Host, "failed!", err)
 			return nil, err
 		}
 		return realConn, err

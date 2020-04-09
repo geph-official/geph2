@@ -195,13 +195,28 @@ func getCleanConn() (conn net.Conn, err error) {
 				return
 			}
 		} else {
-			tcpConn, e = net.DialTimeout("tcp", splitted[1], time.Second*5)
+			bridges, e := getBridges(nil, nil)
 			if e != nil {
-				log.Warn("cannot connect to singleHop server:", e)
 				err = e
+				log.Warnln("getting bridges failed, retrying", err)
 				return
 			}
+			if len(bridges) == 0 {
+				tcpConn, err = net.DialTimeout("tcp", splitted[1], time.Second*5)
+				if err != nil {
+					log.Warnln("failed to connect to exit server: %v", err)
+					return
+				}
+			} else {
+				exitName = splitted[1]
+				tcpConn, err = getSingleTCP(bridges)
+				if err != nil {
+					log.Warnln("can't connect to bridges:", err)
+					return
+				}
+			}
 		}
+
 		pk, e := hex.DecodeString(splitted[0])
 		if e != nil {
 			panic(e)

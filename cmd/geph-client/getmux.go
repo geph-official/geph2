@@ -126,9 +126,17 @@ func getBridges(ubmsg, ubsig []byte) ([]Bridge, error) {
 	if time.Now().Before(bridgesCache.expires) {
 		return bridgesCache.bridges, nil
 	}
-	bridges, e := bindClient.GetBridges(ubmsg, ubsig)
-	if e != nil {
-		return nil, e
+	var Allbridges []Bridge
+	if ubmsg != nil && ubsig != nil {
+		bridges, e := bindClient.GetBridges(ubmsg, ubsig)
+		if e != nil {
+			return nil, e
+		}
+		for _, bi := range bridges {
+			var bri Bridge
+			bri.SetGephBridge(bi.Host, bi.Cookie)
+			Allbridges = append(Allbridges, bri)
+		}
 	}
 	if additionalBridges != "" {
 		relays := strings.Split(additionalBridges, ";")
@@ -141,14 +149,10 @@ func getBridges(ubmsg, ubsig []byte) ([]Bridge, error) {
 			if err != nil {
 				panic(err)
 			}
-			bridges = append(bridges, bdclient.BridgeInfo{Cookie: cookie, Host: splitted[1]})
+			var bri Bridge
+			bri.SetGephBridge(splitted[1], cookie)
+			Allbridges = append(Allbridges, bri)
 		}
-	}
-	var Allbridges []Bridge
-	for _, bi := range bridges {
-		var bri Bridge
-		bri.SetGephBridge(bi.Host, bi.Cookie)
-		Allbridges = append(Allbridges, bri)
 	}
 	if socksBridges != "" {
 		relays := strings.Split(socksBridges, ";")
