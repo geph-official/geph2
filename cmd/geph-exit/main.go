@@ -28,7 +28,6 @@ var seckey ed25519.PrivateKey
 var onlyPaid bool
 
 var singleHop string
-var upstreamProxy string
 
 var binderFront string
 var binderReal string
@@ -54,7 +53,6 @@ func main() {
 	flag.BoolVar(&onlyPaid, "onlyPaid", false, "only allow paying users")
 	flag.IntVar(&speedLimit, "speedLimit", 12500, "per-session speed limit, in KB/s")
 	flag.StringVar(&singleHop, "singleHop", "", "if supplied, runs in single-hop mode. (for example, -singleHop :5000 would listen on port 5000)")
-	flag.StringVar(&upstreamProxy, "upstreamProxy", "", "if supplied, connection will be connected through the SOCKS5 proxy server)")
 	flag.Parse()
 	fastLimitFactory = newLimitFactory(rate.Limit(speedLimit * 1024))
 	go func() {

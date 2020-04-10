@@ -19,7 +19,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/backedtcp"
 	"github.com/geph-official/geph2/libs/cwl"
-	"github.com/geph-official/geph2/libs/tinysocks"
 	"github.com/geph-official/geph2/libs/tinyss"
 	"github.com/hashicorp/yamux"
 	"github.com/xtaci/smux"
@@ -313,30 +312,16 @@ func smuxLoop(sessid string, limiter *rate.Limiter, acceptStream func() (n net.C
 				dialStart := time.Now()
 				host := command[1]
 				var remote net.Conn
-				if upstreamProxy != "" {
-					remote, err = net.DialTimeout("tcp", upstreamProxy, time.Second*5)
+				for _, ntype := range []string{"tcp6", "tcp4"} {
+					tcpAddr, err := net.ResolveTCPAddr(ntype, host)
+					if err != nil || isBlack(tcpAddr) {
+						continue
+					}
+					remote, err = net.DialTimeout(ntype, tcpAddr.String(), time.Second*30)
 					if err != nil {
-						log.Println("failed to connect to SOCKS5 front proxy server:", err)
-						return
+						continue
 					}
-					err, _ = tinysocks.Client(remote, tinysocks.ParseAddr(host), tinysocks.CmdConnect)
-					if err != nil {
-						remote.Close()
-						log.Println("failed to shakehand with second socks5 server:", err)
-						return
-					}
-				} else {
-					for _, ntype := range []string{"tcp6", "tcp4"} {
-						tcpAddr, err := net.ResolveTCPAddr(ntype, host)
-						if err != nil || isBlack(tcpAddr) {
-							continue
-						}
-						remote, err = net.DialTimeout(ntype, tcpAddr.String(), time.Second*30)
-						if err != nil {
-							continue
-						}
-						break
-					}
+					break
 				}
 				if remote == nil {
 					return

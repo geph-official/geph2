@@ -51,16 +51,11 @@ func negotiateTinySS(greeting *[2][]byte, rawConn net.Conn, pk []byte, nextProto
 			rawConn.Close()
 			return
 		}
-		if reply == "OK" {
-			return
-		} else if reply == "FAIL" {
+		if reply != "OK" {
 			err = errors.New("authentication failed")
 			rawConn.Close()
-			log.Println("authentication failed, refresh ticket")
-			greetingCache.lock.Lock()
-			defer greetingCache.lock.Unlock()
-			greetingCache.expires = time.Now().Truncate(time.Hour)
-			return
+			log.Println("authentication failed", reply)
+			os.Exit(11)
 		}
 	}
 	return
@@ -110,66 +105,44 @@ func getGreeting() (ubmsg, ubsig []byte, err error) {
 	})
 	greetingCache.ubmsg = ubmsg
 	greetingCache.ubsig = ubsig
-	greetingCache.expires = time.Now().Truncate(time.Hour * 24).Add(time.Hour * 8)
+	greetingCache.expires = time.Now().Add(time.Second * 30)
 	return
 }
 
 var bridgesCache struct {
-	bridges []Bridge
+	bridges []bdclient.BridgeInfo
 	expires time.Time
 	lock    sync.Mutex
 }
 
-func getBridges(ubmsg, ubsig []byte) ([]Bridge, error) {
+func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
 	bridgesCache.lock.Lock()
 	defer bridgesCache.lock.Unlock()
 	if time.Now().Before(bridgesCache.expires) {
 		return bridgesCache.bridges, nil
 	}
-	var Allbridges []Bridge
-	if ubmsg != nil && ubsig != nil {
-		bridges, e := bindClient.GetBridges(ubmsg, ubsig)
-		if e != nil {
-			return nil, e
-		}
-		for _, bi := range bridges {
-			var bri Bridge
-			bri.SetGephBridge(bi.Host, bi.Cookie)
-			Allbridges = append(Allbridges, bri)
-		}
+	bridges, e := bindClient.GetBridges(ubmsg, ubsig)
+	if e != nil {
+		return nil, e
 	}
 	if additionalBridges != "" {
 		relays := strings.Split(additionalBridges, ";")
 		for _, str := range relays {
 			splitted := strings.Split(str, "@")
 			if len(splitted) != 2 {
-				panic("-additionalBridges must be cookie1@host1;cookie2@host2 etc")
+				panic("-additionalBridges must be cookie1@host1:port1;cookie2@host2:port2 etc")
 			}
 			cookie, err := hex.DecodeString(splitted[0])
 			if err != nil {
 				panic(err)
 			}
-			var bri Bridge
-			bri.SetGephBridge(splitted[1], cookie)
-			Allbridges = append(Allbridges, bri)
+			bridges = append(bridges, bdclient.BridgeInfo{Cookie: cookie, Host: splitted[1]})
 		}
 	}
-	if socksBridges != "" {
-		relays := strings.Split(socksBridges, ";")
-		for _, str := range relays {
-			splitted := strings.Split(str, ":")
-			if len(splitted) != 2 {
-				panic("-socksBridges must be host1:port1;host2:port2 etc")
-			}
-			var bri Bridge
-			bri.SetSOCKS5Bridge(str)
-			Allbridges = append(Allbridges, bri)
-		}
+	log.Infoln("Obtained", len(bridges), "bridges")
+	for _, b := range bridges {
+		log.Infof(".... %v %x", b.Host, b.Cookie)
 	}
-	log.Infoln("Obtained", len(Allbridges), "bridges")
-	for _, b := range Allbridges {
-		b.ShowInfo()
-	}
-	bridgesCache.bridges, bridgesCache.expires = Allbridges, time.Now().Add(time.Minute*6)
-	return Allbridges, nil
+	bridgesCache.bridges, bridgesCache.expires = bridges, time.Now().Add(time.Minute)
+	return bridges, nil
 }
