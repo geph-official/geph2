@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/rand"
 	"fmt"
 	"log"
@@ -102,7 +101,6 @@ func handle(client net.Conn) {
 		case "conn":
 			fallthrough
 		case "conn/feedback":
-			client.SetDeadline(time.Now().Add(time.Hour * 24))
 			var host string
 			log.Println("waiting for host...")
 			err = dec.Decode(&host)
@@ -151,18 +149,18 @@ func handle(client net.Conn) {
 					}
 				}()
 			}
+			client.SetDeadline(time.Now().Add(time.Hour * 24))
 			go func() {
 				defer remote.Close()
 				defer client.Close()
-				cwl.CopyWithLimit(remote, client, nil, func(n int) {
+				cwl.CopyWithLimit(remote, client, limiter, func(n int) {
 					if statClient != nil && mrand.Int()%100000 < n {
 						statClient.Increment(allocGroup + ".e2eup")
 					}
 				}, time.Hour)
 			}()
 			defer remote.Close()
-			cwl.CopyWithLimit(client, remote, nil, func(n int) {
-				limiter.WaitN(context.Background(), n)
+			cwl.CopyWithLimit(client, remote, limiter, func(n int) {
 				if statClient != nil && mrand.Int()%100000 < n {
 					statClient.Increment(allocGroup + ".e2edown")
 				}

@@ -89,6 +89,11 @@ func doDNSFaker() {
 					A: ip.IP,
 				})
 				w.WriteMsg(m)
+			} else if q.Qtype == dns.TypeAAAA {
+				// we claim that we don't have AAAA records
+				m := new(dns.Msg)
+				m.SetReply(r)
+				w.WriteMsg(m)
 			}
 			dns.HandleFailed(w, r)
 		}),

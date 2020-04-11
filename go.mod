@@ -18,6 +18,7 @@ require (
 	github.com/gorilla/mux v1.7.3
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d
+	github.com/jupp0r/go-priority-queue v0.0.0-20160601094913-ab1073853bde
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/kavu/go_reuseport v1.4.0 // indirect
 	github.com/klauspost/cpuid v1.2.1 // indirect

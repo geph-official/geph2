@@ -11,7 +11,7 @@ type limitFactory struct {
 }
 
 func (lf *limitFactory) getLimiter(sessid [32]byte) *rate.Limiter {
-	new := rate.NewLimiter(lf.limit, 1000*1024)
+	new := rate.NewLimiter(lf.limit, 10*1024*1024)
 	prev, _, _ := lf.lcache.PeekOrAdd(sessid, new)
 	if prev != nil {
 		return prev.(*rate.Limiter)
