@@ -37,7 +37,7 @@ func getSingleTCP(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 	}()
 	syncer := make(chan bool)
 	go func() {
-		time.Sleep(time.Second * 2)
+		time.Sleep(time.Second * 3)
 		close(syncer)
 	}()
 	for _, bi := range bridges {

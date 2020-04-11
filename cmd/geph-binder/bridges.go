@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -86,13 +87,13 @@ var counterCache = cache.New(time.Minute*5, time.Hour)
 
 func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 	id := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
-	// counterCache.Add(id, new(uint64), time.Hour)
-	// ctr, _ := counterCache.Get(id)
-	// current := atomic.AddUint64(ctr.(*uint64), 1)
-	// if current < 10 {
-	// 	log.Println("DYING to force client retry")
-	// 	return
-	// }
+	counterCache.Add(id, new(uint64), time.Hour)
+	ctr, _ := counterCache.Get(id)
+	current := atomic.AddUint64(ctr.(*uint64), 1)
+	if current < 3 {
+		log.Println("DYING to force client retry")
+		return
+	}
 
 	isEphemeral := r.FormValue("type") == "ephemeral"
 	exitHost := r.FormValue("exit")
@@ -108,6 +109,7 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(bridges) == 0 {
 		vacate()
+		return
 	}
 	for _, str := range bridges {
 		vali, ok := bridgeCache.Get(str)

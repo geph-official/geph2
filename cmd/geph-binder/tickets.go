@@ -62,7 +62,7 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	ticketLimiter, _ := limiterCache.LoadOrStore(uid, rate.NewLimiter(rate.Every(time.Minute), 100))
+	ticketLimiter, _ := limiterCache.LoadOrStore(uid, rate.NewLimiter(rate.Every(time.Minute*10), 100))
 	if !ticketLimiter.(*rate.Limiter).Allow() {
 		log.Println("*** VIOLATED LIMIT ", r.FormValue("user"))
 		time.Sleep(time.Second * 10)

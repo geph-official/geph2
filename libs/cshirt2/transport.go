@@ -8,8 +8,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"log"
 	"math"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/geph-official/geph2/libs/erand"
@@ -34,6 +36,9 @@ type transport struct {
 	wireBuf    *bufio.Reader
 	wire       net.Conn
 	readbuf    bytes.Buffer
+
+	readDeadline  atomic.Value
+	writeDeadline atomic.Value
 
 	buf [128]byte
 }
@@ -66,10 +71,15 @@ func (tp *transport) Read(b []byte) (n int, err error) {
 		tp.wire.SetReadDeadline(time.Now().Add(time.Second * 10))
 		_, err = io.ReadFull(tp.wireBuf, cryptInnerPayloadBts)
 		if err != nil {
+			log.Println("could not read the", len(cryptInnerPayloadBts), "bytes requested", err.Error())
 			confusinglySleep()
 			return
 		}
 		tp.wire.SetReadDeadline(time.Time{})
+		rdead := tp.readDeadline.Load()
+		if rdead != nil {
+			tp.wire.SetReadDeadline(rdead.(time.Time))
+		}
 		// verify the MAC
 		toMAC := pool.GlobalPool.Get(len(cryptPayloadLenBts) + len(cryptInnerPayloadBts))
 		defer pool.GlobalPool.Put(toMAC)
@@ -147,10 +157,12 @@ func (tp *transport) SetDeadline(t time.Time) error {
 }
 
 func (tp *transport) SetReadDeadline(t time.Time) error {
+	tp.readDeadline.Store(t)
 	return tp.wire.SetReadDeadline(t)
 }
 
 func (tp *transport) SetWriteDeadline(t time.Time) error {
+	tp.writeDeadline.Store(t)
 	return tp.wire.SetWriteDeadline(t)
 }
 

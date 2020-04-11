@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"sync"
 
 	"net"
@@ -44,12 +45,14 @@ func readPK(secret []byte, transport net.Conn) (dhPK, int64, int, error) {
 	theirPublic := make([]byte, 1536/8)
 	_, err := io.ReadFull(transport, theirPublic)
 	if err != nil {
+		confusinglySleep()
 		return nil, 0, 0, err
 	}
 	// Read their public key MAC
 	theirPublicMAC := make([]byte, 32)
 	_, err = io.ReadFull(transport, theirPublicMAC)
 	if err != nil {
+		confusinglySleep()
 		return nil, 0, 0, err
 	}
 	macOK := false
@@ -71,20 +74,29 @@ func readPK(secret []byte, transport net.Conn) (dhPK, int64, int, error) {
 		oneBytes := make([]byte, 1)
 		_, err = io.ReadFull(transport, oneBytes)
 		if err != nil {
+			confusinglySleep()
 			return nil, 0, 0, err
 		}
 		theirPublicMAC = append(theirPublicMAC, oneBytes...)[1:]
 	}
+	log.Println("** zero shift **", transport.RemoteAddr())
+	confusinglySleep()
 	return nil, 0, 0, errors.New("zero shift")
 out:
 	globCacheLock.Lock()
-	defer globCacheLock.Unlock()
 	if _, ok := globCache.Get(string(theirPublic)); ok {
+		globCacheLock.Unlock()
+		log.Printf("** replay attack detected ** %x %v", theirPublic[:10], transport.RemoteAddr())
+		confusinglySleep()
 		return nil, 0, 0, ErrAttackDetected
 	}
+	log.Printf("-- GOOD %x %v", theirPublic[:10], transport.RemoteAddr())
 	// Reject if bad
 	globCache.SetDefault(string(theirPublic), true)
+	globCacheLock.Unlock()
 	if !macOK {
+		log.Println("** bad pk mac **", transport.RemoteAddr())
+		confusinglySleep()
 		return nil, 0, 0, ErrBadHandshakeMAC
 	}
 	return theirPublic, epoch, shift, nil
@@ -115,7 +127,7 @@ func Server(secret []byte, transport net.Conn) (net.Conn, error) {
 	// if shift > 0 {
 	// 	shift = erand.Int(1024)
 	// }
-	err = writePK(epoch, erand.Int(1024), secret, myPK, transport)
+	err = writePK(epoch, erand.Int(1000)+1, secret, myPK, transport)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +140,7 @@ func Server(secret []byte, transport net.Conn) (net.Conn, error) {
 // secret must be given so that the client can prove knowledge.
 func Client(secret []byte, transport net.Conn) (net.Conn, error) {
 	myPK, mySK := dhGenKey()
-	err := writePK(0, erand.Int(1024), secret, myPK, transport)
+	err := writePK(0, erand.Int(1000)+1, secret, myPK, transport)
 	if err != nil {
 		return nil, err
 	}

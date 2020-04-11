@@ -15,6 +15,7 @@ import (
 	"github.com/geph-official/geph2/libs/backedtcp"
 	"github.com/geph-official/geph2/libs/cshirt2"
 	"github.com/geph-official/geph2/libs/tinysocks"
+	pq "github.com/jupp0r/go-priority-queue"
 	log "github.com/sirupsen/logrus"
 	"github.com/xtaci/smux"
 )
@@ -28,12 +29,34 @@ type mpMember struct {
 }
 
 type multipool struct {
-	members  chan mpMember
-	metasess [32]byte
+	memberQueue     pq.PriorityQueue
+	memberQueueCvar *sync.Cond
+	metasess        [32]byte
 
 	worstPing     time.Duration
 	worstPingTime time.Time
 	worstPingLock sync.Mutex
+}
+
+func (mp *multipool) popSession() mpMember {
+	mp.memberQueueCvar.L.Lock()
+	defer mp.memberQueueCvar.L.Unlock()
+	// wait until there are elements
+	for mp.memberQueue.Len() == 0 {
+		mp.memberQueueCvar.Wait()
+	}
+	tr, err := mp.memberQueue.Pop()
+	if err != nil {
+		panic(err)
+	}
+	return tr.(mpMember)
+}
+
+func (mp *multipool) pushSession(sess mpMember) {
+	mp.memberQueueCvar.L.Lock()
+	defer mp.memberQueueCvar.L.Unlock()
+	mp.memberQueue.Insert(sess, sess.score)
+	mp.memberQueueCvar.Broadcast()
 }
 
 func (mp *multipool) getWorstPing() time.Duration {
@@ -54,7 +77,8 @@ func (mp *multipool) setPing(d time.Duration) {
 
 func newMultipool() *multipool {
 	tr := &multipool{}
-	tr.members = make(chan mpMember, mpSize)
+	tr.memberQueue = pq.New()
+	tr.memberQueueCvar = sync.NewCond(&sync.Mutex{})
 	rand.Read(tr.metasess[:])
 	go func() {
 		for i := 0; i < mpSize; i++ {
@@ -111,16 +135,16 @@ func (mp *multipool) fillOne() {
 	if err != nil {
 		panic(err)
 	}
-	mp.members <- mpMember{
+	mp.pushSession(mpMember{
 		session: sm,
 		btcp:    btcp,
 		score:   0,
-	}
+	})
 }
 
 func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 	for {
-		mem := <-mp.members
+		mem := mp.popSession()
 		worst := mp.getWorstPing()
 		// repeatedly reset the underlying connection
 		success := make(chan bool)
@@ -156,8 +180,16 @@ func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 			continue
 		}
 		stream.SetDeadline(time.Time{})
-		mp.setPing(time.Since(start))
-		mp.members <- mem
+		ping := time.Since(start)
+		mp.setPing(ping)
+		fping := float64(ping.Milliseconds())
+		// compute ping
+		if fping > mem.score {
+			mem.score = 0.1*mem.score + 0.9*fping
+		} else {
+			mem.score = 0.5*mem.score + 0.5*fping
+		}
+		mp.pushSession(mem)
 		return stream, true
 	}
 }
