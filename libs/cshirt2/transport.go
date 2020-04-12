@@ -8,10 +8,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	mrand "math/rand"
+	"log"
+	"math"
 	"net"
+	"sync/atomic"
 	"time"
 
+	"github.com/geph-official/geph2/libs/erand"
 	pool "github.com/libp2p/go-buffer-pool"
 	"golang.org/x/crypto/chacha20"
 )
@@ -22,7 +25,7 @@ func generatePadding(wsize int) []byte {
 	if wsize > 3000 {
 		return nil
 	}
-	return make([]byte, mrand.Int()%512)
+	return make([]byte, erand.Int(512))
 }
 
 type transport struct {
@@ -34,7 +37,15 @@ type transport struct {
 	wire       net.Conn
 	readbuf    bytes.Buffer
 
+	readDeadline  atomic.Value
+	writeDeadline atomic.Value
+
 	buf [128]byte
+}
+
+func confusinglySleep() {
+	expo := -math.Log(float64(erand.Int(10000)) / 10000)
+	time.Sleep(time.Duration(expo*10000) * time.Millisecond)
 }
 
 func (tp *transport) Read(b []byte) (n int, err error) {
@@ -56,9 +67,18 @@ func (tp *transport) Read(b []byte) (n int, err error) {
 		// read the encrypted payload
 		cryptInnerPayloadBts := pool.GlobalPool.Get(int(binary.BigEndian.Uint16(plainPayloadLenBts)))
 		defer pool.GlobalPool.Put(cryptInnerPayloadBts)
+		// short timeout
+		tp.wire.SetReadDeadline(time.Now().Add(time.Second * 10))
 		_, err = io.ReadFull(tp.wireBuf, cryptInnerPayloadBts)
 		if err != nil {
+			log.Println("could not read the", len(cryptInnerPayloadBts), "bytes requested", err.Error())
+			confusinglySleep()
 			return
+		}
+		tp.wire.SetReadDeadline(time.Time{})
+		rdead := tp.readDeadline.Load()
+		if rdead != nil {
+			tp.wire.SetReadDeadline(rdead.(time.Time))
 		}
 		// verify the MAC
 		toMAC := pool.GlobalPool.Get(len(cryptPayloadLenBts) + len(cryptInnerPayloadBts))
@@ -66,6 +86,7 @@ func (tp *transport) Read(b []byte) (n int, err error) {
 		copy(toMAC, cryptPayloadLenBts)
 		copy(toMAC[len(cryptPayloadLenBts):], cryptInnerPayloadBts)
 		if subtle.ConstantTimeCompare(macBts, mac128(toMAC, tp.readMAC)) != 1 {
+			confusinglySleep()
 			err = errors.New("MAC error")
 			return
 		}
@@ -75,6 +96,7 @@ func (tp *transport) Read(b []byte) (n int, err error) {
 		defer pool.GlobalPool.Put(plainInnerPayloadBts)
 		tp.readCrypt.XORKeyStream(plainInnerPayloadBts, cryptInnerPayloadBts)
 		if len(plainInnerPayloadBts) < 2 {
+			confusinglySleep()
 			err = errors.New("truncated payload")
 			return
 		}
@@ -135,10 +157,12 @@ func (tp *transport) SetDeadline(t time.Time) error {
 }
 
 func (tp *transport) SetReadDeadline(t time.Time) error {
+	tp.readDeadline.Store(t)
 	return tp.wire.SetReadDeadline(t)
 }
 
 func (tp *transport) SetWriteDeadline(t time.Time) error {
+	tp.writeDeadline.Store(t)
 	return tp.wire.SetWriteDeadline(t)
 }
 

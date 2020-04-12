@@ -203,44 +203,55 @@ func CompleteRequestTCP(errcode byte, conn io.ReadWriteCloser) error {
 }
 
 // Client outbounds SOCKS5 requests.
-func Client(rw io.ReadWriter, ad Addr) error {
+func Client(rw io.ReadWriter, ad Addr, conntype int) (error, Addr) {
 	// Read RFC 1928 for request and reply structure and sizes.
 	buf := make([]byte, MaxAddrLen)
 	// write VER, NMETHODS, METHODS
 	if _, err := rw.Write([]byte{5, 1, 0}); err != nil {
-		return err
+		return err, nil
 	}
 	// read VER METHOD
 	if _, err := io.ReadFull(rw, buf[:2]); err != nil {
-		return err
+		return err, nil
 	}
 	if buf[0] != 5 || buf[1] != 0 {
-		return errors.New("SOCKS server mismatch")
+		return errors.New("SOCKS server mismatch"), nil
 	}
-	// write VER, CMD, RSV
-	if _, err := rw.Write([]byte{5, 1, 0}); err != nil {
-		return err
-	}
-	if _, err := rw.Write(ad); err != nil {
-		return err
-	}
-
-	_, err := io.ReadFull(rw, buf[:4])
-	if err != nil {
-		return errors.New("Couldn't read server response")
-	}
-	if buf[1] != 0 {
-		err = errors.New("Failed to pass to local proxy")
-	}
-	if buf[3] == 1 {
-		io.ReadFull(rw, buf[:4])
-	} else if buf[3] == 3 {
-		io.ReadFull(rw, buf[:1])
-		lenofurl := buf[0]
-		io.ReadFull(rw, buf[:lenofurl])
+	if conntype == CmdConnect {
+		// write VER, CMD, RSV, ATYP, DST.ADDR, DST.PORT
+		copy(buf[:], []byte{5, 1, 0})
+		copy(buf[3:], ad)
+		lentosend := 3 + len(ad)
+		if _, err := rw.Write(buf[:lentosend]); err != nil {
+			return err, nil
+		}
+		_, err := io.ReadFull(rw, buf[:3])
+		if err != nil {
+			return errors.New("Couldn't read server response"), nil
+		}
+		if buf[1] != 0 {
+			err = errors.New("Failed to pass to local proxy")
+		}
+		readAddr(rw, buf)
+		return err, nil
+	} else if conntype == CmdUDPAssociate {
+		// write VER, CMD, RSV, ATYP, DST.ADDR, DST.PORT
+		copy(buf[:], []byte{5, 3, 0})
+		copy(buf[3:], ad)
+		lentosend := 3 + len(ad)
+		if _, err := rw.Write(buf[:lentosend]); err != nil {
+			return err, nil
+		}
+		_, err := io.ReadFull(rw, buf[:3])
+		if err != nil {
+			return errors.New("Couldn't read server response"), nil
+		}
+		if buf[1] != 0 {
+			err = errors.New("Failed to pass to local proxy")
+		}
+		addr, err := readAddr(rw, buf)
+		return err, addr
 	} else {
-		io.ReadFull(rw, buf[:16])
+		return errors.New("SOCKS command unsupported"), nil
 	}
-	io.ReadFull(rw, buf[:2])
-	return err
 }
