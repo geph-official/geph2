@@ -63,7 +63,7 @@ func negotiateTinySS(greeting *[2][]byte, rawConn net.Conn, pk []byte, nextProto
 
 func dialBridge(host string, cookie []byte) (net.Conn, error) {
 	// return niaucchi4.DialKCP(host, cookie)
-	conn, err := net.DialTimeout("tcp", host, time.Second*5)
+	conn, err := net.DialTimeout("tcp", host, time.Second*3)
 	if err != nil {
 		return nil, err
 	}

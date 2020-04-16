@@ -23,7 +23,7 @@ func init() {
 
 // Dial haha
 func Dial(host string) (conn net.Conn, err error) {
-	return dialArray[rand.Int()%32].Dial(host)
+	return dialArray[rand.Int()%len(dialArray)].Dial(host)
 }
 
 type dialer struct {

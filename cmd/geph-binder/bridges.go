@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -83,20 +82,28 @@ func handleGetWarpfronts(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(host2front)
 }
 
-var counterCache = cache.New(time.Minute*5, time.Hour)
+var counterCache = cache.New(time.Minute, time.Hour)
 
 func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 	id := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
-	counterCache.Add(id, new(uint64), time.Hour)
-	ctr, _ := counterCache.Get(id)
-	current := atomic.AddUint64(ctr.(*uint64), 1)
-	if current < 3 {
-		log.Println("DYING to force client retry")
+	if _, ok := goodIPCache.Get(id); !ok {
+		log.Println("BAD IP:", id)
+		w.WriteHeader(http.StatusForbidden)
 		return
 	}
+	// counterCache.Add(id, new(uint64), time.Minute*15)
+	// ctr, _ := counterCache.Get(id)
+	// current := atomic.AddUint64(ctr.(*uint64), 1)
+	// if current < 5 {
+	// 	log.Println("DYING because under limit")
+	// 	return
+	// }
 
 	isEphemeral := r.FormValue("type") == "ephemeral"
-	exitHost := r.FormValue("exit")
+	if isEphemeral {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	// TODO validate the ticket
 	bridges := getBridges(id)
 	w.Header().Set("content-type", "application/json")
@@ -116,17 +123,6 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 		if ok {
 			val := vali.(bridgeInfo)
 			if !seenAGs[val.AllocGroup] {
-				if isEphemeral {
-					tval, err := bridgeToEphBridge(val.Host, val.Cookie, exitHost)
-					if err != nil {
-						if !strings.Contains(err.Error(), "unspecified") {
-							log.Println("error mapping ephemeral bridge for", val.Host, err)
-						}
-						continue
-					}
-					val.Cookie = tval.Cookie
-					val.Host = tval.Bridge
-				}
 				seenAGs[val.AllocGroup] = true
 				laboo = append(laboo, val)
 			}
@@ -181,7 +177,7 @@ func testBridge(bi bridgeInfo) bool {
 		return false
 	}
 	defer rawconn.Close()
-	realconn, err := cshirt2.Client(bi.Cookie, rawconn)
+	realconn, err := cshirt2.ClientLegacy(bi.Cookie, rawconn)
 	if err != nil {
 		log.Println("bridge test failed for", bi.Host, err)
 		return false

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"fmt"
 	"log"
 	mrand "math/rand"
@@ -12,7 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/cwl"
 	"github.com/geph-official/geph2/libs/kcp-go"
-	"github.com/geph-official/geph2/libs/niaucchi4"
 	"github.com/geph-official/geph2/libs/pseudotcp"
 	//"github.com/geph-official/geph2/libs/niaucchi4/backedtcp"
 )
@@ -23,9 +21,6 @@ func handle(client net.Conn) {
 	// return
 	client.SetDeadline(time.Now().Add(time.Minute * 5))
 	var err error
-	defer func() {
-		log.Println("Closed client", client.RemoteAddr(), "reason", err)
-	}()
 	defer client.Close()
 	exitMatcher, err := regexp.Compile(exitRegex)
 	if err != nil {
@@ -38,7 +33,7 @@ func handle(client net.Conn) {
 		if err != nil {
 			return
 		}
-		log.Println("Client", client.RemoteAddr(), "requested", command)
+		log.Println(client.RemoteAddr(), "requested", command)
 		switch command {
 		case "conn/e2e":
 			if noLegacyUDP {
@@ -67,31 +62,6 @@ func handle(client net.Conn) {
 			rlp.Encode(client, uint(port))
 			time.Sleep(time.Second * 20)
 			return
-		case "tcp":
-			lsnr, err := net.Listen("tcp", "")
-			if err != nil {
-				log.Println("cannot listen for tcp:", err)
-				return
-			}
-			log.Println("created tcp at", lsnr.Addr())
-			randokey := make([]byte, 32)
-			rand.Read(randokey)
-			port := lsnr.Addr().(*net.TCPAddr).Port
-			rlp.Encode(client, uint(port))
-			rlp.Encode(client, randokey)
-			go func() {
-				defer lsnr.Close()
-				// var masterConn *backedtcp.Socket
-				// for {
-				clnt, err := lsnr.Accept()
-				if err != nil {
-					log.Println("error accepting", err)
-					return
-				}
-				clnt = niaucchi4.NewObfsStream(clnt, randokey, true)
-				handle(clnt)
-			}()
-			return
 		case "ping":
 			rlp.Encode(client, "ping")
 			time.Sleep(time.Second)
@@ -102,12 +72,10 @@ func handle(client net.Conn) {
 			fallthrough
 		case "conn/feedback":
 			var host string
-			log.Println("waiting for host...")
 			err = dec.Decode(&host)
 			if err != nil {
 				return
 			}
-			log.Println("host is", host)
 			if !exitMatcher.MatchString(host) {
 				err = fmt.Errorf("bad pattern: %v", host)
 				return
@@ -119,7 +87,7 @@ func handle(client net.Conn) {
 				log.Println("failed connecting to", remoteAddr, err)
 				return
 			}
-			log.Println("connected to", remoteAddr)
+			log.Println(client.RemoteAddr(), "==>", remoteAddr)
 			if command == "conn/feedback" {
 				err = rlp.Encode(client, uint(0))
 				if err != nil {

@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/cryptoballot/rsablind"
 	"github.com/geph-official/geph2/libs/bdclient"
+	"github.com/patrickmn/go-cache"
 	"golang.org/x/time/rate"
 )
 
@@ -49,6 +51,8 @@ func init() {
 
 var limiterCache sync.Map
 
+var goodIPCache = cache.New(time.Minute, time.Minute)
+
 func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 	// first authenticate
 	uid, expiry, paytx, err := verifyUser(r.FormValue("user"), r.FormValue("pwd"))
@@ -68,9 +72,8 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(time.Second * 10)
 		w.WriteHeader(http.StatusTooManyRequests)
 		return
-	} else {
-		log.Println("verified", r.FormValue("user"))
 	}
+	log.Println("verified", r.FormValue("user"))
 	//log.Println("get-ticket: verified user", r.FormValue("user"), "as expiry", expiry)
 	var tier string
 	if expiry.After(time.Now()) {
@@ -115,6 +118,8 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 	w.Write([]byte(b))
+	id := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
+	goodIPCache.SetDefault(id, true)
 }
 
 func handleRedeemTicket(w http.ResponseWriter, r *http.Request) {

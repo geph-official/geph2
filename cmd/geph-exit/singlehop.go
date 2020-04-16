@@ -34,7 +34,7 @@ func shTCP() {
 		log.Debugln("SH client [TCP] @", rawClient.RemoteAddr())
 		go func() {
 			rawClient.SetDeadline(time.Now().Add(time.Second * 10))
-			client, err := cshirt2.Server(pubkey, rawClient)
+			client, err := cshirt2.Server(pubkey, false, rawClient)
 			if err != nil {
 				rawClient.Close()
 				return
