@@ -125,16 +125,12 @@ func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
 	if e != nil {
 		return nil, e
 	}
-	log.Infoln("Obtained", len(bridges), "bridges")
-	for _, b := range bridges {
-		log.Infof(".... %v %x", b.Host, b.Cookie)
-	}
 	if additionalBridges != "" {
 		relays := strings.Split(additionalBridges, ";")
 		for _, str := range relays {
 			splitted := strings.Split(str, "@")
 			if len(splitted) != 2 {
-				panic("-additionalBridges must be cookie@host;XX;XX")
+				panic("-additionalBridges must be cookie1@host1:port1;cookie2@host2:port2 etc")
 			}
 			cookie, err := hex.DecodeString(splitted[0])
 			if err != nil {
@@ -142,6 +138,10 @@ func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
 			}
 			bridges = append(bridges, bdclient.BridgeInfo{Cookie: cookie, Host: splitted[1]})
 		}
+	}
+	log.Infoln("Obtained", len(bridges), "bridges")
+	for _, b := range bridges {
+		log.Infof(".... %v %x", b.Host, b.Cookie)
 	}
 	bridgesCache.bridges, bridgesCache.expires = bridges, time.Now().Add(time.Minute)
 	return bridges, nil
