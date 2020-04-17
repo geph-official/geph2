@@ -11,10 +11,10 @@ var dhGroup5 = func() *big.Int {
 	return toret
 }()
 
-type dhPK []byte
-type dhSK []byte
+type pubKey []byte
+type secKey []byte
 
-func udhSecret(lsk dhSK, rpk dhPK) []byte {
+func udhSecret(lsk secKey, rpk pubKey) []byte {
 	bitlen := len(lsk) * 8
 	// checks
 	if bitlen != 1536 {
@@ -26,13 +26,13 @@ func udhSecret(lsk dhSK, rpk dhPK) []byte {
 		big.NewInt(0).SetBytes(lsk), group).Bytes()
 }
 
-func dhGenKey() (pk dhPK, sk dhSK) {
+func dhGenKey() (pk pubKey, sk secKey) {
 	const bitlen = 1536
 	var group *big.Int
 	group = dhGroup5
 	// randomly generate even private key
-	pub := dhPK(make([]byte, bitlen/8))
-	priv := dhSK(make([]byte, bitlen/8))
+	pub := pubKey(make([]byte, bitlen/8))
+	priv := secKey(make([]byte, bitlen/8))
 	rand.Read(priv)
 	priv[bitlen/8-1] /= 2
 	priv[bitlen/8-1] *= 2
@@ -51,5 +51,8 @@ retry:
 		goto retry
 	}
 	copy(pub, candid)
+	globCacheLock.Lock()
+	defer globCacheLock.Unlock()
+	globCache.SetDefault(string(pk), false)
 	return pub, priv
 }

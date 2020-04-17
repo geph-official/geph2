@@ -5,7 +5,7 @@ go 1.12
 require (
 	github.com/abh/geoip v0.0.0-20160510155516-07cea4480daa
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
-	github.com/bunsim/goproxy v0.0.0-20170228195103-3c809b25484a // indirect
+	github.com/bunsim/goproxy v0.0.0-20170228195103-3c809b25484a
 	github.com/cryptoballot/fdh v0.0.0-20170924224734-5eb31ce2010c // indirect
 	github.com/cryptoballot/rsablind v0.0.0-20170925165423-14f9913880b7
 	github.com/dchest/captcha v0.0.0-20170622155422-6a29415a8364
@@ -18,6 +18,7 @@ require (
 	github.com/gorilla/mux v1.7.3
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d
+	github.com/jupp0r/go-priority-queue v0.0.0-20160601094913-ab1073853bde
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/kavu/go_reuseport v1.4.0 // indirect
 	github.com/klauspost/cpuid v1.2.1 // indirect
