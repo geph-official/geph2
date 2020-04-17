@@ -3,6 +3,8 @@ package c25519
 import (
 	"crypto/rand"
 	"crypto/sha256"
+
+	"golang.org/x/crypto/curve25519"
 )
 
 // GenSK makes a new Curve25519 secret key.
@@ -22,4 +24,11 @@ func GenSKWithSeed(seed []byte) [32]byte {
 	toret[31] &= 127
 	toret[31] |= 64
 	return toret
+}
+
+// ToPK converts a secret key to a public key.
+func ToPK(sk [32]byte) [32]byte {
+	var pk [32]byte
+	curve25519.ScalarBaseMult(&pk, &sk)
+	return pk
 }

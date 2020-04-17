@@ -18,11 +18,9 @@ import (
 	"github.com/geph-official/geph2/libs/erand"
 	"github.com/geph-official/geph2/libs/kcp-go"
 	"github.com/google/gops/agent"
+	"github.com/patrickmn/go-cache"
 	"golang.org/x/time/rate"
 )
-
-var cookieSeed string
-var cookie []byte
 
 var binderFront string
 var binderReal string
@@ -32,9 +30,11 @@ var statsdAddr string
 var allocGroup string
 var speedLimit int
 var noLegacyUDP bool
+var compatibility bool
 var wfAddr string
 var listenAddr string
 var bclient *bdclient.Client
+var dummy bool
 
 var limiter *rate.Limiter
 
@@ -49,8 +49,10 @@ func main() {
 	flag.StringVar(&allocGroup, "allocGroup", "", "allocation group")
 	flag.StringVar(&listenAddr, "listenAddr", ":", "listen address")
 	flag.BoolVar(&noLegacyUDP, "noLegacyUDP", false, "reject legacy UDP (e2enat) attempts")
+	flag.BoolVar(&compatibility, "compatibility", false, "retain compatibility with old cshirt2")
 	flag.StringVar(&wfAddr, "wfAddr", "", "if set, listen for plain HTTP warpfront connections on this port. Prevents contacting the binder --- warpfront bridges are manually provisioned!")
 	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")
+	flag.BoolVar(&dummy, "dummy", false, "dummy mode")
 	flag.Parse()
 	if speedLimit > 0 {
 		limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 1000*1000)
@@ -76,7 +78,6 @@ func main() {
 		log.Println("*** WARPFRONT MODE ***")
 		wfLoop()
 	}
-	generateCookie()
 	bclient = bdclient.NewClient(binderFront, binderReal)
 	go func() {
 		lastTotal := uint64(0)
@@ -92,24 +93,26 @@ func main() {
 			statClient.Timing(allocGroup+".lossPct", RL)
 		}
 	}()
-	listenLoop(-1)
+	for i := 0; i < 256; i++ {
+		go func() {
+			go listenLoop(-1)
+		}()
+	}
+	for {
+		time.Sleep(time.Hour)
+	}
 }
 
-func generateCookie() {
-	cookie = make([]byte, 32)
-	rand.Read(cookie)
-}
+var blacklist = cache.New(time.Hour, time.Hour)
 
 func listenLoop(deadline time.Duration) {
-	udpsock, err := net.ListenPacket("udp", listenAddr)
-	if err != nil {
-		panic(err)
-	}
+	cookie := make([]byte, 32)
+	rand.Read(cookie)
+	listener, err := net.Listen("tcp", listenAddr)
 	go func() {
 		end := time.Now().Add(deadline)
-		for deadline < 0 || time.Now().Before(end) {
-			myAddr := fmt.Sprintf("%v:%v", guessIP(), udpsock.LocalAddr().(*net.UDPAddr).Port)
-			log.Println(myAddr)
+		for deadline < 0 || time.Now().Before(end.Add(-time.Minute*5)) {
+			myAddr := fmt.Sprintf("%v:%v", guessIP(), listener.Addr().(*net.TCPAddr).Port)
 			e := bclient.AddBridge(binderKey, cookie, myAddr, allocGroup)
 			if e != nil {
 				log.Println("error adding bridge:", e)
@@ -117,47 +120,44 @@ func listenLoop(deadline time.Duration) {
 			time.Sleep(time.Minute)
 		}
 	}()
-	func() {
-		listener, err := net.Listen("tcp", udpsock.LocalAddr().String())
+	if err != nil {
+		panic(err)
+	}
+	log.Println("Listen on", listener.Addr())
+	if deadline > 0 {
+		go func() {
+			time.Sleep(deadline)
+			listener.Close()
+		}()
+	}
+	defer listener.Close()
+	log.Println("N4/TCP listener spinned up")
+	for {
+		rawClient, err := listener.Accept()
 		if err != nil {
-			panic(err)
+			log.Println("CANNOT ACCEPT!", err)
+			time.Sleep(time.Millisecond * 100)
+			return
 		}
-		log.Println("Listen on", listener.Addr())
-		if deadline > 0 {
-			go func() {
-				time.Sleep(deadline)
-				listener.Close()
-			}()
-		}
-		defer listener.Close()
-		log.Println("N4/TCP listener spinned up")
-		for {
-			rawClient, err := listener.Accept()
-			if err != nil {
-				log.Println("CANNOT ACCEPT!", err)
-				time.Sleep(time.Millisecond * 100)
-				continue
+		out := strings.Split(rawClient.RemoteAddr().String(), ":")[0]
+		go func() {
+			defer rawClient.Close()
+			if dummy {
+				log.Println(rawClient.RemoteAddr(), "dummy, rejecting", out)
+				return
 			}
-			go func() {
-				defer rawClient.Close()
-				// if !limiter.AllowN(time.Now(), 100*1024) {
-				// 	log.Println("rejecting connection because we are already pretty full")
-				// 	return
-				// }
-				// intentionally wait in order to deter connections when we're full
-				rawClient.SetDeadline(time.Now().Add(time.Second * time.Duration(5+erand.Int(10))))
-				client, err := cshirt2.Server(cookie, rawClient)
-				rawClient.SetDeadline(time.Now().Add(time.Hour * 24))
-				if err != nil {
-					log.Println("cshirt2 failed", err, rawClient.RemoteAddr())
-					return
-				}
-				rawClient.(*net.TCPConn).SetKeepAlive(false)
-				//log.Println("Accepted TCP from", rawClient.RemoteAddr())
-				handle(client)
-			}()
-		}
-	}()
+			rawClient.SetDeadline(time.Now().Add(time.Second * time.Duration(15+erand.Int(10))))
+			client, err := cshirt2.Server(cookie, compatibility, rawClient)
+			rawClient.SetDeadline(time.Now().Add(time.Hour * 24))
+			if err != nil {
+				log.Println(rawClient.RemoteAddr(), "cshirt2 failed", err)
+				return
+			}
+			rawClient.(*net.TCPConn).SetKeepAlive(false)
+			//log.Println("Accepted TCP from", rawClient.RemoteAddr())
+			handle(client)
+		}()
+	}
 	// e2e := niaucchi4.ObfsListen(cookie, udpsock, false)
 	// if err != nil {
 	// 	panic(err)
