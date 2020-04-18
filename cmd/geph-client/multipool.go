@@ -221,6 +221,7 @@ func getCleanConn() (conn net.Conn, err error) {
 			}
 			e, _ = tinysocks.Client(tcpConn, tinysocks.ParseAddr(splitted[1]), tinysocks.CmdConnect)
 			if e != nil {
+				tcpConn.Close()
 				log.Warnln("failed handshake with second SOCKS5 server:", e)
 				err = e
 				return
@@ -266,6 +267,7 @@ func getCleanConn() (conn net.Conn, err error) {
 			}
 			err, _ = tinysocks.Client(rawConn, tinysocks.ParseAddr(exitName+":2389"), tinysocks.CmdConnect)
 			if err != nil {
+				rawConn.Close()
 				log.Warnln("failed handshake with second SOCKS5 server:", err)
 				return
 			}
@@ -280,24 +282,35 @@ func getCleanConn() (conn net.Conn, err error) {
 			rawConn.(*net.TCPConn).SetKeepAlive(false)
 		}
 	} else {
-		bridges, e := getBridges(ubmsg, ubsig)
-		if e != nil {
-			err = e
-			log.Warnln("getting bridges failed, retrying", err)
-			return
-		}
-		rawConn, err = getSingleTCP(bridges)
-		if err != nil {
-			log.Warnf("can't connect to bridges (%v); time to W A R P F R O N T", err)
+		getWarpfrontCon := func() (warpConn net.Conn, err error) {
 			var wfstuff map[string]string
 			wfstuff, err = bindClient.GetWarpfronts()
 			if err != nil {
-				log.Warnln("can't warpfront:", err)
+				log.Warnln("can't get warp front:", err)
 				return
 			}
-			rawConn, err = getWarpfront(wfstuff)
+			warpConn, err = getWarpfront(wfstuff)
+			return
+		}
+		if forceWarpfront {
+			rawConn, err = getWarpfrontCon()
 			if err != nil {
 				return
+			}
+		} else {
+			bridges, e := getBridges(ubmsg, ubsig)
+			if e != nil {
+				err = e
+				log.Warnln("getting bridges failed, retrying", err)
+				return
+			}
+			rawConn, err = getSingleTCP(bridges)
+			if err != nil {
+				log.Warnf("can't connect to bridges (%v); time to W A R P F R O N T", err)
+				rawConn, err = getWarpfrontCon()
+				if err != nil {
+					return
+				}
 			}
 		}
 	}
