@@ -1,7 +1,6 @@
 package main
 
 import (
-	"net"
 	"sync"
 	"sync/atomic"
 )
@@ -9,19 +8,19 @@ import (
 // net.Conn => *int64
 var trackerMap sync.Map
 
-func getCounter(key net.Conn) *int64 {
+func getCounter(key interface{}) *int64 {
 	rv, _ := trackerMap.LoadOrStore(key, new(int64))
 	return rv.(*int64)
 }
 
-func incrCounter(key net.Conn) {
+func incrCounter(key interface{}) {
 	atomic.AddInt64(getCounter(key), 1)
 }
 
-func decrCounter(key net.Conn) {
+func decrCounter(key interface{}) {
 	atomic.AddInt64(getCounter(key), -1)
 }
 
-func readCounter(key net.Conn) {
+func readCounter(key interface{}) {
 	atomic.LoadInt64(getCounter(key))
 }

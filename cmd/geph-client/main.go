@@ -224,7 +224,7 @@ func main() {
 	// confirm we are connected
 	func() {
 		for {
-			rm, ok := sWrap.DialCmd("ip")
+			rm, _, ok := sWrap.DialCmd("ip")
 			if !ok {
 				log.Println("FAILED to get IP, retrying...")
 				time.Sleep(time.Second)

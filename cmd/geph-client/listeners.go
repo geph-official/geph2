@@ -128,13 +128,14 @@ func listenSocks() {
 				remote.(*net.TCPConn).SetKeepAlive(false) // app responsibility
 			} else {
 				start := time.Now()
-				remote, ok = sWrap.DialCmd("proxy", rmAddr)
+				var key interface{}
+				remote, key, ok = sWrap.DialCmd("proxy", rmAddr)
 				if !ok {
 					return
 				}
 				defer remote.Close()
-				incrCounter(remote)
-				defer decrCounter(remote)
+				incrCounter(key)
+				defer decrCounter(key)
 				ping := time.Since(start)
 				log.Debugf("[%v] opened %v in %vms through %v", len(semaphore), rmAddr, ping.Milliseconds(), remote.RemoteAddr())
 				useStats(func(sc *stats) {

@@ -61,7 +61,7 @@ func Connect(client *http.Client, frontHost string, realHost string) (net.Conn, 
 				return
 			}
 			if resp.StatusCode != http.StatusOK {
-				err = fmt.Errorf("unexpected status code", resp.StatusCode)
+				err = fmt.Errorf("unexpected status code %v", resp.StatusCode)
 				resp.Body.Close()
 				return
 			}
