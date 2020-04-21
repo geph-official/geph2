@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"strings"
@@ -63,7 +64,13 @@ func negotiateTinySS(greeting *[2][]byte, rawConn net.Conn, pk []byte, nextProto
 
 func dialBridge(host string, cookie []byte) (net.Conn, error) {
 	// return niaucchi4.DialKCP(host, cookie)
-	conn, err := net.DialTimeout("tcp", host, time.Second*3)
+	portrng := cshirt2.NewRNG(cookie)
+	var port uint64
+	for i := 0; i < rand.Int()%16+1; i++ {
+		port = portrng() % 65536
+	}
+	recombinedHost := fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], port)
+	conn, err := net.DialTimeout("tcp", recombinedHost, time.Second*3)
 	if err != nil {
 		return nil, err
 	}

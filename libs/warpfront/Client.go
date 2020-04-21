@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
-	"time"
 
 	"golang.org/x/time/rate"
 )
@@ -63,7 +61,7 @@ func Connect(client *http.Client, frontHost string, realHost string) (net.Conn, 
 				return
 			}
 			if resp.StatusCode != http.StatusOK {
-				log.Println("WAT DIE")
+				err = fmt.Errorf("unexpected status code", resp.StatusCode)
 				resp.Body.Close()
 				return
 			}
@@ -107,11 +105,13 @@ func Connect(client *http.Client, frontHost string, realHost string) (net.Conn, 
 	go func() {
 		defer sesh.Close()
 		// drain something from tx
-		timer := time.NewTicker(time.Millisecond * 250)
+		//timer := time.NewTicker(time.Millisecond * 250)
 		buff := bytes.NewBuffer(nil)
 		for i := 0; ; i++ {
 			select {
-			case <-timer.C:
+			//case <-timer.C:
+			case bts := <-sesh.tx:
+				buff.Write(bts)
 				if buff.Len() > 0 {
 					resp, err := postWithHost(client,
 						fmt.Sprintf("%v/%x?serial=%v", frontHost, num, i),
@@ -123,10 +123,8 @@ func Connect(client *http.Client, frontHost string, realHost string) (net.Conn, 
 					io.Copy(ioutil.Discard, resp.Body)
 					resp.Body.Close()
 				}
-			case bts := <-sesh.tx:
-				buff.Write(bts)
 			case <-sesh.ded:
-				timer.Stop()
+				//timer.Stop()
 				return
 			}
 		}

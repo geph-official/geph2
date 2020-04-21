@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -134,9 +133,8 @@ func listenSocks() {
 					return
 				}
 				defer remote.Close()
-				key := fmt.Sprintf("%v//%v", remote.RemoteAddr(), remote.LocalAddr())
-				incrCounter(key)
-				defer decrCounter(key)
+				incrCounter(remote)
+				defer decrCounter(remote)
 				ping := time.Since(start)
 				log.Debugf("[%v] opened %v in %vms through %v", len(semaphore), rmAddr, ping.Milliseconds(), remote.RemoteAddr())
 				useStats(func(sc *stats) {

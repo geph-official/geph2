@@ -2,10 +2,8 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"flag"
 	"fmt"
-	"math/rand"
 	mrand "math/rand"
 	"net"
 	"net/http"
@@ -22,7 +20,6 @@ import (
 	"github.com/acarl005/stripansi"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/bdclient"
-	"golang.org/x/crypto/curve25519"
 	"golang.org/x/net/proxy"
 
 	log "github.com/sirupsen/logrus"
@@ -94,18 +91,6 @@ restart:
 }
 
 func main() {
-	sk1 := make([]byte, 32)
-	rand.Read(sk1)
-	pk1, _ := curve25519.X25519(sk1, curve25519.Basepoint)
-	sk2 := make([]byte, 32)
-	rand.Read(sk2)
-	pk2, _ := curve25519.X25519(sk2, curve25519.Basepoint)
-	ss1, _ := curve25519.X25519(sk1, pk2)
-	ss2, _ := curve25519.X25519(sk2, pk1)
-	if !bytes.Equal(ss1, ss2) {
-		panic("WHAT???")
-	}
-
 	debug.SetGCPercent(30)
 	mrand.Seed(time.Now().UnixNano())
 	log.SetFormatter(&log.TextFormatter{
