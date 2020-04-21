@@ -109,8 +109,8 @@ func listenLoop(deadline time.Duration) {
 	cookie := make([]byte, 32)
 	rand.Read(cookie)
 	listener, err := net.Listen("tcp", listenAddr)
+	end := time.Now().Add(deadline)
 	go func() {
-		end := time.Now().Add(deadline)
 		for deadline < 0 || time.Now().Before(end.Add(-time.Minute*5)) {
 			myAddr := fmt.Sprintf("%v:%v", guessIP(), listener.Addr().(*net.TCPAddr).Port)
 			e := bclient.AddBridge(binderKey, cookie, myAddr, allocGroup)
@@ -134,10 +134,10 @@ func listenLoop(deadline time.Duration) {
 	log.Println("N4/TCP listener spinned up")
 	for {
 		rawClient, err := listener.Accept()
-		if err != nil {
+		if err != nil && time.Now().Before(end) {
 			log.Println("CANNOT ACCEPT!", err)
 			time.Sleep(time.Millisecond * 100)
-			return
+			continue
 		}
 		out := strings.Split(rawClient.RemoteAddr().String(), ":")[0]
 		go func() {

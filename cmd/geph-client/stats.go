@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -127,7 +128,7 @@ func handleProxyPac(w http.ResponseWriter, r *http.Request) {
 	{
 		return "PROXY %v";
 	}
-	`, httpAddr)))
+	`, strings.Replace(httpAddr, strings.Split(httpAddr, ":")[0], "localhost", -1))))
 }
 
 func handleStacktrace(w http.ResponseWriter, r *http.Request) {

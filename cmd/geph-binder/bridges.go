@@ -33,7 +33,7 @@ func addBridge(nfo bridgeInfo) {
 }
 
 // cache of bridge *mappings*. string => []string
-var bridgeMapCache = cache.New(time.Hour, time.Hour)
+var bridgeMapCache = cache.New(time.Minute*30, time.Hour)
 
 func getBridges(id string) []string {
 	if mapping, ok := bridgeMapCache.Get(id); ok {
@@ -114,10 +114,6 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 	vacate := func() {
 		bridgeMapCache.Delete(id)
 	}
-	if len(bridges) == 0 {
-		vacate()
-		return
-	}
 	for _, str := range bridges {
 		vali, ok := bridgeCache.Get(str)
 		if ok {
@@ -126,10 +122,11 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 				seenAGs[val.AllocGroup] = true
 				laboo = append(laboo, val)
 			}
-		} else {
-			vacate()
-			return
 		}
+	}
+	if len(laboo) == 0 {
+		vacate()
+		return
 	}
 	json.NewEncoder(w).Encode(laboo)
 }
