@@ -63,9 +63,8 @@ func negotiateTinySS(greeting *[2][]byte, rawConn net.Conn, pk []byte, nextProto
 }
 
 func dialBridge(host string, cookie []byte) (net.Conn, error) {
-	// return niaucchi4.DialKCP(host, cookie)
-	portrng := cshirt2.NewRNG(cookie)
 	var port uint64
+	portrng := cshirt2.NewRNG(cookie)
 	for i := 0; i < rand.Int()%16+1; i++ {
 		port = portrng() % 65536
 	}
