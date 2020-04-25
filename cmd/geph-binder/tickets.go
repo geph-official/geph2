@@ -15,7 +15,6 @@ import (
 	"github.com/cryptoballot/rsablind"
 	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/patrickmn/go-cache"
-	"golang.org/x/time/rate"
 )
 
 func handleGetTicketKey(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +50,7 @@ func init() {
 
 var limiterCache sync.Map
 
-var goodIPCache = cache.New(time.Minute, time.Minute)
+var goodIPCache = cache.New(time.Hour, time.Minute)
 
 func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 	// first authenticate
@@ -66,13 +65,13 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	ticketLimiter, _ := limiterCache.LoadOrStore(uid, rate.NewLimiter(rate.Every(time.Minute*10), 100))
-	if !ticketLimiter.(*rate.Limiter).Allow() {
-		log.Println("*** VIOLATED LIMIT ", r.FormValue("user"))
-		time.Sleep(time.Second * 10)
-		w.WriteHeader(http.StatusTooManyRequests)
-		return
-	}
+	// ticketLimiter, _ := limiterCache.LoadOrStore(uid, rate.NewLimiter(rate.Every(time.Minute*4), 100))
+	// if !ticketLimiter.(*rate.Limiter).Allow() {
+	// 	log.Println("*** VIOLATED LIMIT ", r.FormValue("user"))
+	// 	time.Sleep(time.Second * 10)
+	// 	w.WriteHeader(http.StatusTooManyRequests)
+	// 	return
+	// }
 	log.Println("verified", r.FormValue("user"))
 	//log.Println("get-ticket: verified user", r.FormValue("user"), "as expiry", expiry)
 	var tier string

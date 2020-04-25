@@ -78,7 +78,7 @@ func readPK(compatibility bool, secret []byte, isDown bool, transport net.Conn) 
 		// read past padding
 		_, err = io.ReadFull(transport, make([]byte, padlen))
 		if err != nil {
-			err = fmt.Errorf("couldn't read past padding: %e", err)
+			err = fmt.Errorf("couldn't read past padding: %w", err)
 			return nil, 0, err
 		}
 		return edpk, epoch, nil

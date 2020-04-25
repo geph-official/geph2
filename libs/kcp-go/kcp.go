@@ -292,7 +292,7 @@ func NewKCP(conv uint32, output output_callback) *KCP {
 	kcp.DRE.ppDelivered = make(map[uint32]float64)
 	kcp.DRE.ppAppLimited = make(map[uint32]bool)
 	kcp.LOL.gain = 1
-	kcp.LOL.bdpMultiplier = 3
+	kcp.LOL.bdpMultiplier = 1.5
 	kcp.quiescent = QuiescentMax
 	kcp.fecRate = 0
 	if CongestionControl == "BBR" {
@@ -1213,13 +1213,13 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 				// if doLogging {
 				// 	log.Println("bdpMultiplier =>", kcp.LOL.bdpMultiplier)
 				// }
-				if rate > 400*1000 && loss+kcp.DRE.lastLoss > 0.3 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
-					if doLogging {
-						log.Printf("[%p] ****** POLICE ******", kcp)
-					}
-					kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
-					kcp.DRE.policeTime = now
-				}
+				// if rate > 400*1000 && loss+kcp.DRE.lastLoss > 0.3 && math.Abs(kcp.DRE.lastLossRate-rate) < rate/5 {
+				// 	if doLogging {
+				// 		log.Printf("[%p] ****** POLICE ******", kcp)
+				// 	}
+				// 	kcp.DRE.policeRate = (rate + kcp.DRE.lastLossRate) / 2
+				// 	kcp.DRE.policeTime = now
+				// }
 				kcp.DRE.lastLossTime = now
 				kcp.DRE.lastLossDel = kcp.DRE.delivered
 				kcp.DRE.lastLossTrans = kcp.trans

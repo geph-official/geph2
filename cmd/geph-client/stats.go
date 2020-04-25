@@ -4,10 +4,12 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -60,7 +62,7 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 			trackerMap.Range(func(key, value interface{}) bool {
 				v := int(atomic.LoadInt64(value.(*int64)))
 				if v > 0 {
-					sc.Bridges[key.(string)] = v
+					sc.Bridges[key.(net.Conn).RemoteAddr().String()] = v
 				}
 				return true
 			})
@@ -127,7 +129,7 @@ func handleProxyPac(w http.ResponseWriter, r *http.Request) {
 	{
 		return "PROXY %v";
 	}
-	`, httpAddr)))
+	`, strings.Replace(httpAddr, strings.Split(httpAddr, ":")[0], "localhost", -1))))
 }
 
 func handleStacktrace(w http.ResponseWriter, r *http.Request) {

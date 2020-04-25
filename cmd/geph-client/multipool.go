@@ -20,7 +20,7 @@ import (
 	"github.com/xtaci/smux"
 )
 
-const mpSize = 4
+const mpSize = 6
 
 type mpMember struct {
 	session *smux.Session
@@ -83,7 +83,7 @@ func newMultipool() *multipool {
 	go func() {
 		for i := 0; i < mpSize; i++ {
 			tr.fillOne()
-			time.Sleep(time.Second * 5)
+			time.Sleep(time.Second * 30)
 		}
 	}()
 	tr.worstPing = time.Second * 5
@@ -142,7 +142,7 @@ func (mp *multipool) fillOne() {
 	})
 }
 
-func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
+func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, key interface{}, ok bool) {
 	for {
 		mem := mp.popSession()
 		worst := mp.getWorstPing()
@@ -151,9 +151,9 @@ func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 		go func() {
 			for {
 				select {
-				case <-time.After(time.Second * 30):
+				case <-time.After(time.Second * 10):
 					log.Println("forcing replacement!")
-					go mem.btcp.Reset()
+					mem.btcp.Reset()
 				case <-success:
 					return
 				}
@@ -190,7 +190,7 @@ func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, ok bool) {
 			mem.score = 0.5*mem.score + 0.5*fping
 		}
 		mp.pushSession(mem)
-		return stream, true
+		return stream, mem.btcp, true
 	}
 }
 

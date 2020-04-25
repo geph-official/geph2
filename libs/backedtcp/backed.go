@@ -55,16 +55,17 @@ func (br *backedWriter) since(sn uint64) []byte {
 
 // Socket represents a single BackedTCP connection
 type Socket struct {
-	bw        backedWriter
-	getWire   func() (net.Conn, error)
-	chWrite   chan []byte
-	chRead    chan []byte
-	chReplace chan struct{}
-	readBuf   bytes.Buffer
-	readBytes uint64
-	death     tomb.Tomb
-	remAddr   atomic.Value
-	locAddr   atomic.Value
+	bw          backedWriter
+	getWire     func() (net.Conn, error)
+	cachedWires chan net.Conn
+	chWrite     chan []byte
+	chRead      chan []byte
+	chReplace   chan struct{}
+	readBuf     bytes.Buffer
+	readBytes   uint64
+	death       tomb.Tomb
+	remAddr     atomic.Value
+	locAddr     atomic.Value
 
 	rDeadline atomic.Value
 	wDeadline atomic.Value
@@ -73,14 +74,24 @@ type Socket struct {
 // NewSocket constructs a new BackedTCP connection.
 func NewSocket(getWire func() (net.Conn, error)) *Socket {
 	s := &Socket{
-		getWire:   getWire,
-		chWrite:   make(chan []byte),
-		chRead:    make(chan []byte),
-		chReplace: make(chan struct{}),
+		getWire:     getWire,
+		chWrite:     make(chan []byte),
+		cachedWires: make(chan net.Conn, 10000),
+		chRead:      make(chan []byte),
+		chReplace:   make(chan struct{}),
 	}
 	s.SetDeadline(time.Time{})
 	go s.mainLoop()
 	return s
+}
+
+func (sock *Socket) realGetWire() (net.Conn, error) {
+	select {
+	case c := <-sock.cachedWires:
+		return c, nil
+	default:
+		return sock.getWire()
+	}
 }
 
 func (sock *Socket) mainLoop() {
@@ -91,7 +102,7 @@ func (sock *Socket) mainLoop() {
 		default:
 		}
 		// first we get a wire
-		wire, err := sock.getWire()
+		wire, err := sock.realGetWire()
 		if err != nil {
 			// this is fatal
 			sock.death.Kill(err)
@@ -196,6 +207,11 @@ func (sock *Socket) readLoop(wire net.Conn) {
 
 // Reset forces the socket to discard its underlying connection and reconnect.
 func (sock *Socket) Reset() (err error) {
+	wire, err := sock.getWire()
+	if err != nil {
+		return
+	}
+	sock.cachedWires <- wire
 	select {
 	case sock.chReplace <- struct{}{}:
 		return

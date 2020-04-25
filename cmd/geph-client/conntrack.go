@@ -5,22 +5,22 @@ import (
 	"sync/atomic"
 )
 
-// string => *int64
+// net.Conn => *int64
 var trackerMap sync.Map
 
-func getCounter(key string) *int64 {
+func getCounter(key interface{}) *int64 {
 	rv, _ := trackerMap.LoadOrStore(key, new(int64))
 	return rv.(*int64)
 }
 
-func incrCounter(key string) {
+func incrCounter(key interface{}) {
 	atomic.AddInt64(getCounter(key), 1)
 }
 
-func decrCounter(key string) {
+func decrCounter(key interface{}) {
 	atomic.AddInt64(getCounter(key), -1)
 }
 
-func readCounter(key string) {
+func readCounter(key interface{}) {
 	atomic.LoadInt64(getCounter(key))
 }

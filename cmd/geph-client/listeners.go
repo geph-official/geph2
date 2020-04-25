@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -129,12 +128,12 @@ func listenSocks() {
 				remote.(*net.TCPConn).SetKeepAlive(false) // app responsibility
 			} else {
 				start := time.Now()
-				remote, ok = sWrap.DialCmd("proxy", rmAddr)
+				var key interface{}
+				remote, key, ok = sWrap.DialCmd("proxy", rmAddr)
 				if !ok {
 					return
 				}
 				defer remote.Close()
-				key := fmt.Sprintf("%v//%v", remote.RemoteAddr(), remote.LocalAddr())
 				incrCounter(key)
 				defer decrCounter(key)
 				ping := time.Since(start)

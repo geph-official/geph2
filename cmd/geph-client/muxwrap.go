@@ -5,5 +5,5 @@ import (
 )
 
 type commandDialer interface {
-	DialCmd(cmds ...string) (conn net.Conn, ok bool)
+	DialCmd(cmds ...string) (conn net.Conn, underlying interface{}, ok bool)
 }
