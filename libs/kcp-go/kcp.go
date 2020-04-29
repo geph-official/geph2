@@ -41,7 +41,7 @@ const (
 
 var QuiescentMax = 20
 
-var CongestionControl = "LOL"
+var CongestionControl = "BIC"
 
 var doLogging = false
 
@@ -527,7 +527,7 @@ func (kcp *KCP) update_ack(rtt int32) {
 	// if kcp.rx_rto < 500 {
 	// 	kcp.rx_rto = 500
 	// }
-	//kcp.rx_rto += 500
+	kcp.rx_rto += 500
 }
 
 func (kcp *KCP) shrink_buf() {
@@ -858,7 +858,7 @@ func (kcp *KCP) Input(data []byte, regular, ackNoDelay bool) int {
 		}
 	}
 
-	if len(kcp.acklist) >= 16 || (ackNoDelay && len(kcp.acklist) > 0) { // ack immediately
+	if len(kcp.acklist) >= 128 || (ackNoDelay && len(kcp.acklist) > 0) { // ack immediately
 		kcp.flush(true)
 	}
 	return 0
@@ -1096,7 +1096,6 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			change++
 			fastRetransSegs++
 			lostSn = append(lostSn, segment.sn)
-			//log.Println("fast", segment.sn)
 		} else if (segment.fastack > 0 && newSegsCount == 0) ||
 			(segment.xmit < 2 && len(kcp.snd_buf) == 1) { // early retransmit
 			needsend = true
@@ -1114,7 +1113,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 			// } else {
 			// 	segment.rto += kcp.rx_rto / 2
 			// }
-			segment.rto += segment.rto / 4
+			segment.rto += segment.rto
 			segment.fastack = 0
 			segment.resendts = current + segment.rto
 			if segment.rto > IKCP_RTO_MAX*4 {
@@ -1178,7 +1177,7 @@ func (kcp *KCP) flush(ackOnly bool) uint32 {
 		switch CongestionControl {
 		case "BIC":
 			// congestion control, https://tools.ietf.org/html/rfc5681
-			if lostSegs > 0 {
+			if sum > 0 {
 				kcp.bic_onloss(lostSn)
 			}
 		case "CUBIC":

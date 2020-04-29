@@ -93,7 +93,7 @@ func main() {
 			statClient.Timing(allocGroup+".lossPct", RL)
 		}
 	}()
-	for i := 0; i < 16; i++ {
+	for i := 0; i < 1; i++ {
 		go func() {
 			go listenLoop(-1)
 		}()

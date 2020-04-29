@@ -5,6 +5,7 @@ go 1.12
 require (
 	github.com/abh/geoip v0.0.0-20160510155516-07cea4480daa
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
+	github.com/bep/debounce v1.2.0
 	github.com/cryptoballot/fdh v0.0.0-20170924224734-5eb31ce2010c // indirect
 	github.com/cryptoballot/rsablind v0.0.0-20170925165423-14f9913880b7
 	github.com/dchest/captcha v0.0.0-20170622155422-6a29415a8364

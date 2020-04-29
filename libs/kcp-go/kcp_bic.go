@@ -37,7 +37,7 @@ func (kcp *KCP) bic_onloss(lost []uint32) {
 	// if maxRun < int(kcp.cwnd/20) || maxRun < 10 {
 	// 	return
 	// }
-	beta := 0.15 / bicMultiplier
+	beta := 0.05 / bicMultiplier
 	if kcp.cwnd < kcp.wmax {
 		kcp.wmax = kcp.cwnd * (2.0 - beta) / 2.0
 	} else {
@@ -48,8 +48,8 @@ func (kcp *KCP) bic_onloss(lost []uint32) {
 	if kcp.cwnd < mincwnd {
 		kcp.cwnd = mincwnd
 	}
-	if kcp.cwnd < 128 {
-		kcp.cwnd = 128
+	if kcp.cwnd < 32 {
+		kcp.cwnd = 32
 	}
 }
 
