@@ -138,7 +138,7 @@ func (srv *Server) ServeHTTP(wr http.ResponseWriter, rq *http.Request) {
 		ctr := 0
 		start := time.Now()
 		for ctr < 10*1024*1024 && time.Now().Sub(start) < time.Second*40 {
-			delay := time.Millisecond * 50
+			delay := time.Millisecond * 5000
 			select {
 			case bts := <-dn:
 				// write length, then bytes
@@ -151,7 +151,7 @@ func (srv *Server) ServeHTTP(wr http.ResponseWriter, rq *http.Request) {
 				}
 				ctr += len(bts)
 				wr.(http.Flusher).Flush()
-				delay = time.Millisecond * 50
+				delay = time.Millisecond * 5000
 			case <-time.After(delay):
 				wr.Write(contbuf)
 				wr.(http.Flusher).Flush()

@@ -34,13 +34,15 @@ var binderReal string
 var bclient *bdclient.Client
 var hostname string
 var statsdAddr string
-var speedLimit int
+var infiniteLimit = rate.NewLimiter(rate.Inf, 1000)
+var listenHost string
 
 var statClient *statsd.StatsdClient
 
 var ipcache = cache.New(time.Hour, time.Hour)
 
 func main() {
+	var err error
 
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp: false,
@@ -51,13 +53,21 @@ func main() {
 	flag.StringVar(&binderReal, "binderReal", "binder.geph.io", "real hostname of the binder")
 	flag.StringVar(&statsdAddr, "statsdAddr", "c2.geph.io:8125", "address of StatsD for gathering statistics")
 	flag.BoolVar(&onlyPaid, "onlyPaid", false, "only allow paying users")
-	flag.IntVar(&speedLimit, "speedLimit", 25000, "per-session speed limit, in KB/s")
 	flag.StringVar(&singleHop, "singleHop", "", "if supplied, runs in single-hop mode. (for example, -singleHop :5000 would listen on port 5000)")
+	flag.StringVar(&listenHost, "listenHost", "", "specify the specific host to listen on")
+	flag.StringVar(&hostname, "hostname", "", "force the use of a particular hostname")
 	flag.Parse()
-	fastLimitFactory = newLimitFactory(rate.Limit(speedLimit * 1024))
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
+
+	if hostname == "" {
+		hostname, err = os.Hostname()
+		if err != nil {
+			statsdAddr = ""
+		} else {
+		}
+	}
 
 	// load the key
 	kcp.CongestionControl = "BIC"
@@ -67,12 +77,6 @@ func main() {
 	}
 	log.Infof("Loaded PK = %x", pubkey)
 
-	var err error
-	hostname, err = os.Hostname()
-	if err != nil {
-		statsdAddr = ""
-	} else {
-	}
 	if statsdAddr != "" {
 		z, e := net.ResolveUDPAddr("udp", statsdAddr)
 		if e != nil {
@@ -84,7 +88,7 @@ func main() {
 
 	// listen
 	go func() {
-		tcpListener, err := net.Listen("tcp", ":2389")
+		tcpListener, err := net.Listen("tcp", listenHost+":2389")
 		if err != nil {
 			panic(err)
 		}
@@ -100,7 +104,7 @@ func main() {
 		}
 	}()
 	go func() {
-		tcpListener, err := pseudotcp.Listen(":12389")
+		tcpListener, err := pseudotcp.Listen(listenHost + ":12389")
 		if err != nil {
 			panic(err)
 		}
@@ -115,7 +119,7 @@ func main() {
 		}
 	}()
 	go e2elisten()
-	udpsock, err := net.ListenPacket("udp4", ":2389")
+	udpsock, err := net.ListenPacket("udp4", listenHost+":2389")
 	if err != nil {
 		panic(err)
 	}
@@ -138,7 +142,7 @@ func main() {
 }
 
 func e2elisten() {
-	udpsock, err := net.ListenPacket("udp4", ":2399")
+	udpsock, err := net.ListenPacket("udp4", listenHost+":2399")
 	if err != nil {
 		panic(err)
 	}

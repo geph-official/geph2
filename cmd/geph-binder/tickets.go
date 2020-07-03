@@ -118,7 +118,7 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Write([]byte(b))
 	id := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
-	goodIPCache.SetDefault(id, true)
+	goodIPCache.SetDefault(id, uid)
 }
 
 func handleRedeemTicket(w http.ResponseWriter, r *http.Request) {

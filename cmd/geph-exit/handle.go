@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math"
 	"net"
 	"net/http"
 	"sync"
@@ -58,11 +57,19 @@ func init() {
 			time.Sleep(time.Second * 10)
 			if statClient != nil {
 				statClient.Send(map[string]string{
-					hostname + ".sessionCount": fmt.Sprintf("%v|g", sesscounter.ItemCount()),
+					hostname + ".sessionCount": fmt.Sprintf("%v|g",
+						freeSessCounter.ItemCount()+paidSessCounter.ItemCount()),
 				}, 1)
-				log.Println("*************", sesscounter.ItemCount(), "sessions active")
 				statClient.Send(map[string]string{
 					hostname + ".tunnelCount": fmt.Sprintf("%v|g", atomic.LoadUint64(&tunnCount)),
+				}, 1)
+				statClient.Send(map[string]string{
+					hostname + ".freeSessionCount": fmt.Sprintf("%v|g",
+						freeSessCounter.ItemCount()),
+				}, 1)
+				statClient.Send(map[string]string{
+					hostname + ".paidSessionCount": fmt.Sprintf("%v|g",
+						paidSessCounter.ItemCount()),
 				}, 1)
 			}
 		}
@@ -85,7 +92,7 @@ func handle(rawClient net.Conn) {
 	ssSignature := ed25519.Sign(seckey, tssClient.SharedSec())
 	rlp.Encode(tssClient, &ssSignature)
 	var limiter *rate.Limiter
-	limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), speedLimit*1024)
+	limiter = infiniteLimit
 	slowLimit := false
 	// "generic" stuff
 	var acceptStream func() (net.Conn, error)
@@ -270,7 +277,7 @@ func handleResumable(slowLimit bool, tssClient net.Conn) (err error) {
 		if slowLimit {
 			limiter = slowLimitFactory.getLimiter(clientHello.MetaSess)
 		} else {
-			limiter = fastLimitFactory.getLimiter(clientHello.MetaSess)
+			limiter = infiniteLimit
 		}
 		smuxLoop(fmt.Sprintf("%x", clientHello.MetaSess), limiter, acceptStream)
 	}()
@@ -286,7 +293,11 @@ func smuxLoop(sessid string, limiter *rate.Limiter, acceptStream func() (n net.C
 			log.Println("failed accept stream", err)
 			return
 		}
-		sesscounter.SetDefault(sessid, true)
+		if limiter == infiniteLimit {
+			paidSessCounter.SetDefault(sessid, true)
+		} else {
+			freeSessCounter.SetDefault(sessid, true)
+		}
 		go func() {
 			defer soxclient.Close()
 			soxclient.SetDeadline(time.Now().Add(time.Minute))
@@ -300,7 +311,7 @@ func smuxLoop(sessid string, limiter *rate.Limiter, acceptStream func() (n net.C
 			}
 			soxclient.SetDeadline(time.Time{})
 			tc := atomic.LoadUint64(&tunnCount)
-			timeout := time.Duration(60*1000*math.Pow(8000.0/float64(tc+100), 3)) * time.Millisecond
+			timeout := time.Minute * 30
 			log.Debugf("<%v> [%v] cmd %v", tc, timeout, command)
 			// match command
 			switch command[0] {

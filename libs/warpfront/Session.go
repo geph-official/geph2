@@ -15,19 +15,33 @@ type session struct {
 	ded chan bool
 	buf *bytes.Buffer
 
-	readDeadline  <-chan time.Time
-	writeDeadline <-chan time.Time
+	readDeadline  *time.Timer
+	writeDeadline *time.Timer
 
 	once sync.Once
 }
 
 func newSession() *session {
 	return &session{
-		rx:  make(chan []byte, 1024),
-		tx:  make(chan []byte, 1024),
+		rx:  make(chan []byte),
+		tx:  make(chan []byte),
 		ded: make(chan bool),
 		buf: new(bytes.Buffer),
 	}
+}
+
+func (sess *session) readDeadlineCh() <-chan time.Time {
+	if sess.readDeadline != nil {
+		return sess.readDeadline.C
+	}
+	return nil
+}
+
+func (sess *session) writeDeadlineCh() <-chan time.Time {
+	if sess.writeDeadline != nil {
+		return sess.writeDeadline.C
+	}
+	return nil
 }
 
 func (sess *session) Write(pkt []byte) (int, error) {
@@ -36,7 +50,7 @@ func (sess *session) Write(pkt []byte) (int, error) {
 	select {
 	case sess.tx <- cpy:
 		return len(pkt), nil
-	case <-sess.writeDeadline:
+	case <-sess.writeDeadlineCh():
 		return 0, errors.New("write timeout")
 	case <-sess.ded:
 		return 0, io.ErrClosedPipe
@@ -51,7 +65,7 @@ func (sess *session) Read(p []byte) (int, error) {
 	case bts := <-sess.rx:
 		sess.buf.Write(bts)
 		return sess.Read(p)
-	case <-sess.readDeadline:
+	case <-sess.readDeadlineCh():
 		return 0, errors.New("read timeout")
 	case <-sess.ded:
 		return 0, io.ErrClosedPipe
@@ -83,7 +97,10 @@ func (sess *session) SetWriteDeadline(t time.Time) error {
 	if t == (time.Time{}) {
 		sess.writeDeadline = nil
 	} else {
-		sess.writeDeadline = time.After(t.Sub(time.Now()))
+		if sess.writeDeadline != nil {
+			sess.writeDeadline.Stop()
+		}
+		sess.writeDeadline = time.NewTimer(t.Sub(time.Now()))
 	}
 	return nil
 }
@@ -92,7 +109,10 @@ func (sess *session) SetReadDeadline(t time.Time) error {
 	if t == (time.Time{}) {
 		sess.readDeadline = nil
 	} else {
-		sess.readDeadline = time.After(t.Sub(time.Now()))
+		if sess.readDeadline != nil {
+			sess.readDeadline.Stop()
+		}
+		sess.readDeadline = time.NewTimer(t.Sub(time.Now()))
 	}
 	return nil
 }

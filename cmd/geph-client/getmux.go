@@ -69,7 +69,7 @@ func dialBridge(host string, cookie []byte) (net.Conn, error) {
 		port = portrng() % 65536
 	}
 	recombinedHost := fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], port)
-	conn, err := net.DialTimeout("tcp", recombinedHost, time.Second*3)
+	conn, err := net.DialTimeout("tcp", recombinedHost, time.Second*15)
 	if err != nil {
 		return nil, err
 	}

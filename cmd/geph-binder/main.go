@@ -3,9 +3,11 @@ package main
 import (
 	"database/sql"
 	"log"
+	"net"
 	"net/http"
 	"time"
 
+	statsd "github.com/etsy/statsd/examples/go"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 )
@@ -30,7 +32,14 @@ func rotateTickets() {
 	}
 }
 
+var statClient *statsd.StatsdClient
+
 func main() {
+	z, e := net.ResolveUDPAddr("udp", "c2.geph.io:8125")
+	if e != nil {
+		panic(e)
+	}
+	statClient = statsd.New(z.IP.String(), z.Port)
 	var err error
 	pgDB, err = sql.Open("postgres",
 		"postgres://postgres:postgres@localhost/postgres?sslmode=disable")

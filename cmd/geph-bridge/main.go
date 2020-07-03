@@ -40,6 +40,8 @@ var limiter *rate.Limiter
 
 var statClient *statsd.StatsdClient
 
+var startupTime time.Time
+
 func main() {
 	flag.StringVar(&binderFront, "binderFront", "https://binder.geph.io/v2", "binder domain-fronting host")
 	flag.StringVar(&binderReal, "binderReal", "binder.geph.io", "real hostname of the binder")
@@ -54,6 +56,7 @@ func main() {
 	flag.IntVar(&speedLimit, "speedLimit", -1, "speed limit in KB/s")
 	flag.BoolVar(&dummy, "dummy", false, "dummy mode")
 	flag.Parse()
+	startupTime = time.Now()
 	if speedLimit > 0 {
 		limiter = rate.NewLimiter(rate.Limit(speedLimit*1024), 1000*1000)
 	} else {
@@ -155,7 +158,7 @@ func listenLoop(deadline time.Duration) {
 						log.Println(rawClient.RemoteAddr(), "dummy, rejecting", out)
 						return
 					}
-					rawClient.SetDeadline(time.Now().Add(time.Second * time.Duration(15+erand.Int(10))))
+					rawClient.SetDeadline(time.Now().Add(time.Minute).Add(time.Second * time.Duration(15+erand.Int(10))))
 					client, err := cshirt2.Server(cookie, compatibility, rawClient)
 					rawClient.SetDeadline(time.Now().Add(time.Hour * 24))
 					if err != nil {

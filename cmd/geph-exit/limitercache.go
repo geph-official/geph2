@@ -1,7 +1,10 @@
 package main
 
 import (
+	"math/rand"
+
 	lru "github.com/hashicorp/golang-lru"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 )
 
@@ -11,13 +14,14 @@ type limitFactory struct {
 }
 
 func (lf *limitFactory) getLimiter(sessid [32]byte) *rate.Limiter {
-	new := rate.NewLimiter(lf.limit, 100*1024)
+	limit := rate.Limit(float64(lf.limit) * (0.9 + rand.Float64()/5))
+	new := rate.NewLimiter(limit, 1024*1024)
 	prev, _, _ := lf.lcache.PeekOrAdd(sessid, new)
 	if prev != nil {
 		return prev.(*rate.Limiter)
-	} else {
-		return new
 	}
+	log.Println("limit for sessid is", limit)
+	return new
 }
 
 func newLimitFactory(limit rate.Limit) *limitFactory {
@@ -29,4 +33,3 @@ func newLimitFactory(limit rate.Limit) *limitFactory {
 }
 
 var slowLimitFactory = newLimitFactory(100 * 1024)
-var fastLimitFactory *limitFactory

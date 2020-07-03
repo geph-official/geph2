@@ -15,7 +15,7 @@ import (
 	"gopkg.in/tomb.v1"
 )
 
-const maxBufferSize = 1000 * 1000
+const maxBufferSize = 500 * 1000
 
 type backedWriter struct {
 	lastsn uint64
@@ -35,7 +35,7 @@ func (br *backedWriter) addData(ob []byte) {
 }
 
 func (br *backedWriter) reset() {
-	if len(br.buffer) > 100*1000 {
+	if len(br.buffer) > 10*1000 {
 		newlen := len(br.buffer) / 2
 		nbuf := make([]byte, newlen)
 		copy(nbuf, br.buffer[len(br.buffer)-newlen:])
