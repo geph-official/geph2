@@ -118,7 +118,7 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 				seenAGs[val.AllocGroup] = true
 				hostPort := strings.Split(val.Host, ":")
 				if len(hostPort) == 2 {
-					val.Host = fmt.Sprintf("%v.xip.io:%v", hostPort[0], hostPort[1])
+					val.Host = fmt.Sprintf("%v.sslip.io:%v", strings.Replace(hostPort[0], ".", "-", -1), hostPort[1])
 					laboo = append(laboo, val)
 				}
 			}
