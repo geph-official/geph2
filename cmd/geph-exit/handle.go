@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -82,7 +83,6 @@ func handle(rawClient net.Conn) {
 	tssClient, err := tinyss.Handshake(rawClient, 0)
 	if err != nil {
 		rawClient.Close()
-		log.Println("Error doing TinySS from", rawClient.RemoteAddr(), err)
 		return
 	}
 	log.Println("tssClient with prot", tssClient.NextProt())
@@ -195,7 +195,7 @@ func handle(rawClient net.Conn) {
 	if slowLimit {
 		limiter = rate.NewLimiter(100*1000, 1000*1000)
 	}
-	smuxLoop(fmt.Sprintf("%p", tssClient), limiter, acceptStream)
+	smuxLoop(fmt.Sprintf("%v", strings.Split(tssClient.RemoteAddr().String(), ":")[0]), limiter, acceptStream)
 }
 
 type scEntry struct {
@@ -310,9 +310,9 @@ func smuxLoop(sessid string, limiter *rate.Limiter, acceptStream func() (n net.C
 				return
 			}
 			soxclient.SetDeadline(time.Time{})
-			tc := atomic.LoadUint64(&tunnCount)
+			atomic.LoadUint64(&tunnCount)
 			timeout := time.Minute * 30
-			log.Debugf("<%v> [%v] cmd %v", tc, timeout, command)
+			//log.Debugf("<%v> [%v] cmd %v", tc, timeout, command)
 			// match command
 			switch command[0] {
 			case "proxy":

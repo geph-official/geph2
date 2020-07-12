@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"runtime"
@@ -62,7 +61,7 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 			trackerMap.Range(func(key, value interface{}) bool {
 				v := int(atomic.LoadInt64(value.(*int64)))
 				if v > 0 {
-					sc.Bridges[key.(net.Conn).RemoteAddr().String()] = v
+					sc.Bridges[key.(string)] = v
 				}
 				return true
 			})
