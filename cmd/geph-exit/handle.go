@@ -135,8 +135,8 @@ func handle(rawClient net.Conn) {
 			KeepAliveInterval: time.Minute * 10,
 			KeepAliveTimeout:  time.Minute * 40,
 			MaxFrameSize:      8192,
-			MaxReceiveBuffer:  100 * 1024 * 1024,
-			MaxStreamBuffer:   10 * 1024 * 1024,
+			MaxReceiveBuffer:  1 * 1024 * 1024,
+			MaxStreamBuffer:   1 * 1024 * 1024,
 		})
 		if err != nil {
 			log.Println("Error negotiating smux from", rawClient.RemoteAddr(), err)
