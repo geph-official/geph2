@@ -2,25 +2,19 @@ package main
 
 import (
 	"crypto/rand"
-	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/backedtcp"
 	"github.com/geph-official/geph2/libs/cshirt2"
 	"github.com/geph-official/geph2/libs/tinysocks"
-	pq "github.com/jupp0r/go-priority-queue"
 	log "github.com/sirupsen/logrus"
 	"github.com/xtaci/smux"
 )
-
-const mpSize = 6
 
 type mpMember struct {
 	session *smux.Session
@@ -29,72 +23,24 @@ type mpMember struct {
 }
 
 type multipool struct {
-	memberQueue     pq.PriorityQueue
-	memberQueueCvar *sync.Cond
-	metasess        [32]byte
-
-	worstPing     time.Duration
-	worstPingTime time.Time
-	worstPingLock sync.Mutex
-}
-
-func (mp *multipool) popSession() mpMember {
-	mp.memberQueueCvar.L.Lock()
-	defer mp.memberQueueCvar.L.Unlock()
-	// wait until there are elements
-	for mp.memberQueue.Len() == 0 {
-		mp.memberQueueCvar.Wait()
-	}
-	tr, err := mp.memberQueue.Pop()
-	if err != nil {
-		panic(err)
-	}
-	return tr.(mpMember)
-}
-
-func (mp *multipool) pushSession(sess mpMember) {
-	mp.memberQueueCvar.L.Lock()
-	defer mp.memberQueueCvar.L.Unlock()
-	mp.memberQueue.Insert(sess, sess.score)
-	mp.memberQueueCvar.Broadcast()
-}
-
-func (mp *multipool) getWorstPing() time.Duration {
-	mp.worstPingLock.Lock()
-	defer mp.worstPingLock.Unlock()
-	return mp.worstPing
-}
-
-func (mp *multipool) setPing(d time.Duration) {
-	mp.worstPingLock.Lock()
-	defer mp.worstPingLock.Unlock()
-	now := time.Now()
-	if d > mp.worstPing || now.Sub(mp.worstPingTime).Seconds() > 10 {
-		mp.worstPingTime = now
-		mp.worstPing = d
-	}
+	pool     chan *smux.Session
+	metasess [32]byte
 }
 
 func newMultipool() *multipool {
 	tr := &multipool{}
-	tr.memberQueue = pq.New()
-	tr.memberQueueCvar = sync.NewCond(&sync.Mutex{})
+	tr.pool = make(chan *smux.Session, 256)
 	rand.Read(tr.metasess[:])
 	go func() {
-		for i := 0; i < mpSize; i++ {
+		for i := 0; i < 8; i++ {
 			tr.fillOne()
-			time.Sleep(time.Second * 5)
 		}
 	}()
-	tr.worstPing = time.Second * 5
 	return tr
 }
 
 func (mp *multipool) fillOne() {
-	var sessid [32]byte
-	rand.Read(sessid[:])
-	first := true
-	getConn := func() (net.Conn, error) {
+	getConn := func() net.Conn {
 	retry:
 		conn, err := getCleanConn()
 		if err != nil {
@@ -102,95 +48,53 @@ func (mp *multipool) fillOne() {
 			time.Sleep(time.Second)
 			goto retry
 		}
-		var greeting struct {
-			MetaSess [32]byte
-			SessID   [32]byte
-		}
-		greeting.MetaSess = mp.metasess
-		greeting.SessID = sessid
-		binary.Write(conn, binary.BigEndian, greeting)
-		var response byte
-		err = binary.Read(conn, binary.BigEndian, &response)
-		if err != nil {
-			log.Println("failed response read:", err)
-			time.Sleep(time.Second)
-			goto retry
-		}
-		log.Println("getConn to", conn.RemoteAddr(), "returned response", response)
-		if !first && response != 1 {
-			return nil, errors.New("bad")
-		}
-		first = false
-		return conn, err
+		return conn
 	}
-	btcp := backedtcp.NewSocket(getConn)
+	btcp := getConn()
 	sm, err := smux.Client(btcp, &smux.Config{
-		Version:           2,
-		KeepAliveInterval: time.Minute * 20,
+		Version:           1,
+		KeepAliveInterval: time.Minute * 10,
 		KeepAliveTimeout:  time.Minute * 40,
-		MaxFrameSize:      32768,
-		MaxReceiveBuffer:  4 * 1024 * 1024,
-		MaxStreamBuffer:   2 * 1024 * 1024,
+		MaxFrameSize:      8192,
+		MaxReceiveBuffer:  5 * 1024 * 1024,
+		MaxStreamBuffer:   5 * 1024 * 1024,
 	})
 	if err != nil {
 		panic(err)
 	}
-	mp.pushSession(mpMember{
-		session: sm,
-		btcp:    btcp,
-		score:   0,
-	})
+	mp.pool <- sm
 }
 
-func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, key interface{}, ok bool) {
+func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, remAddr string, ok bool) {
 	for {
-		mem := mp.popSession()
-		worst := mp.getWorstPing()
-		// repeatedly reset the underlying connection
-		success := make(chan bool)
-		go func() {
-			for {
-				select {
-				case <-time.After(time.Second * 20):
-					log.Println("forcing replacement!")
-					mem.btcp.Reset()
-				case <-success:
-					return
-				}
-			}
-		}()
-		start := time.Now()
-		stream, err := mem.session.OpenStream()
+		sm := <-mp.pool
+		stream, err := sm.OpenStream()
 		if err != nil {
-			mem.session.Close()
+			sm.Close()
 			log.Println("error while opening stream, throwing away:", err.Error())
-			close(success)
 			go mp.fillOne()
 			continue
 		}
+		mp.pool <- sm
 		rlp.Encode(stream, cmds)
 		var connected bool
-		stream.SetDeadline(time.Now().Add(time.Millisecond*time.Duration(worst) + time.Second*10))
+		// we try to connect to the other end within 500 milliseconds
+		// if we time out, we move on.
+		// but if we encounter any other error, we close the connection and spawn a new one.
+		stream.SetDeadline(time.Now().Add(time.Millisecond * 500))
 		err = rlp.Decode(stream, &connected)
-		close(success)
 		if err != nil {
-			mem.session.Close()
+			if strings.Contains(err.Error(), "timeout") {
+				log.Debugln("timeout after 500ms, let's try again")
+				continue
+			}
 			log.Println("error while waiting for stream, throwing away:", err.Error())
+			sm.Close()
 			go mp.fillOne()
 			continue
 		}
 		stream.SetDeadline(time.Time{})
-		ping := time.Since(start)
-		mp.setPing(ping)
-		fping := float64(ping.Milliseconds())
-		// compute ping
-		if fping > mem.score {
-			mem.score = 0.1*mem.score + 0.9*fping
-		} else {
-			mem.score = 0.5*mem.score + 0.5*fping
-		}
-		mp.pushSession(mem)
-		return stream, mem.btcp, true
+		return stream, sm.RemoteAddr().String(), true
 	}
 }
 
@@ -234,6 +138,7 @@ func getCleanConn() (conn net.Conn, err error) {
 				return
 			}
 		}
+		tcpConn.SetDeadline(time.Now().Add(time.Second * 10))
 		pk, e := hex.DecodeString(splitted[0])
 		if e != nil {
 			panic(e)
@@ -244,7 +149,7 @@ func getCleanConn() (conn net.Conn, err error) {
 			err = e
 			return
 		}
-		cryptConn, e := negotiateTinySS(nil, obfsConn, pk, 'R')
+		cryptConn, e := negotiateTinySS(nil, obfsConn, pk, 0)
 		if e != nil {
 			log.Warn("cannot negotiate tinyss with singleHop server:", e)
 			err = e
@@ -315,13 +220,14 @@ func getCleanConn() (conn net.Conn, err error) {
 		}
 	}
 	rawConn.SetDeadline(time.Now().Add(time.Second * 10))
-	cryptConn, err := negotiateTinySS(&[2][]byte{ubsig, ubmsg}, rawConn, exitPK(), 'R')
+	cryptConn, err := negotiateTinySS(&[2][]byte{ubsig, ubmsg}, rawConn, exitPK(), 0)
 	if err != nil {
 		log.Println("error while negotiating cryptConn", err)
 		return
 	}
 	rawConn.SetDeadline(time.Time{})
 	conn = cryptConn
+	log.Debugln("new conn to", conn.RemoteAddr())
 	return
 }
 
