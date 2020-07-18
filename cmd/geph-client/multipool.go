@@ -51,6 +51,7 @@ func (mp *multipool) fillOne() {
 		return conn
 	}
 	btcp := getConn()
+	btcp.Write(mp.metasess[:])
 	sm, err := smux.Client(btcp, &smux.Config{
 		Version:           1,
 		KeepAliveInterval: time.Minute * 10,
@@ -66,6 +67,7 @@ func (mp *multipool) fillOne() {
 }
 
 func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, remAddr string, ok bool) {
+	timeout := time.Millisecond * 500
 	for {
 		sm := <-mp.pool
 		stream, err := sm.OpenStream()
@@ -81,16 +83,17 @@ func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, remAddr string, ok 
 		// we try to connect to the other end within 500 milliseconds
 		// if we time out, we move on.
 		// but if we encounter any other error, we close the connection and spawn a new one.
-		stream.SetDeadline(time.Now().Add(time.Millisecond * 500))
+		stream.SetDeadline(time.Now().Add(timeout))
 		err = rlp.Decode(stream, &connected)
 		if err != nil {
-			if strings.Contains(err.Error(), "timeout") {
-				log.Debugln("timeout after 500ms, let's try again")
+			if strings.Contains(err.Error(), "timeout") && timeout < time.Second*5 {
+				log.Debugln("timeout after", timeout, "so let's try again")
+				timeout = timeout * 2
 				continue
 			}
 			log.Println("error while waiting for stream, throwing away:", err.Error())
 			sm.Close()
-			go mp.fillOne()
+			timeout = time.Millisecond * 500
 			continue
 		}
 		stream.SetDeadline(time.Time{})

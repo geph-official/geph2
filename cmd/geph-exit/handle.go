@@ -126,9 +126,13 @@ func handle(rawClient net.Conn) {
 		rlp.Encode(tssClient, "OK")
 	}
 	rawClient.SetDeadline(time.Now().Add(time.Hour * 24))
+	sessid := fmt.Sprintf("%v", strings.Split(tssClient.RemoteAddr().String(), ":")[0])
 	switch tssClient.NextProt() {
 	case 0:
 		defer tssClient.Close()
+		buf := make([]byte, 32)
+		io.ReadFull(tssClient, buf)
+		sessid = fmt.Sprintf("%x", buf)
 		// create smux context
 		muxSrv, err := smux.Server(tssClient, &smux.Config{
 			Version:           1,
@@ -195,7 +199,7 @@ func handle(rawClient net.Conn) {
 	if slowLimit {
 		limiter = rate.NewLimiter(100*1000, 1000*1000)
 	}
-	smuxLoop(fmt.Sprintf("%v", strings.Split(tssClient.RemoteAddr().String(), ":")[0]), limiter, acceptStream)
+	smuxLoop(sessid, limiter, acceptStream)
 }
 
 type scEntry struct {
