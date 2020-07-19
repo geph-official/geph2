@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	statsd "github.com/etsy/statsd/examples/go"
@@ -33,6 +34,10 @@ func rotateTickets() {
 }
 
 var statClient *statsd.StatsdClient
+
+func countUserAgent(req *http.Request) {
+	statClient.Increment("binderUA." + strings.ReplaceAll(req.Header.Get("user-agent"), ".", "-"))
+}
 
 func main() {
 	z, e := net.ResolveUDPAddr("udp", "c2.geph.io:8125")

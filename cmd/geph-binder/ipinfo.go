@@ -19,6 +19,7 @@ func init() {
 }
 
 func handleClientInfo(w http.ResponseWriter, r *http.Request) {
+	countUserAgent(r)
 	var cinfo struct {
 		Address string
 		Country string

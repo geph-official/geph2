@@ -34,6 +34,7 @@ var binderReal string
 var bclient *bdclient.Client
 var hostname string
 var statsdAddr string
+
 var infiniteLimit = rate.NewLimiter(rate.Inf, 1000)
 var listenHost string
 
@@ -84,7 +85,7 @@ func main() {
 		}
 		statClient = statsd.New(z.IP.String(), z.Port)
 	}
-	bclient = bdclient.NewClient(binderFront, binderReal)
+	bclient = bdclient.NewClient(binderFront, binderReal, "geph_exit")
 
 	// listen
 	go func() {

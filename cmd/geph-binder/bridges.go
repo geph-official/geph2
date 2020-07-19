@@ -73,6 +73,7 @@ func getBridges(id string) []string {
 }
 
 func handleGetWarpfronts(w http.ResponseWriter, r *http.Request) {
+	countUserAgent(r)
 	host2front, err := getWarpfronts()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -85,6 +86,7 @@ func handleGetWarpfronts(w http.ResponseWriter, r *http.Request) {
 var counterCache = cache.New(time.Minute, time.Hour)
 
 func handleGetBridges(w http.ResponseWriter, r *http.Request) {
+	countUserAgent(r)
 	id := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
 	// result, _ := goodIPCache.Get(id)
 	// if result == nil {
@@ -135,6 +137,7 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAddBridge(w http.ResponseWriter, r *http.Request) {
+	countUserAgent(r)
 	// first get the cookie
 	cookie, err := hex.DecodeString(r.FormValue("cookie"))
 	if err != nil {

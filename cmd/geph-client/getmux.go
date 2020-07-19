@@ -92,7 +92,7 @@ func getGreeting() (ubmsg, ubsig []byte, err error) {
 		return
 	}
 	// obtain a ticket
-	ubmsg, ubsig, details, err := bindClient.GetTicket(username, password)
+	ubmsg, ubsig, details, err := getBindClient().GetTicket(username, password)
 	if err != nil {
 		log.Errorln("error authenticating:", err)
 		if errors.Is(err, bdclient.ErrBadAuth) && loginCheck {
@@ -127,7 +127,7 @@ func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
 	if time.Now().Before(bridgesCache.expires) {
 		return bridgesCache.bridges, nil
 	}
-	bridges, e := bindClient.GetBridges(ubmsg, ubsig)
+	bridges, e := getBindClient().GetBridges(ubmsg, ubsig)
 	if e != nil {
 		return nil, e
 	}

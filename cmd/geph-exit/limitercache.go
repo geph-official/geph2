@@ -13,7 +13,7 @@ type limitFactory struct {
 	limit  rate.Limit
 }
 
-func (lf *limitFactory) getLimiter(sessid [32]byte) *rate.Limiter {
+func (lf *limitFactory) getLimiter(sessid string) *rate.Limiter {
 	limit := rate.Limit(float64(lf.limit) * (0.9 + rand.Float64()/5))
 	new := rate.NewLimiter(limit, 1024*1024)
 	prev, _, _ := lf.lcache.PeekOrAdd(sessid, new)

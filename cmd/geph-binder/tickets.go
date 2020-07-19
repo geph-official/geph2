@@ -18,6 +18,7 @@ import (
 )
 
 func handleGetTicketKey(w http.ResponseWriter, r *http.Request) {
+	countUserAgent(r)
 	// check type
 	key, err := getTicketIdentity(r.FormValue("tier"))
 	if err != nil {
@@ -28,6 +29,7 @@ func handleGetTicketKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleGetTier(w http.ResponseWriter, r *http.Request) {
+	countUserAgent(r)
 	// first authenticate
 	_, expiry, _, err := verifyUser(r.FormValue("user"), r.FormValue("pwd"))
 	if err != nil {
@@ -53,6 +55,7 @@ var limiterCache sync.Map
 var goodIPCache = cache.New(time.Hour, time.Minute)
 
 func handleGetTicket(w http.ResponseWriter, r *http.Request) {
+	countUserAgent(r)
 	// first authenticate
 	uid, expiry, paytx, err := verifyUser(r.FormValue("user"), r.FormValue("pwd"))
 	if err != nil {
@@ -122,6 +125,7 @@ func handleGetTicket(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleRedeemTicket(w http.ResponseWriter, r *http.Request) {
+	countUserAgent(r)
 	// check type
 	if tier := r.FormValue("tier"); tier != "free" && tier != "paid" {
 		log.Println("bad tier:", tier)

@@ -81,7 +81,7 @@ func main() {
 		log.Println("*** WARPFRONT MODE ***")
 		wfLoop()
 	}
-	bclient = bdclient.NewClient(binderFront, binderReal)
+	bclient = bdclient.NewClient(binderFront, binderReal, fmt.Sprintf("geph_bridge"))
 	go func() {
 		lastTotal := uint64(0)
 		lastRetrans := uint64(0)

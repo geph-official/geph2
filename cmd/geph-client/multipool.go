@@ -53,12 +53,12 @@ func (mp *multipool) fillOne() {
 	btcp := getConn()
 	btcp.Write(mp.metasess[:])
 	sm, err := smux.Client(btcp, &smux.Config{
-		Version:           1,
+		Version:           2,
 		KeepAliveInterval: time.Minute * 10,
 		KeepAliveTimeout:  time.Minute * 40,
-		MaxFrameSize:      8192,
-		MaxReceiveBuffer:  5 * 1024 * 1024,
-		MaxStreamBuffer:   5 * 1024 * 1024,
+		MaxFrameSize:      32768,
+		MaxReceiveBuffer:  1000 * 1024,
+		MaxStreamBuffer:   1000 * 1024,
 	})
 	if err != nil {
 		panic(err)
@@ -67,7 +67,8 @@ func (mp *multipool) fillOne() {
 }
 
 func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, remAddr string, ok bool) {
-	timeout := time.Millisecond * 500
+	const RESET = 1500
+	timeout := time.Millisecond * RESET
 	for {
 		sm := <-mp.pool
 		stream, err := sm.OpenStream()
@@ -93,7 +94,7 @@ func (mp *multipool) DialCmd(cmds ...string) (conn net.Conn, remAddr string, ok 
 			}
 			log.Println("error while waiting for stream, throwing away:", err.Error())
 			sm.Close()
-			timeout = time.Millisecond * 500
+			timeout = time.Millisecond * RESET
 			continue
 		}
 		stream.SetDeadline(time.Time{})
@@ -152,7 +153,7 @@ func getCleanConn() (conn net.Conn, err error) {
 			err = e
 			return
 		}
-		cryptConn, e := negotiateTinySS(nil, obfsConn, pk, 0)
+		cryptConn, e := negotiateTinySS(nil, obfsConn, pk, 'N')
 		if e != nil {
 			log.Warn("cannot negotiate tinyss with singleHop server:", e)
 			err = e
@@ -192,7 +193,7 @@ func getCleanConn() (conn net.Conn, err error) {
 	} else {
 		getWarpfrontCon := func() (warpConn net.Conn, err error) {
 			var wfstuff map[string]string
-			wfstuff, err = bindClient.GetWarpfronts()
+			wfstuff, err = getBindClient().GetWarpfronts()
 			if err != nil {
 				log.Warnln("can't get warp front:", err)
 				return
@@ -223,7 +224,7 @@ func getCleanConn() (conn net.Conn, err error) {
 		}
 	}
 	rawConn.SetDeadline(time.Now().Add(time.Second * 10))
-	cryptConn, err := negotiateTinySS(&[2][]byte{ubsig, ubmsg}, rawConn, exitPK(), 0)
+	cryptConn, err := negotiateTinySS(&[2][]byte{ubsig, ubmsg}, rawConn, exitPK(), 'N')
 	if err != nil {
 		log.Println("error while negotiating cryptConn", err)
 		return
