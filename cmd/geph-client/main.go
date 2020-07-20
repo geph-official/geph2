@@ -63,6 +63,13 @@ func getBindClient() *bdclient.Client {
 	return binders[rand.Int()%len(binders)]
 }
 
+func getBindInfo() (string, string) {
+	fronts := strings.Split(binderFront, ",")
+	hosts := strings.Split(binderHost, ",")
+	randIdx := rand.Int() % len(fronts)
+	return fronts[randIdx], hosts[randIdx]
+}
+
 // find the fastest binder and stick to it
 func binderRace() {
 	fronts := strings.Split(binderFront, ",")
@@ -102,7 +109,7 @@ func main() {
 	flag.StringVar(&password, "password", "", "password")
 	flag.StringVar(&ticketFile, "ticketFile", "", "location for caching auth tickets")
 	flag.StringVar(&binderFront, "binderFront", "https://www.cdn77.com/v2,https://netlify.com/v2,https://ajax.aspnetcdn.com/v2", "binder domain-fronting hosts, comma separated")
-	flag.StringVar(&binderHost, "binderHost", "1680337695.rsc.cdn77.org,loving-bell-981479.netlify.com,gephbinder-vzn.azureedge.net", "real hostname of the binder, comma separated")
+	flag.StringVar(&binderHost, "binderHost", "1680337695.rsc.cdn77.org,loving-bell-981479.netlify.app,gephbinder-vzn.azureedge.net", "real hostname of the binder, comma separated")
 	flag.StringVar(&exitName, "exitName", "us-sfo-01.exits.geph.io", "qualified name of the exit node selected")
 	flag.StringVar(&exitKey, "exitKey", "2f8571e4795032433098af285c0ce9e43c973ac3ad71bf178e4f2aaa39794aec", "ed25519 pubkey of the selected exit")
 	flag.BoolVar(&forceBridges, "forceBridges", false, "force the use of obfuscated bridges")
@@ -158,17 +165,18 @@ func main() {
 	if singleHop == "" {
 		if binderProxy != "" {
 			log.Println("binderProxy mode on", binderProxy)
-			binderURL, err := url.Parse(binderFront)
-			if err != nil {
-				panic(err)
-			}
 			revProx := &httputil.ReverseProxy{
 				Director: func(req *http.Request) {
+					bURL, bHost := getBindInfo()
+					bURLP, err := url.Parse(bURL)
+					if err != nil {
+						panic(err)
+					}
 					log.Println("reverse proxying", req.Method, req.URL)
-					req.Host = binderHost
-					req.URL.Scheme = binderURL.Scheme
-					req.URL.Host = binderURL.Host
-					req.URL.Path = binderURL.Path + "/" + req.URL.Path
+					req.Host = bHost
+					req.URL.Scheme = bURLP.Scheme
+					req.URL.Host = bURLP.Host
+					req.URL.Path = bURLP.Path + "/" + req.URL.Path
 				},
 				ModifyResponse: func(resp *http.Response) error {
 					resp.Header.Add("Access-Control-Allow-Origin", "*")
@@ -178,7 +186,7 @@ func main() {
 					return nil
 				},
 			}
-			if http.ListenAndServe(binderProxy, revProx) != nil {
+			if err := http.ListenAndServe(binderProxy, revProx); err != nil {
 				panic(err)
 			}
 		}
