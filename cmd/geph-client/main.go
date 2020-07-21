@@ -84,9 +84,17 @@ func binderRace() {
 	}
 }
 
+func memMiser() {
+	for {
+		debug.FreeOSMemory()
+		time.Sleep(time.Second * 5)
+	}
+}
+
 func main() {
-	debug.SetGCPercent(30)
-	mrand.Seed(time.Now().UnixNano())
+	debug.SetGCPercent(5)
+	go memMiser()
+	go mrand.Seed(time.Now().UnixNano())
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp: false,
 		ForceColors:   true,
