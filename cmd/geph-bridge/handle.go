@@ -125,14 +125,14 @@ func handle(client net.Conn) {
 					if statClient != nil && mrand.Int()%100000 < n {
 						statClient.Increment(allocGroup + ".e2eup")
 					}
-				}, time.Hour)
+				}, time.Minute*15)
 			}()
 			defer remote.Close()
 			cwl.CopyWithLimit(client, remote, limiter, func(n int) {
 				if statClient != nil && mrand.Int()%100000 < n {
 					statClient.Increment(allocGroup + ".e2edown")
 				}
-			}, time.Hour)
+			}, time.Minute*15)
 			return
 		default:
 			return

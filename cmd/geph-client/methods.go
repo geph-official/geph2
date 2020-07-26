@@ -53,7 +53,7 @@ func getSingleTCP(bridges []bdclient.BridgeInfo) (conn net.Conn, err error) {
 			realConn, err := connThroughBridge(bridgeConn)
 			if err != nil {
 				bridgeConn.Close()
-				//log.Debugln("conn in", bi.Host, "failed!", err)
+				log.Debugln("conn in", bi.Host, "failed!", err)
 				return
 			}
 			select {

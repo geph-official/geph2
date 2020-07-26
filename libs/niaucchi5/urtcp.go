@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"io"
 	"log"
+	"math"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -89,7 +91,10 @@ func (tr *URTCP) SendSegment(seg []byte, block bool) (err error) {
 			tr.cvar.Wait()
 		}
 	} else {
-		if tr.sv.inflight > tr.sv.inflightLimit {
+		// random early detection
+		minThresh := 0.8
+		dropProb := math.Max(0, float64(tr.sv.inflight)/float64(tr.sv.inflightLimit)-minThresh) / (1 - minThresh)
+		if rand.Float64() < dropProb {
 			return
 		}
 	}
@@ -224,7 +229,7 @@ func (tr *URTCP) recvLoop() {
 			pool.Put(rUnixNanoB)
 
 			tr.cvar.L.Lock()
-			now := time.Now()
+			//now := time.Now()
 
 			ping := float64(tr.sv.ping) * 1e-9
 
@@ -234,11 +239,15 @@ func (tr *URTCP) recvLoop() {
 			deltaT := float64(rUnixNano - tr.sv.lastAckNano)
 			tr.sv.lastAckNano = rUnixNano
 			bwSample := 1e9 * deltaD / deltaT
-			if bwSample > tr.sv.bw || now.Sub(tr.sv.bwUpdateTime).Seconds() > ping*10 {
-				tr.sv.bw = bwSample
-				tr.sv.bwUpdateTime = now
+			// if bwSample > tr.sv.bw || now.Sub(tr.sv.bwUpdateTime).Seconds() > ping*10 {
+			// 	tr.sv.bw = bwSample
+			// 	tr.sv.bwUpdateTime = now
+			// }
+			if bwSample > tr.sv.bw {
+				tr.sv.bw = bwSample*0.5 + tr.sv.bw*0.5
+			} else {
+				tr.sv.bw = bwSample*0.1 + tr.sv.bw*0.9
 			}
-			//tr.sv.bw = bwSample*0.1 + tr.sv.bw*0.9
 
 			Bps := tr.sv.bw
 			log.Println("bw sample", int(Bps/1000), "KB/s")

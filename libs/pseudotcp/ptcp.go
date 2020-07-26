@@ -67,7 +67,7 @@ func (dl *dialer) Dial(host string) (conn net.Conn, err error) {
 		return
 	}
 
-	rawConn, err := net.Dial("tcp", host)
+	rawConn, err := net.DialTimeout("tcp", host, time.Second*5)
 	if err != nil {
 		return
 	}

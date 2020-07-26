@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"math/rand"
 	mrand "math/rand"
 	"net"
 	"net/http"
@@ -51,42 +52,35 @@ var upstreamProxy string
 var additionalBridges string
 var forceWarpfront bool
 
-var bindClient *bdclient.Client
-
-var sWrap commandDialer
+var sWrap *multipool
 
 // GitVersion is the build version
 var GitVersion string
 
+var binders []*bdclient.Client
+
+func getBindClient() *bdclient.Client {
+	return binders[rand.Int()%len(binders)]
+}
+
+func getBindInfo() (string, string) {
+	fronts := strings.Split(binderFront, ",")
+	hosts := strings.Split(binderHost, ",")
+	randIdx := rand.Int() % len(fronts)
+	return fronts[randIdx], hosts[randIdx]
+}
+
 // find the fastest binder and stick to it
 func binderRace() {
-	log.Debug("starting binder race...")
-restart:
 	fronts := strings.Split(binderFront, ",")
 	hosts := strings.Split(binderHost, ",")
 	if len(fronts) != len(hosts) {
 		panic("binderFront and binderHost must be of identical length")
 	}
-	winner := make(chan int, 1000)
 	for i := 0; i < len(fronts); i++ {
 		i := i
-		bdc := bdclient.NewClient(fronts[i], hosts[i])
-		go func() {
-			_, err := bdc.GetClientInfo()
-			if err != nil {
-				log.Warnf("[%v %v] failed: %v", fronts[i], hosts[i], err)
-				return
-			}
-			winner <- i
-		}()
-	}
-	select {
-	case i := <-winner:
-		log.Debugf("[%v %v] won binder race", fronts[i], hosts[i])
-		binderFront = fronts[i]
-		binderHost = hosts[i]
-	case <-time.After(time.Second * 20):
-		goto restart
+		bdc := bdclient.NewClient(fronts[i], hosts[i], fmt.Sprintf("geph_client/%v", GitVersion))
+		binders = append(binders, bdc)
 	}
 }
 
@@ -115,7 +109,7 @@ func main() {
 	flag.StringVar(&password, "password", "", "password")
 	flag.StringVar(&ticketFile, "ticketFile", "", "location for caching auth tickets")
 	flag.StringVar(&binderFront, "binderFront", "https://www.cdn77.com/v2,https://netlify.com/v2,https://ajax.aspnetcdn.com/v2", "binder domain-fronting hosts, comma separated")
-	flag.StringVar(&binderHost, "binderHost", "1680337695.rsc.cdn77.org,loving-bell-981479.netlify.com,gephbinder-vzn.azureedge.net", "real hostname of the binder, comma separated")
+	flag.StringVar(&binderHost, "binderHost", "1680337695.rsc.cdn77.org,loving-bell-981479.netlify.app,gephbinder-vzn.azureedge.net", "real hostname of the binder, comma separated")
 	flag.StringVar(&exitName, "exitName", "us-sfo-01.exits.geph.io", "qualified name of the exit node selected")
 	flag.StringVar(&exitKey, "exitKey", "2f8571e4795032433098af285c0ce9e43c973ac3ad71bf178e4f2aaa39794aec", "ed25519 pubkey of the selected exit")
 	flag.BoolVar(&forceBridges, "forceBridges", false, "force the use of obfuscated bridges")
@@ -157,6 +151,7 @@ func main() {
 			})
 		}
 	}()
+	binderRace()
 
 	log.Println("GephNG version", GitVersion)
 	// special actions
@@ -168,20 +163,20 @@ func main() {
 		}()
 	}
 	if singleHop == "" {
-		binderRace()
 		if binderProxy != "" {
 			log.Println("binderProxy mode on", binderProxy)
-			binderURL, err := url.Parse(binderFront)
-			if err != nil {
-				panic(err)
-			}
 			revProx := &httputil.ReverseProxy{
 				Director: func(req *http.Request) {
+					bURL, bHost := getBindInfo()
+					bURLP, err := url.Parse(bURL)
+					if err != nil {
+						panic(err)
+					}
 					log.Println("reverse proxying", req.Method, req.URL)
-					req.Host = binderHost
-					req.URL.Scheme = binderURL.Scheme
-					req.URL.Host = binderURL.Host
-					req.URL.Path = binderURL.Path + "/" + req.URL.Path
+					req.Host = bHost
+					req.URL.Scheme = bURLP.Scheme
+					req.URL.Host = bURLP.Host
+					req.URL.Path = bURLP.Path + "/" + req.URL.Path
 				},
 				ModifyResponse: func(resp *http.Response) error {
 					resp.Header.Add("Access-Control-Allow-Origin", "*")
@@ -191,19 +186,18 @@ func main() {
 					return nil
 				},
 			}
-			if http.ListenAndServe(binderProxy, revProx) != nil {
+			if err := http.ListenAndServe(binderProxy, revProx); err != nil {
 				panic(err)
 			}
 		}
 
 		// connect to bridge
-		bindClient = bdclient.NewClient(binderFront, binderHost)
 		// automatically pick mode
 		if upstreamProxy != "" {
 			log.Println("upstream proxy enabled, no bridges")
 			direct = true
 		} else if !forceBridges {
-			country, err := bindClient.GetClientInfo()
+			country, err := getBindClient().GetClientInfo()
 			if err != nil {
 				log.Println("cannot get country, conservatively using bridges", err)
 			} else {

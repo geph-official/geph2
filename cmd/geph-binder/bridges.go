@@ -33,7 +33,7 @@ func addBridge(nfo bridgeInfo) {
 }
 
 // cache of bridge *mappings*. string => []string
-var bridgeMapCache = cache.New(time.Minute*30, time.Hour)
+var bridgeMapCache = cache.New(time.Hour, time.Hour)
 
 func getBridges(id string) []string {
 	if mapping, ok := bridgeMapCache.Get(id); ok {
@@ -73,6 +73,7 @@ func getBridges(id string) []string {
 }
 
 func handleGetWarpfronts(w http.ResponseWriter, r *http.Request) {
+	countUserAgent(r)
 	host2front, err := getWarpfronts()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -85,19 +86,16 @@ func handleGetWarpfronts(w http.ResponseWriter, r *http.Request) {
 var counterCache = cache.New(time.Minute, time.Hour)
 
 func handleGetBridges(w http.ResponseWriter, r *http.Request) {
+	countUserAgent(r)
 	id := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
-	if _, ok := goodIPCache.Get(id); !ok {
-		log.Println("BAD IP:", id)
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	// counterCache.Add(id, new(uint64), time.Minute*15)
-	// ctr, _ := counterCache.Get(id)
-	// current := atomic.AddUint64(ctr.(*uint64), 1)
-	// if current < 5 {
-	// 	log.Println("DYING because under limit")
+	// result, _ := goodIPCache.Get(id)
+	// if result == nil {
+	// 	log.Println("BAD IP:", id)
+	// 	w.WriteHeader(http.StatusForbidden)
 	// 	return
 	// }
+	// id = fmt.Sprintf("%v", result)
+	// fmt.Println("good IP with id", id)
 
 	isEphemeral := r.FormValue("type") == "ephemeral"
 	if isEphemeral {
@@ -120,8 +118,15 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 			val := vali.(bridgeInfo)
 			if !seenAGs[val.AllocGroup] {
 				seenAGs[val.AllocGroup] = true
-				laboo = append(laboo, val)
+				hostPort := strings.Split(val.Host, ":")
+				if len(hostPort) == 2 {
+					val.Host = fmt.Sprintf("%v.sslip.io:%v", strings.Replace(hostPort[0], ".", "-", -1), hostPort[1])
+					laboo = append(laboo, val)
+				}
 			}
+		} else {
+			vacate()
+			return
 		}
 	}
 	if len(laboo) == 0 {
@@ -132,6 +137,7 @@ func handleGetBridges(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAddBridge(w http.ResponseWriter, r *http.Request) {
+	countUserAgent(r)
 	// first get the cookie
 	cookie, err := hex.DecodeString(r.FormValue("cookie"))
 	if err != nil {
@@ -158,11 +164,6 @@ func handleAddBridge(w http.ResponseWriter, r *http.Request) {
 		LastSeen:   time.Now(),
 		AllocGroup: r.FormValue("allocGroup"),
 	}
-	// if !testBridge(bi) {
-	// 	log.Println("can't add bridge (bad bridge test)")
-	// 	w.WriteHeader(http.StatusForbidden)
-	// 	return
-	// }
 	// add the bridge
 	addBridge(bi)
 }

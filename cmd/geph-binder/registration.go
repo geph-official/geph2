@@ -42,5 +42,6 @@ func handleCaptcha(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("cache-control", "no-cache")
 	id := captcha.NewLen(8)
 	w.Header().Add("x-captcha-id", id)
+	w.Header().Add("Access-Control-Expose-Headers", "x-captcha-id")
 	captcha.WriteImage(w, id, 200, 100)
 }

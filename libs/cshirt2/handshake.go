@@ -59,7 +59,7 @@ func readPK(compatibility bool, secret []byte, isDown bool, transport net.Conn) 
 	// try to decode as new PK format
 	var edpk []byte
 	var padlen uint16
-	for e := epoch - 3; e < epoch+3; e++ {
+	for e := epoch - 30; e < epoch+30; e++ {
 		hsKey := mac256(secret, []byte(fmt.Sprintf("handshake-%v-%v", e, isDown)))
 		crypt, _ := chacha20poly1305.New(hsKey)
 		plain, er := crypt.Open(nil, make([]byte, 12), theirPublic, nil)
