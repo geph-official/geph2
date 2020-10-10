@@ -31,9 +31,9 @@ func NewClient(frontDomain, realDomain, useragent string) *Client {
 		hclient: &http.Client{
 			Transport: &http.Transport{
 				Proxy:           nil,
-				IdleConnTimeout: time.Second,
+				IdleConnTimeout: time.Second * 3,
 			},
-			Timeout: time.Second * 15,
+			Timeout: time.Second * 3,
 		},
 		frontDomain: frontDomain,
 		realDomain:  realDomain,
