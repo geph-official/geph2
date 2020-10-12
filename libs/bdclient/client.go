@@ -12,12 +12,32 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/cryptoballot/rsablind"
 )
 
 // Multiclient wraps around mutliple clients, R/R-ing between them until something works.
+type Multiclient struct {
+	index   uint64
+	clients []*Client
+}
+
+// NewMulticlient creates a Multiclient from multiple clients
+func NewMulticlient(clients []*Client) *Multiclient {
+	return &Multiclient{0, clients}
+}
+
+func (mc *Multiclient) Do(f func(client *Client) error) error {
+	index := int(atomic.LoadUint64(&mc.index))
+	client := mc.clients[index%len(mc.clients)]
+	err := f(client)
+	if err != nil {
+		atomic.AddUint64(&mc.index, 1)
+	}
+	return err
+}
 
 // Client represents a binder client.
 type Client struct {
@@ -35,7 +55,7 @@ func NewClient(frontDomain, realDomain, useragent string) *Client {
 				Proxy:           nil,
 				IdleConnTimeout: time.Second * 3,
 			},
-			Timeout: time.Second * 20,
+			Timeout: time.Second * 10,
 		},
 		frontDomain: frontDomain,
 		realDomain:  realDomain,

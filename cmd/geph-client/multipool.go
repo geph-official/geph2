@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/geph-official/geph2/libs/backedtcp"
+	"github.com/geph-official/geph2/libs/bdclient"
 	"github.com/geph-official/geph2/libs/cshirt2"
 	"github.com/geph-official/geph2/libs/tinysocks"
 	log "github.com/sirupsen/logrus"
@@ -193,7 +194,10 @@ func getCleanConn() (conn net.Conn, err error) {
 	} else {
 		getWarpfrontCon := func() (warpConn net.Conn, err error) {
 			var wfstuff map[string]string
-			wfstuff, err = getBindClient().GetWarpfronts()
+			binders.Do(func(client *bdclient.Client) error {
+				wfstuff, err = client.GetWarpfronts()
+				return err
+			})
 			if err != nil {
 				log.Warnln("can't get warp front:", err)
 				return
