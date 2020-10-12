@@ -17,6 +17,8 @@ import (
 	"github.com/cryptoballot/rsablind"
 )
 
+// Multiclient wraps around mutliple clients, R/R-ing between them until something works.
+
 // Client represents a binder client.
 type Client struct {
 	hclient     *http.Client
@@ -33,7 +35,7 @@ func NewClient(frontDomain, realDomain, useragent string) *Client {
 				Proxy:           nil,
 				IdleConnTimeout: time.Second * 3,
 			},
-			Timeout: time.Second * 3,
+			Timeout: time.Second * 20,
 		},
 		frontDomain: frontDomain,
 		realDomain:  realDomain,
