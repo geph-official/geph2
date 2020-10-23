@@ -51,6 +51,7 @@ func main() {
 	if err != nil {
 		log.Fatal("cannot connect to database:", err)
 	}
+	pgDB.SetMaxOpenConns(50)
 	sk, err := getMasterIdentity()
 	if err != nil {
 		log.Fatal("cannot obtain master identity:", err)

@@ -92,7 +92,12 @@ func getGreeting() (ubmsg, ubsig []byte, err error) {
 		return
 	}
 	// obtain a ticket
-	ubmsg, ubsig, details, err := getBindClient().GetTicket(username, password)
+	var ticket bdclient.TicketResp
+	err = binders.Do(func(b *bdclient.Client) error {
+		var err error
+		ubmsg, ubsig, ticket, err = b.GetTicket(username, password)
+		return err
+	})
 	if err != nil {
 		log.Errorln("error authenticating:", err)
 		if errors.Is(err, bdclient.ErrBadAuth) && loginCheck {
@@ -105,9 +110,9 @@ func getGreeting() (ubmsg, ubsig []byte, err error) {
 	}
 	useStats(func(sc *stats) {
 		sc.Username = username
-		sc.Expiry = details.PaidExpiry
-		sc.Tier = details.Tier
-		sc.PayTxes = details.Transactions
+		sc.Expiry = ticket.PaidExpiry
+		sc.Tier = ticket.Tier
+		sc.PayTxes = ticket.Transactions
 	})
 	greetingCache.ubmsg = ubmsg
 	greetingCache.ubsig = ubsig
@@ -127,7 +132,12 @@ func getBridges(ubmsg, ubsig []byte) ([]bdclient.BridgeInfo, error) {
 	if time.Now().Before(bridgesCache.expires) {
 		return bridgesCache.bridges, nil
 	}
-	bridges, e := getBindClient().GetBridges(ubmsg, ubsig)
+	var bridges []bdclient.BridgeInfo
+	e := binders.Do(func(b *bdclient.Client) error {
+		var err error
+		bridges, err = b.GetBridges(ubmsg, ubsig)
+		return err
+	})
 	if e != nil {
 		return nil, e
 	}

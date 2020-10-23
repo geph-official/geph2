@@ -57,11 +57,7 @@ var sWrap *multipool
 // GitVersion is the build version
 var GitVersion string
 
-var binders []*bdclient.Client
-
-func getBindClient() *bdclient.Client {
-	return binders[rand.Int()%len(binders)]
-}
+var binders *bdclient.Multiclient
 
 func getBindInfo() (string, string) {
 	fronts := strings.Split(binderFront, ",")
@@ -77,16 +73,26 @@ func binderRace() {
 	if len(fronts) != len(hosts) {
 		panic("binderFront and binderHost must be of identical length")
 	}
+	var bbb []*bdclient.Client
 	for i := 0; i < len(fronts); i++ {
 		i := i
 		bdc := bdclient.NewClient(fronts[i], hosts[i], fmt.Sprintf("geph_client/%v", GitVersion))
-		binders = append(binders, bdc)
+		bbb = append(bbb, bdc)
+	}
+	binders = bdclient.NewMulticlient(bbb)
+}
+
+func memMiser() {
+	for {
+		debug.FreeOSMemory()
+		time.Sleep(time.Second * 5)
 	}
 }
 
 func main() {
-	debug.SetGCPercent(30)
-	mrand.Seed(time.Now().UnixNano())
+	// debug.SetGCPercent(5)
+	// go memMiser()
+	go mrand.Seed(time.Now().UnixNano())
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp: false,
 		ForceColors:   true,
@@ -197,12 +203,20 @@ func main() {
 			log.Println("upstream proxy enabled, no bridges")
 			direct = true
 		} else if !forceBridges {
-			country, err := getBindClient().GetClientInfo()
+		retry:
+			var country string
+			binders.Do(func(b *bdclient.Client) error {
+				var cinfo bdclient.ClientInfo
+				cinfo, err = b.GetClientInfo()
+				country = cinfo.Country
+				return err
+			})
 			if err != nil {
-				log.Println("cannot get country, conservatively using bridges", err)
+				log.Println("cannot get country", err)
+				goto retry
 			} else {
-				log.Println("country is", country.Country)
-				if country.Country == "CN" {
+				log.Println("country is", country)
+				if country == "CN" {
 					log.Println("in CHINA, must use bridges")
 				} else {
 					log.Println("disabling bridges")

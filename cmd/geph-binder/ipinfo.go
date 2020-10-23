@@ -34,5 +34,8 @@ func handleClientInfo(w http.ResponseWriter, r *http.Request) {
 	// if cinfo.Country == "IR" {
 	// 	cinfo.Country = "CN" // HACK to put iranian users on bridges
 	// }
+	if len(cinfo.Country) != 2 {
+		cinfo.Country = "CN"
+	}
 	json.NewEncoder(w).Encode(cinfo)
 }
